@@ -1,4 +1,4 @@
-from .dbserver import *
+from .data_server import *
 
 def fit(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=6, gpus=0, precision=32):
     print('new fit')
