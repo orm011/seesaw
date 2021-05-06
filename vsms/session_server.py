@@ -7,7 +7,7 @@ from .cross_modal_db import *
 from .embedding_plot import *
 from .embeddings import *
 import ray
-from .dbserver import BoxFeedbackQuery, get_panel_data_remote, update_vector
+from .data_server import BoxFeedbackQuery, get_panel_data_remote, update_vector
 
 app = Flask(__name__)
 ray.init('auto', ignore_reinit_error=True)
@@ -51,11 +51,6 @@ def reset():
 @app.route('/getstate', methods=['GET'])
 def getstate():
     return flask.jsonify(**state.get_state())
-
-@app.route('/categories', methods=['GET'])
-def options():
-    vals = list(ev.query_ground_truth.columns.values)
-    return flask.jsonify(vals)
 
 @app.route('/text', methods=['POST'])
 def text():
