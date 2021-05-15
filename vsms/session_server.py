@@ -13,7 +13,7 @@ app = Flask(__name__)
 ray.init('auto', ignore_reinit_error=True)
 
 default_dataset = 'coco'
-datasets = ['coco', 'ava', 'bdd', 'dota']
+datasets = ['coco', 'ava', 'bdd', 'dota', 'object_net']
 dbactors = dict([(name,ray.get_actor('{}_db'.format(name))) for name in datasets])
 
 class SessionState(object):
@@ -38,6 +38,10 @@ class SessionState(object):
         dat['current_dataset'] = self.current_dataset
         return dat
 
+    def get_latest(self):
+        dat = get_panel_data_remote(self.bfq,  self.bfq.label_db, self.bfq.acc_idxs[-1])
+        return dat
+
 state = SessionState(default_dataset)
 
 @app.route('/reset', methods=['POST'])
@@ -56,6 +60,34 @@ def getstate():
 def text():
     query = request.args.get('key', '')
     state.init_vec = ray.get(state.dbactor.embed_raw.remote(query))
+    return next()
+
+@app.route('/search_hybrid', methods=['POST'])
+def search_hybrid():
+    minus_text = request.json.get('minus_text',None)
+    plus_text = request.json.get('plus_text', None)
+    
+    normalize = lambda x : x/np.linalg.norm(x)
+    standardize = lambda x : normalize(x).reshape(-1)
+
+    image_vec = standardize(ray.get(state.dbactor.get_vectors.remote([request.json['dbidx']])))
+
+    if minus_text is None or minus_text == '':
+        minus_vec = np.zeros_like(image_vec)
+    else:
+        minus_vec = standardize(ray.get(state.dbactor.embed_raw.remote(minus_text)))
+
+    if plus_text is None or plus_text == '':
+        plus_vec = np.zeros_like(image_vec)
+    else:
+        plus_vec = standardize(ray.get(state.dbactor.embed_raw.remote(request.json['plus_text'])))
+
+    # coeff = image_vec@minus_vec
+    # cleaned_vec = image_vec - coeff*minus_vec
+    # # clean_plus = plus_vec - (image_vec@plus_vec)*plus_vec
+    total_vec = image_vec + plus_vec - minus_vec
+
+    state.init_vec = total_vec.reshape(1,-1)#norm(plus_vec) + norm(image_vec) - norm(minus_vec)
     return next()
 
 @app.route('/next', methods=['POST'])
@@ -81,9 +113,9 @@ def next():
 
     idxbatch = state.bfq.query_stateful(mode='dot', vector=tvec, batch_size=5)
     state.acc_indices = np.concatenate([state.acc_indices, idxbatch])
-    dat = state.get_state()
-    acc_results = np.array([litem['value'] for litem in dat['ldata']])
-    print('after idx', state.acc_indices)
-    print('after labels', acc_results)
+    dat = state.get_latest()
+    # acc_results = np.array([litem['value'] for litem in dat['ldata']])
+    # print('after idx', state.acc_indices)
+    # print('after labels', acc_results)
     return flask.jsonify(**dat)
 

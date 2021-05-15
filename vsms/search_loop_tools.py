@@ -270,80 +270,80 @@ def dispatch_query(bfq, prev_vec, variant, positive_area, cluster_id=None, batch
 
 import torch.distributions as dist
 
-def run_loop(data, *, ev, hdb, cats, variants='all', qstrs=dict(), n_batches = 20, batch_size = 9, a0 = .3, b0 = 1.):
-    augment_n = 0
-    pad_factor = 3.
-    db = hdb
-    clstat = db.clusters.value_counts().sort_index()
-    if cats == 'all':
-        cats = ev.query_ground_truth.columns
+# def run_loop(data, *, ev, hdb, cats, variants='all', qstrs=dict(), n_batches = 20, batch_size = 9, a0 = .3, b0 = 1.):
+#     augment_n = 0
+#     pad_factor = 3.
+#     db = hdb
+#     clstat = db.clusters.value_counts().sort_index()
+#     if cats == 'all':
+#         cats = ev.query_ground_truth.columns
     
-    pairs = [ (c, qstrs.get(c,c)) for c in cats]
-    box_cats = ev.box_data.category.unique()
-    if variants == 'all':
-        variants = ['text', 'model', 'cluster']
+#     pairs = [ (c, qstrs.get(c,c)) for c in cats]
+#     box_cats = ev.box_data.category.unique()
+#     if variants == 'all':
+#         variants = ['text', 'model', 'cluster']
 
-    for (c,qstr) in tqdm(pairs):
-        if c not in box_cats: # mostly bdd?
-            dbidxs = np.where(ev.query_ground_truth[c] > 0)[0]
-            boxdf = pd.DataFrame({'dbidx':dbidxs})
-            boxes = boxdf.assign(x1=0, y1=0, x2=1280, y2=720, category=c)
-        else:
-            boxes = ev.box_data[ev.box_data.category == c]
+#     for (c,qstr) in tqdm(pairs):
+#         if c not in box_cats: # mostly bdd?
+#             dbidxs = np.where(ev.query_ground_truth[c] > 0)[0]
+#             boxdf = pd.DataFrame({'dbidx':dbidxs})
+#             boxes = boxdf.assign(x1=0, y1=0, x2=1280, y2=720, category=c)
+#         else:
+#             boxes = ev.box_data[ev.box_data.category == c]
 
-        init_vec = hdb.embedding.from_raw(qstr)
-        for variant in variants:
-            bfq = BoxFeedbackQuery(db, batch_size=batch_size, auto_fill_df=boxes)
-            acc_indices = []
-            acc_results = []
-            acc_clusters = []
+#         init_vec = hdb.embedding.from_raw(qstr)
+#         for variant in variants:
+#             bfq = BoxFeedbackQuery(db, batch_size=batch_size, auto_fill_df=boxes)
+#             acc_indices = []
+#             acc_results = []
+#             acc_clusters = []
 
-            data.append((variant, 'full', c, init_vec, False, 
-                            acc_indices, acc_results, acc_clusters,bfq))
-            counts = torch.zeros(clstat.shape[0])
-            positives = torch.zeros_like(counts)
-            done = torch.zeros_like(counts, dtype=torch.bool)
-            for i in tqdm(range(n_batches), leave=False):
-                if (i < 10) or (variant not in ['cluster']):
-                    if variant in ['cluster']:
-                        v = 'text'
-                    else:
-                        v = variant
-                    idxbatch = dispatch_query(bfq, init_vec, v, 
-                                                positive_area='full', cluster_id=None,
-                                                batch_size=batch_size)
-                else:
-                    idxs = []
-                    while len(idxs) < batch_size:
-                        nv = 1
-                        samps = dist.Beta(positives + a0, counts - positives + b0).sample((1,))
-                        samps[:,done] = -1. 
-                        cidx = (torch.argmax(samps, axis=1)).item()
+#             data.append((variant, 'full', c, init_vec, False, 
+#                             acc_indices, acc_results, acc_clusters,bfq))
+#             counts = torch.zeros(clstat.shape[0])
+#             positives = torch.zeros_like(counts)
+#             done = torch.zeros_like(counts, dtype=torch.bool)
+#             for i in tqdm(range(n_batches), leave=False):
+#                 if (i < 10) or (variant not in ['cluster']):
+#                     if variant in ['cluster']:
+#                         v = 'text'
+#                     else:
+#                         v = variant
+#                     idxbatch = dispatch_query(bfq, init_vec, v, 
+#                                                 positive_area='full', cluster_id=None,
+#                                                 batch_size=batch_size)
+#                 else:
+#                     idxs = []
+#                     while len(idxs) < batch_size:
+#                         nv = 1
+#                         samps = dist.Beta(positives + a0, counts - positives + b0).sample((1,))
+#                         samps[:,done] = -1. 
+#                         cidx = (torch.argmax(samps, axis=1)).item()
 
-                        idxbatch = dispatch_query(bfq, init_vec, 'text', 'full', 
-                                                    cluster_id=cidx -1, 
-                                                    batch_size=1)
-                        if len(idxbatch) > 0:
-                            idxs.append(idxbatch)
-                        else:
-                            done[cidx] = True
+#                         idxbatch = dispatch_query(bfq, init_vec, 'text', 'full', 
+#                                                     cluster_id=cidx -1, 
+#                                                     batch_size=1)
+#                         if len(idxbatch) > 0:
+#                             idxs.append(idxbatch)
+#                         else:
+#                             done[cidx] = True
 
-                    idxbatch = np.concatenate(idxs)    
-                    assert idxbatch.shape[0] == batch_size
+#                     idxbatch = np.concatenate(idxs)    
+#                     assert idxbatch.shape[0] == batch_size
 
-                cids = db.clusters.values[idxbatch]
+#                 cids = db.clusters.values[idxbatch]
 
-                pn = make_image_panel(bfq, idxbatch)
-                # if True:
-                #     display(pn)
-                #     input('press Enter when done with batch...') # hack to wait before reading data
-                ldata = pn.ldata
-                update_db(bfq.label_db, ldata)
-                _, flag = binary_panel_data(ldata)
-                acc_indices.append(idxbatch)
-                acc_results.append(flag)
-                acc_clusters.append(cids)
+#                 pn = make_image_panel(bfq, idxbatch)
+#                 # if True:
+#                 #     display(pn)
+#                 #     input('press Enter when done with batch...') # hack to wait before reading data
+#                 ldata = pn.ldata
+#                 update_db(bfq.label_db, ldata)
+#                 _, flag = binary_panel_data(ldata)
+#                 acc_indices.append(idxbatch)
+#                 acc_results.append(flag)
+#                 acc_clusters.append(cids)
 
-                for cindex,flag in zip(cids+1,flag):
-                    counts[cindex] =  1 + counts[cindex]
-                    positives[cindex] = flag + positives[cindex]
+#                 for cindex,flag in zip(cids+1,flag):
+#                     counts[cindex] =  1 + counts[cindex]
+#                     positives[cindex] = flag + positives[cindex]

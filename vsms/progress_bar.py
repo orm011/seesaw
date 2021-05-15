@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 # pexps = pool.map_async(pbar.wrap(mapfun), tups)
 # pbar.print_until_done()
 
-@ray.remote
+@ray.remote(num_cpus=.01)
 class ProgressBarActor:
     counter: int
     delta: int

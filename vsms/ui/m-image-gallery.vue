@@ -1,8 +1,9 @@
 <template>
   <div>
     <div class="image-gallery">
-        <img v-for="(url,index) in image_urls" :key="index" :src="url" @click="onclick(index)"
-        :class="['unknown', 'rejected', 'accepted'][ldata[index].value+1]" >
+        <img v-for="(url,index) in image_urls" :key="index" :src="url" @click="onclick(index)" draggable 
+        @dragstart="$emit('itemdrag', [$event, index])"
+        :class="['unknown', 'rejected', 'accepted'][ldata.length === 0? 0 : ldata[index].value+1]" >
     </div>
   </div>
 </template>

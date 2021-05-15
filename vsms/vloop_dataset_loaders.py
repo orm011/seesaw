@@ -114,7 +114,7 @@ def bdd_full(embedding : XEmbedding, embedded_vecs : np.ndarray = None) -> EvDat
                      query_ground_truth=filtered_gt,
                      box_data=box_data, embedding=embedding)
 
-def objectnet_cropped(embedding : XEmbedding ) -> EvDataset:
+def objectnet_cropped(embedding : XEmbedding, embedded_vecs : np.array ) -> EvDataset:
     tmp = np.load('./data/objnet_vectors_cropped.npz', allow_pickle=True)
     paths = tmp['paths']
     root = './data/objectnet/cropped/'

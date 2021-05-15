@@ -1,6 +1,7 @@
 from .data_server import *
+from .search_loop_models import *
 
-def fit(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=6, gpus=0, precision=32):
+def fit_reg(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=4, gpus=0, precision=32):
     print('new fit')
     class CustomInterrupt(pl.callbacks.Callback):
         def on_keyboard_interrupt(self, trainer, pl_module):
@@ -49,7 +50,8 @@ def fit(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs
     trainer.fit(mod, train_loader, val_loader)
 
 
-def run_loop(*, dbactor, category, qstr, interactive, warm_start, n_batches, batch_size, **kwargs):
+def run_loop(*, dbactor, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
+model_type='logistic', **kwargs):
         frame = inspect.currentframe()
         args, _, _, values = inspect.getargvalues(frame)
         allargs = {k:v for (k,v) in values.items() if k in args}
@@ -94,19 +96,31 @@ def run_loop(*, dbactor, category, qstr, interactive, warm_start, n_batches, bat
                     elif interactive == 'pytorch':
                         p = yt.sum()/yt.shape[0]
                         w = np.clip((1-p)/p, .1, 10.)
-                        lr = PTLogisiticRegression(Xt.shape[1], learning_rate=.0003, C=0, positive_weight=w)
 
-                        if warm_start == 'warm':
-                            iv = torch.from_numpy(init_vec)
-                            iv = iv / iv.norm()
-                            lr.linear.weight.data = iv.type(lr.linear.weight.dtype)
-                        elif warm_start == 'default':
-                            pass
+                        if model_type == 'logistic':
+                            mod = PTLogisiticRegression(Xt.shape[1], learning_rate=.0003, C=0, positive_weight=w)
+                            if warm_start == 'warm':
+                                iv = torch.from_numpy(init_vec)
+                                iv = iv / iv.norm()
+                                mod.linear.weight.data = iv.type(mod.linear.weight.dtype)
+                            elif warm_start == 'default':
+                                pass
+
+                            fit_reg(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=minibatch_size)
+                            tvec = mod.linear.weight.detach().numpy().reshape(1,-1)
+                        elif model_type == 'cosine':
+                            if warm_start == 'warm':
+                                iv = torch.from_numpy(init_vec)
+                                iv = iv / iv.norm()
+                                iv = iv.type(torch.float32)
+                            elif warm_start == 'default':
+                                iv = None
+                            mod = LookupVec(Xt.shape[1], margin=0.1, learning_rate=0.0003, init_vec=iv)
+                            fit_rank(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=minibatch_size)
+                            tvec = mod.vec.detach().numpy().reshape(1,-1)
                         else:
-                            assert False, 'assert on warm start'
+                            assert False, 'model type'
 
-                        fit(mod=lr, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=batch_size)
-                        tvec = lr.linear.weight.detach().numpy().reshape(1,-1)                        
                     else:
                         assert False
                 else:

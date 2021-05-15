@@ -72,18 +72,25 @@ class DBActor(object):
         tx = make_clip_transform(n_px=224, square_crop=False)
         tx2 = T.Compose([tx, lambda x : x.type(torch.float16)])
         xclip = load_clip_embedding(variant='ViT-B/32', tx=tx2, device='cuda:0', jit=True)
+
         vecs = np.load(embedding_path)
         ev0 = dataset_loader(xclip, embedded_vecs=vecs)
 
-        ev = extract_subset(ev0, dbsample)
-        val = extract_subset(ev0, valsample)
+        if dbsample is not None:
+            ev = extract_subset(ev0, dbsample)
+            val = extract_subset(ev0, valsample)
+            self.val_vec = val.db.embedded
+            self.val_gt = val.query_ground_truth
+        else:
+            ev = ev0
+            val = None
+            self.val_vec = None
+            self.val_gt = None
 
         hdb = HEmbeddingDB(ev.db)
         self.hdb = hdb
         self.ev = ev
-
-        self.val_vec = val.db.embedded
-        self.val_gt = val.query_ground_truth
+        print('inited dbactor') 
     
     def get_urls(self, idxs):
         return [self.hdb.urls[int(dbidx)].replace('thumbnails/', '') for dbidx in idxs]
@@ -214,26 +221,30 @@ def update_vector(Xt, yt, init_vec, minibatch_size):
     return tvec
 
 default_actors = {
-    'lvis':lambda : DBActor.options(name='lvis_db').remote(dataset_loader=lvis_full, 
+    'lvis':lambda : DBActor.options(name='lvis_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=lvis_full, 
                                   embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
                                   dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
                                   valsample=np.load('./data/coco_30k_idxs.npy')[10000:20000]),
-    'coco':lambda : DBActor.options(name='coco_db').remote(dataset_loader=coco_full, 
+    'coco':lambda : DBActor.options(name='coco_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=coco_full, 
                                   embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
                                   dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
                                   valsample=np.load('./data/coco_30k_idxs.npy')[10000:20000]),
-    'dota':lambda : DBActor.options(name='dota_db').remote(dataset_loader=dota1_full, 
+    'dota':lambda : DBActor.options(name='dota_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=dota1_full, 
                                   embedding_path='./data/dota_224_pool_clip.npy',
-                                  dbsample=np.load('./data/dota_idxs.npy')[:900], # size is 1860 or so.
-                                  valsample=np.load('./data/dota_idxs.npy')[900:]),
-    'ava': lambda : DBActor.options(name='ava_db').remote(dataset_loader=ava22, 
+                                  dbsample=np.load('./data/dota_idxs.npy')[:1000], # size is 1860 or so.
+                                  valsample=np.load('./data/dota_idxs.npy')[1000:]),
+    'ava': lambda : DBActor.options(name='ava_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=ava22, 
                                   embedding_path='./data/ava_dataset_embedding.npy',
                                   dbsample=np.load('./data/ava_randidx.npy')[:10000],
                                   valsample=np.load('./data/ava_randidx.npy')[10000:20000]), 
-    'bdd': lambda : DBActor.options(name='bdd_db').remote(dataset_loader=bdd_full, 
+    'bdd': lambda : DBActor.options(name='bdd_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=bdd_full, 
                                   embedding_path='./data/bdd_all_valid_feats_pool_2by4_512_CLIP.npy', 
                                   dbsample=np.load('./data/bdd_20kidxs.npy')[:10000],
-                                  valsample=np.load('./data/bdd_20kidxs.npy')[10000:20000])
+                                  valsample=np.load('./data/bdd_20kidxs.npy')[10000:20000]),
+    'objectnet': lambda : DBActor.options(name='objectnet_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=objectnet_cropped, 
+                                  embedding_path='./data/objnet_cropped_CLIP.npy', 
+                                  dbsample=np.load('./data/object_random_idx.npy')[:10000],
+                                  valsample=np.load('./data/object_random_idx.npy')[10000:20000])
 }
 
 if __name__ == '__main__':

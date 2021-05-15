@@ -2,7 +2,7 @@
 <div>
   <!-- adapted from https://github.com/twbs/bootstrap/blob/main/site/content/docs/5.0/examples/dashboard/index.html  -->
   <header class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow">
-        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3" href="#">VSL</a>
+        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3" href="#">VLS</a>
         <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" 
         data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" 
         aria-expanded="false" aria-label="Toggle navigation">
@@ -20,8 +20,8 @@
         </div>
         <div class='row'>
         <ul class="nav flex-column">
-          <li v-for="(dataset_name,idx) in data.datasets" :key="idx" class="nav-item">
-            <a  :class="`nav-link ${(dataset_name === data.current_dataset) ? 'active' : ''}`" aria-current="page" href="#" 
+          <li v-for="(dataset_name,idx) in datasets" :key="idx" class="nav-item">
+            <a  :class="`nav-link ${(dataset_name === current_dataset) ? 'active' : ''}`" aria-current="page" href="#" 
               @click="reset(dataset_name)">
               {{dataset_name}}
             </a>
@@ -31,12 +31,24 @@
       </div>
     </nav>
     <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
-        <div class="row">
+        <div class="row" v-for="(data,idx) in gdata" :key="idx">
+          <div class="row">
           <m-image-gallery v-if="data.image_urls.length > 0" :image_urls="data.image_urls" :ldata="data.ldata" 
-            v-on:update:selection="onselection($event)" />
+            v-on:update:selection="onselection($event)" v-on:itemdrag='startDrag($event, idx)' />
+          </div>
+          <div class="row space"/>
+        </div>
+        <div class="row drop-zone" @drop='onDrop($event)' @dragover.prevent @dragenter.prevent>
+          <div class="col-3 drag-el">
+              <img v-if="(dragged_id != null)" :src="gdata[dragged_id.pid].image_urls[dragged_id.itemid]" />
+          </div>
+          <div class="col">
+            <input v-model='minus_text' placeholder="minus">
+            <input v-model='plus_text' placeholder="plus" @keydown.enter="submitHybrid()">
+          </div>
         </div>
         <div class="row">
-              <button v-if="data.image_urls.length > 0" @click="next()" class="btn btn-dark btn-block">More...</button>
+              <button v-if="gdata.length > 0" @click="next()" class="btn btn-dark btn-block">More...</button>
           </div>
           <!-- <m-annotator v-if="selection!=null" :image_url="data.image_urls[selection]" :adata="data.ldata[selection]" /> -->
     </main>
@@ -50,14 +62,17 @@ import MAnnotator from './m-annotator.vue';
 export default {
     components : {'m-annotator':MAnnotator, 'm-image-gallery':MImageGallery},
     // ldata : [{'value': -1, 'id': int, 'dbidx': int, 'boxes':[]}]
-    data () { return {  data:{image_urls:[], ldata:[]}, selection: null, datasets:[], current_dataset:'coco'} },
+    // gdata elt {image_urls:[], ldata:[]}
+    data () { return {  gdata:[], selection: null, datasets:[], current_dataset:'coco', 
+    dragged_id:null}},
     mounted (){
         fetch('/vlsapi/getstate', {cache: "reload"})
             .then(response => response.json())
-            .then(data => (this.data = data, this.selection=null))
+            .then(data => (this.gdata.push(data), this.datasets = data.datasets))
     },
     methods : {
         reset(dsname){
+          console.log(this);
           console.log(dsname)
           let reqdata = {todataset:dsname};
           console.log(reqdata);
@@ -68,24 +83,26 @@ export default {
                 body: JSON.stringify(reqdata)
             })
             .then(response => response.json())
-            .then(data => (this.data = data, this.selection = null))
+            .then(data => (this.gdata = [], this.datasets=data.datasets, 
+            this.dragged_id = null, this.refine_text = '', this.current_dataset=data.current_dataset, this.selection = null))
         },
         text(text_query){
             fetch(`/vlsapi/text?key=${encodeURIComponent(text_query)}`,   
                 {method: 'POST', 
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(this.data) // body data type must match "Content-Type" header
-            })
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({})}
+                )
             .then(response => response.json())
-            .then(data => (this.data = data, this.selection = null))
+            .then(data => (this.gdata.push(data), this.selection = null))
         },
         next(){
+          console.log(' this' , this);
             fetch(`/vlsapi/next`, {method:'POST',
                             headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(this.data) // body data type must match "Content-Type" header
+                            body: JSON.stringify(this.gdata.length > 0 ? this.gdata[this.gdata.length - 1] : {}) // body data type must match "Content-Type" header
                             })
             .then(response => response.json())
-            .then(data => (this.data = data, this.selection = null))
+            .then(data => (this.gdata.push(data), this.selection = null))
         },
         onselection(ev){
           const next_value = [1,1,0][this.data.ldata[ev].value+1]; // {-1:1, 0:1,1:0}
@@ -98,6 +115,32 @@ export default {
           } else if (next_value === -1) {
             this.$set(this.data.ldata[ev], 'boxes', null)
           }
+        },
+        startDrag: (event_data, idx) => {
+          console.log(event_data)
+          let [evt, item] = event_data;
+          evt.dataTransfer.dropEffect = 'move'
+          evt.dataTransfer.effectAllowed = 'move'
+          evt.dataTransfer.setData('paneid', idx)          
+          evt.dataTransfer.setData('itemid', item)
+        },
+        onDrop (evt, list) {
+          const pid = evt.dataTransfer.getData('paneid')
+          const itemid = evt.dataTransfer.getData('itemid')
+          this.dragged_id = {pid:pid, itemid:itemid};
+          // const item = this.ldata.find(item => item.id == itemID)
+        },
+        submitHybrid(){
+          let dbidx = this.gdata[this.dragged_id.pid].ldata[this.dragged_id.itemid].dbidx
+          let reqdata = {'dbidx':dbidx, 'minus_text':this.minus_text, 'plus_text':this.plus_text}
+          console.log(reqdata)
+            fetch(`/vlsapi/search_hybrid`,   
+                {method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(reqdata)
+            })
+            .then(response => response.json())
+            .then(data => (this.gdata.push(data), this.selection = null))
         }
     }
 }
@@ -106,6 +149,14 @@ export default {
 /* https://raw.githubusercontent.com/twbs/bootstrap/main/site/content/docs/5.0/examples/dashboard/dashboard.css */
 body {
   font-size: .875rem;
+}
+
+img {
+  object-fit: scale-down;
+}
+
+.drag-el img {
+  max-height: 220px;
 }
 
 .feather {
@@ -136,6 +187,11 @@ body {
   .sidebar {
     top: 5rem;
   }
+}
+
+.row .space {
+    height: 5px;
+    background-color: gray;
 }
 
 .sidebar-sticky {
@@ -204,4 +260,17 @@ body {
   border-color: transparent;
   box-shadow: 0 0 0 3px rgba(255, 255, 255, .25);
 }
+
+  .drop-zone {
+    background-color: #eee;
+    margin-bottom: 10px;
+    padding: 10px;
+  }
+
+  .drag-el {
+    background-color: #fff;
+    margin-bottom: 10px;
+    padding: 5px;
+  }
+  
 </style>
