@@ -151,24 +151,21 @@ def lvis_full(embedding : XEmbedding, embedded_vecs : np.array) -> EvDataset:
     coco_files = coco_files.reset_index().rename(mapper={'index':'dbidx'}, axis=1)
     paths = coco_files['paths'].values
 
-    box_data = pd.read_parquet('./data/lvis_annotations_all.parquet')
-    xmin = box_data.bbox.apply(lambda x : x[0])
-    ymin = box_data.bbox.apply(lambda x : x[1])
-    w = box_data.bbox.apply(lambda x : x[2])
-    h = box_data.bbox.apply(lambda x : x[3])
-    
-    query_ground_truth = pd.read_parquet('./data/lvis_val_query_ground_truth.parquet')
-    categories = query_ground_truth.columns
-    bd = box_data.assign(x1 = xmin, y1 = ymin, x2 = xmin + w, y2=ymin + h, w=w, h=h)
-    bd = bd.merge(coco_files[['dbidx', 'coco_id']], left_on='image_id', right_on='coco_id', how='left')
-    bd = bd.assign(category=bd.category_id.map(lambda catid : categories[catid - 1]))
-    
+    # NB. unlike other datasets with only a handful of categories,
+    # for each category, livs annotates a different subset of the data, and leaves
+    # a large subset unlabelled.
+    # positive and one negative subset,
+    # for synonyms and definitions etc. can use: './data/lvis_trainval_categories.parquet'
+
+    qgt = pd.read_parquet('./data/lvis_val_query_ground_truth.parquet')
+    bd = pd.read_parquet('./data/lvis_boxes_wdbidx.parquet')    
     emb_vectors = embedding.from_image(img_vec=image_vectors.astype('float32'))
-    
+    #pd.read_parquet('./data/lvis_val_categories.parquet')
+
     return EvDataset(root=root, 
                      paths=paths, 
                      embedded_dataset=emb_vectors, 
-                     query_ground_truth=query_ground_truth, 
+                     query_ground_truth=qgt, 
                      box_data=bd, 
                      embedding=embedding)
 
@@ -236,15 +233,14 @@ def dota1_full(embedding : XEmbedding, embedded_vecs : np.ndarray = None) -> EvD
         embedded_vecs = np.load('./data/dota_224_pool_clip.npy')
         
     box_data = pd.read_parquet('./data/dota1_boxes.parquet')
-    qgt = box_data.groupby(['dbidx', 'cat']).size().unstack(level=1).fillna(0).gt(0).astype('float')    
     pngs = pd.Categorical(box_data.relpath, ordered=True).dtype.categories.map(lambda x : x.replace('labelTxt-v1.0', 'images/images').replace('.txt', '.png'))
     relpaths = pngs.values
     box_data = box_data.assign(box_id=np.arange(box_data.shape[0]))
     box_data = box_data.assign(x1=box_data.xmin, x2=box_data.xmax, y1=box_data.ymin, y2=box_data.ymax)
     box_data  = box_data.assign(category=box_data.cat)
     box_data = box_data[['x1', 'y1', 'x2', 'y2', 'relpath', 'dbidx', 'category', 'relpath', 'is_difficult']]
-    box_data = box_data[box_data.is_difficult == 0]
-    
+
+    qgt = box_data.groupby(['dbidx', 'category']).size().unstack(level=1).fillna(0).gt(0).astype('float')        
     embedded_dataset = embedding.from_image(img_vec=embedded_vecs)
     return EvDataset(root=root, paths=relpaths, embedded_dataset=embedded_dataset, 
                      query_ground_truth=qgt, box_data=box_data, embedding=embedding)
