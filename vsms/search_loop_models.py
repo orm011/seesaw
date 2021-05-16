@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from torch.utils.data import Subset
+from tqdm.auto import tqdm
 
 class PTLogisiticRegression(pl.LightningModule):
     def __init__(

@@ -221,27 +221,27 @@ def update_vector(Xt, yt, init_vec, minibatch_size):
     return tvec
 
 default_actors = {
-    'lvis':lambda : DBActor.options(name='lvis_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=lvis_full, 
+    'lvis':lambda : ray.remote(DB).options(name='lvis_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=lvis_full, 
                                   embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
                                   dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
                                   valsample=np.load('./data/coco_30k_idxs.npy')[10000:20000]),
-    'coco':lambda : DBActor.options(name='coco_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=coco_full, 
+    'coco':lambda : ray.remote(DB).options(name='coco_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=coco_full, 
                                   embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
                                   dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
                                   valsample=np.load('./data/coco_30k_idxs.npy')[10000:20000]),
-    'dota':lambda : DBActor.options(name='dota_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=dota1_full, 
+    'dota':lambda : ray.remote(DB).options(name='dota_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=dota1_full, 
                                   embedding_path='./data/dota_224_pool_clip.npy',
                                   dbsample=np.load('./data/dota_idxs.npy')[:1000], # size is 1860 or so.
                                   valsample=np.load('./data/dota_idxs.npy')[1000:]),
-    'ava': lambda : DBActor.options(name='ava_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=ava22, 
+    'ava': lambda : ray.remote(DB).options(name='ava_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=ava22, 
                                   embedding_path='./data/ava_dataset_embedding.npy',
                                   dbsample=np.load('./data/ava_randidx.npy')[:10000],
                                   valsample=np.load('./data/ava_randidx.npy')[10000:20000]), 
-    'bdd': lambda : DBActor.options(name='bdd_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=bdd_full, 
+    'bdd': lambda : ray.remote(DB).options(name='bdd_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=bdd_full, 
                                   embedding_path='./data/bdd_all_valid_feats_pool_2by4_512_CLIP.npy', 
                                   dbsample=np.load('./data/bdd_20kidxs.npy')[:10000],
                                   valsample=np.load('./data/bdd_20kidxs.npy')[10000:20000]),
-    'objectnet': lambda : DBActor.options(name='objectnet_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=objectnet_cropped, 
+    'objectnet': lambda : ray.remote(DB).options(name='objectnet_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=objectnet_cropped, 
                                   embedding_path='./data/objnet_cropped_CLIP.npy', 
                                   dbsample=np.load('./data/object_random_idx.npy')[:10000],
                                   valsample=np.load('./data/object_random_idx.npy')[10000:20000])
