@@ -160,11 +160,9 @@ def load_embedding_model() -> XEmbedding :
     return embedding
 
 def load_clip_embedding(variant, tx, device='cpu', jit=False):
-    assert variant in ["ViT-B/32", "RN50"]
-    model, preproc = clip.load(variant, device=device,  jit=jit)
-    if tx is None:
-        tx = preproc
-    return CLIPWrapper(model, tx=tx, device=device)
+    assert variant in ["ViT-B/32"]
+    print('ignoring tx, jit arguments')
+    return CLIPWrapper(device=device)
 
 class ManualPooling(nn.Module):
     def __init__(self, kernel, kernel_size, stride=None, center=False):
@@ -260,11 +258,20 @@ def make_clip_transform(n_px, square_crop=False):
                                                 (0.26862954, 0.26130258, 0.27577711))])
 
 class CLIPWrapper(XEmbedding):
-    def __init__(self, model, tx, device):
+    def __init__(self, device):
+        tx = make_clip_transform(n_px=224, square_crop=False)
+        tx2 = T.Compose([tx, lambda x : x.type(torch.float16)])
+        variant = "ViT-B/32"
+        kernel_size = 224 # changes with variant
+        assert variant in ["ViT-B/32", "RN50"]
+        model, _ = clip.load(variant, device=device,  jit=True)
         self.model = model.eval()
         self.preprocess = tx
         self.device = device
-        self.pooled_model = nn.Sequential(ManualPooling(model.visual.eval(), kernel_size=224, stride=224//2, center=True),nn.AdaptiveAvgPool2d(1)).eval()
+        self.pooled_model = nn.Sequential(ManualPooling(model.visual.eval(),
+                     kernel_size=kernel_size, 
+                     stride=kernel_size//2, 
+                     center=True),nn.AdaptiveAvgPool2d(1)).eval()
 
     def from_string(self, *, string=None, str_vec=None, numpy=True):
         if str_vec is not None:
@@ -287,3 +294,4 @@ class CLIPWrapper(XEmbedding):
             with torch.no_grad():
                 image_features = self.pooled_model(tensor.unsqueeze(0).to(self.device))
                 return image_features.cpu().numpy().reshape(1,-1)
+

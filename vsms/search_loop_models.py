@@ -207,7 +207,7 @@ def fit_rank(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_e
         X2 = torch.stack(X2ls)
         train_ds = TensorDataset(X1,X2, torch.ones(X1.shape[0]))
         if len(train_ds) > max_size:
-            ## ranom sample
+            ## random sample... # should prefer some more
             randsel = torch.randperm(len(train_ds))[:max_size]
             train_ds = Subset(train_ds, randsel)
         return train_ds

@@ -55,7 +55,7 @@ class InteractiveQueryRemote(object):
         args, kwargs = self.query_history[-1]
         return self.query_stateful(*args, **kwargs)
     
-class BoxFeedbackQuery(InteractiveQueryRemote):
+class BoxFeedbackQueryRemote(InteractiveQueryRemote):
     def __init__(self, dbactor, batch_size, auto_fill_df=None):
         super().__init__(dbactor, batch_size)
         self.label_db = {}
@@ -64,34 +64,67 @@ class BoxFeedbackQuery(InteractiveQueryRemote):
         # self.roi_vecs = [np.zeros((0, dbactor..embedded.shape[1]))]
         self.auto_fill_df = auto_fill_df
 
-@ray.remote(num_gpus=.2)
-class DBActor(object):
-    def __init__(self, dataset_loader, embedding_path, dbsample, valsample):
+## make the embedding model itself a separate actor
+# pass handle all the way down.
+# I want calls to be synchronous
+class ModelService(XEmbedding):
+    def __init__(self, model_ref):
+        self.model_ref = model_ref
+
+    def from_string(self, *args, **kwargs):
+        return ray.get(self.model_ref.from_string.remote(*args, **kwargs))
+
+    def from_image(self, *args, **kwargs):
+        return ray.get(self.model_ref.from_image.remote(*args, **kwargs))
+
+    def from_raw(self, *args,  **kwargs):
+        return ray.get(self.model_ref.from_raw.remote(*args, **kwargs))
+
+import pyroaring as pr
+
+class DB(object):
+    def __init__(self, dataset_loader, model_handle, embedding_path, dbsample, valsample):
         # NB: in reality the n_px below may have been different for the embedding path we pass,
         # fix before using query by example. 
-        tx = make_clip_transform(n_px=224, square_crop=False)
-        tx2 = T.Compose([tx, lambda x : x.type(torch.float16)])
-        xclip = load_clip_embedding(variant='ViT-B/32', tx=tx2, device='cuda:0', jit=True)
-
         vecs = np.load(embedding_path)
-        ev0 = dataset_loader(xclip, embedded_vecs=vecs)
+        ev0 = dataset_loader(model_handle, embedded_vecs=vecs)
 
         if dbsample is not None:
             ev = extract_subset(ev0, dbsample)
+        else:
+            ev = ev0
+
+        if valsample is not None:
             val = extract_subset(ev0, valsample)
             self.val_vec = val.db.embedded
             self.val_gt = val.query_ground_truth
         else:
-            ev = ev0
-            val = None
             self.val_vec = None
             self.val_gt = None
 
-        hdb = HEmbeddingDB(ev.db)
-        self.hdb = hdb
+
+        self.qgt = ray.put(ev.query_ground_truth) # make this global so that we don't copy it for every worker
+        # self.box_data = ray.put(ev.box_data) # same as above
+        qgt = ev.query_ground_truth
+        self.positive_sets = {k:pr.BitMap(v[v == 1].index) for k,v in qgt.items() }
+        self.negative_sets = {k:pr.BitMap(v[v == 0].index) for k,v in qgt.items() }
+
+        self.hdb = HEmbeddingDB(ev.db)
         self.ev = ev
         print('inited dbactor') 
     
+    def get_subsets(self, categories):
+        ans = {}
+        for cat in categories:
+            ans[cat] = {'pos':self.positive_sets[cat], 
+            'neg':self.negative_sets[cat]}
+
+        return ans
+
+    def extract_subset(self, idxs, categories):
+        ## seems like raw subset forces copy of everything to store due to numpy refs
+        return extract_subset(self.ev, idxs, categories).copy()
+
     def get_urls(self, idxs):
         return [self.hdb.urls[int(dbidx)].replace('thumbnails/', '') for dbidx in idxs]
 
@@ -99,7 +132,8 @@ class DBActor(object):
         return (self.val_vec, self.val_gt)
 
     def get_qgt(self):
-        return self.ev.query_ground_truth
+        return self.qgt
+        #return self.ev.query_ground_truth
         
     def embed_raw(self, data):
         return self.hdb.embedding.from_raw(data)
@@ -127,6 +161,7 @@ class DBActor(object):
         return self.hdb.query(topk=topk, mode=mode, cluster_id=cluster_id, 
                               vector=vector, model=model, exclude=exclude, return_scores=return_scores)
 
+DBActor = ray.remote(DB)
 
 
 def get_panel_data_remote(q, label_db, next_idxs):
@@ -221,38 +256,49 @@ def update_vector(Xt, yt, init_vec, minibatch_size):
     return tvec
 
 default_actors = {
-    'lvis':lambda : ray.remote(DB).options(name='lvis_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=lvis_full, 
-                                  embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
-                                  dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
-                                  valsample=np.load('./data/coco_30k_idxs.npy')[10000:20000]),
-    'coco':lambda : ray.remote(DB).options(name='coco_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=coco_full, 
-                                  embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
-                                  dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
-                                  valsample=np.load('./data/coco_30k_idxs.npy')[10000:20000]),
-    'dota':lambda : ray.remote(DB).options(name='dota_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=dota1_full, 
-                                  embedding_path='./data/dota_224_pool_clip.npy',
-                                  dbsample=np.load('./data/dota_idxs.npy')[:1000], # size is 1860 or so.
-                                  valsample=np.load('./data/dota_idxs.npy')[1000:]),
-    'ava': lambda : ray.remote(DB).options(name='ava_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=ava22, 
-                                  embedding_path='./data/ava_dataset_embedding.npy',
-                                  dbsample=np.load('./data/ava_randidx.npy')[:10000],
-                                  valsample=np.load('./data/ava_randidx.npy')[10000:20000]), 
-    'bdd': lambda : ray.remote(DB).options(name='bdd_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=bdd_full, 
-                                  embedding_path='./data/bdd_all_valid_feats_pool_2by4_512_CLIP.npy', 
-                                  dbsample=np.load('./data/bdd_20kidxs.npy')[:10000],
-                                  valsample=np.load('./data/bdd_20kidxs.npy')[10000:20000]),
-    'objectnet': lambda : ray.remote(DB).options(name='objectnet_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=objectnet_cropped, 
-                                  embedding_path='./data/objnet_cropped_CLIP.npy', 
-                                  dbsample=np.load('./data/object_random_idx.npy')[:10000],
-                                  valsample=np.load('./data/object_random_idx.npy')[10000:20000])
+    'lvis':lambda m: ray.remote(DB).options(name='lvis_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=lvis_full,
+                                model_handle=m,   
+                                embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
+                                dbsample=None,#np.load('./data/coco_30k_idxs.npy'),
+                                valsample=None), #np.load('./data/coco_30k_idxs.npy')[10000:20000]),
+    'coco':lambda m: ray.remote(DB).options(name='coco_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=coco_full, 
+                                model_handle=m,
+                                embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
+                                dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
+                                valsample=np.load('./data/coco_30k_idxs.npy')[10000:20000]),
+    'dota':lambda m: ray.remote(DB).options(name='dota_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=dota1_full,
+                                model_handle=m,
+                                embedding_path='./data/dota_224_pool_clip.npy',
+                                dbsample=np.load('./data/dota_idxs.npy')[:1000], # size is 1860 or so.
+                                valsample=np.load('./data/dota_idxs.npy')[1000:]),
+    'ava': lambda m: ray.remote(DB).options(name='ava_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=ava22, 
+                                model_handle=m,
+                                embedding_path='./data/ava_dataset_embedding.npy',
+                                dbsample=np.load('./data/ava_randidx.npy')[:10000],
+                                valsample=np.load('./data/ava_randidx.npy')[10000:20000]), 
+    'bdd': lambda m: ray.remote(DB).options(name='bdd_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=bdd_full, 
+                                model_handle=m,
+                                embedding_path='./data/bdd_all_valid_feats_pool_2by4_512_CLIP.npy', 
+                                dbsample=np.load('./data/bdd_20kidxs.npy')[:10000],
+                                valsample=np.load('./data/bdd_20kidxs.npy')[10000:20000]),
+    'objectnet': lambda m: ray.remote(DB).options(name='objectnet_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=objectnet_cropped, 
+                                model_handle=m,
+                                embedding_path='./data/objnet_cropped_CLIP.npy', 
+                                dbsample=np.load('./data/object_random_idx.npy')[:10000],
+                                valsample=np.load('./data/object_random_idx.npy')[10000:20000])
 }
 
-if __name__ == '__main__':
+if __name__ == '__main__':    
     ray.init('auto')
+    model_actor = ray.remote(CLIPWrapper).options(name='clip', num_gpus=.2, num_cpus=1.).remote(device='cuda:0')
+    model_service = ModelService(model_actor)
+    print('inited model')
+
     actors = []
     for (k,v) in default_actors.items():
-        print('init ', k)
-        actors.append(v())
+        if k == 'lvis':
+            print('init ', k)
+            actors.append(v(model_service))
 
     input('press any key to terminate the db server: ')
     print('done!')

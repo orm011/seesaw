@@ -29,7 +29,7 @@ class TxDataset(object):
     def __getitem__(self, idx):
         return self.tx(self.ds[idx])
 
-import inspect, os
+import inspect, os, copy
 class EvDataset(object):
     def __init__(self, *, root, paths, embedded_dataset, query_ground_truth, box_data, embedding):
         frame = inspect.currentframe()
@@ -45,7 +45,15 @@ class EvDataset(object):
     def __len__(self):
         return len(self.image_dataset)
 
-def extract_subset(ev : EvDataset, idxsample) -> EvDataset:
+    def copy(ev):
+        return EvDataset(root=copy.copy(ev.root), 
+            paths=ev.paths.copy(),
+            embedded_dataset=ev.embedded_dataset.copy(),
+            query_ground_truth=ev.query_ground_truth.copy(),
+            box_data=ev.box_data.copy(),
+            embedding=ev.embedding)
+
+def extract_subset(ev : EvDataset, idxsample, categories='all') -> EvDataset:
     """makes an evdataset consisting of that index sample only
     """
     idxsample = np.sort(idxsample) # box code assumes sorted indices
@@ -55,14 +63,17 @@ def extract_subset(ev : EvDataset, idxsample) -> EvDataset:
     new_pos = new_pos - 1
     random2new = new_pos
 
-    good_boxes = ev.box_data.dbidx.isin(idxsample)
+    if categories == 'all':
+        categories = list(ev.query_ground_truth.columns.values)
+
+    good_boxes = ev.box_data.dbidx.isin(idxsample) & ev.box_data.category.isin(categories)
     sample_box_data = ev.box_data[good_boxes]
     sample_box_data = sample_box_data.assign(dbidx = random2new[sample_box_data.dbidx])
     assert (sample_box_data.dbidx >= 0 ).all()
 
     return EvDataset(root=ev.root, paths=ev.paths[idxsample],
                     embedded_dataset=ev.embedded_dataset[idxsample],
-                    query_ground_truth=ev.query_ground_truth.iloc[idxsample].reset_index(drop=True),
+                    query_ground_truth=ev.query_ground_truth[categories].iloc[idxsample].reset_index(drop=True),
                     box_data=sample_box_data,
                     embedding=ev.embedding)
 
@@ -140,16 +151,20 @@ def objectnet_cropped(embedding : XEmbedding, embedded_vecs : np.array ) -> EvDa
                      box_data=box_data, 
                      embedding=embedding)
 
-def lvis_full(embedding : XEmbedding, embedded_vecs : np.array) -> EvDataset:
-    if embedded_vecs is None and isinstance(embedding, CLIPWrapper):
-        image_vectors = np.load('./data/coco_full_CLIP.npy')
-    else:
-        image_vectors = embedded_vecs
 
+def lvis_data():
     root = './data/lvis/'
     coco_files = pd.read_parquet('./data/coco_full_CLIP_paths.parquet')
     coco_files = coco_files.reset_index().rename(mapper={'index':'dbidx'}, axis=1)
     paths = coco_files['paths'].values
+    return ExplicitPathDataset(root, paths)
+
+
+def lvis_full(embedding : XEmbedding, embedded_vecs : np.array = None) -> EvDataset:
+    # if embedded_vecs is None and isinstance(embedding, CLIPWrapper):
+    #     image_vectors = np.load('./data/coco_full_CLIP.npy')
+    # else:
+    image_vectors = embedded_vecs
 
     # NB. unlike other datasets with only a handful of categories,
     # for each category, livs annotates a different subset of the data, and leaves
@@ -161,6 +176,12 @@ def lvis_full(embedding : XEmbedding, embedded_vecs : np.array) -> EvDataset:
     bd = pd.read_parquet('./data/lvis_boxes_wdbidx.parquet')    
     emb_vectors = embedding.from_image(img_vec=image_vectors.astype('float32'))
     #pd.read_parquet('./data/lvis_val_categories.parquet')
+    qgt = qgt.clip(0.,1.)
+    root = './data/lvis/'
+    coco_files = pd.read_parquet('./data/coco_full_CLIP_paths.parquet')
+    coco_files = coco_files.reset_index().rename(mapper={'index':'dbidx'}, axis=1)
+    paths = coco_files['paths'].values
+
 
     return EvDataset(root=root, 
                      paths=paths, 
@@ -172,13 +193,13 @@ def lvis_full(embedding : XEmbedding, embedded_vecs : np.array) -> EvDataset:
 
 def coco_full(embedding : XEmbedding, embedded_vecs : np.ndarray = None) -> EvDataset:
 
-    if embedded_vecs is None:
-        if isinstance(embedding, CLIPWrapper):
-            image_vectors = np.load('./data/coco_full_CLIP.npy')
-        else:
-            assert False, 'other model not computed for full coco'
-    else:
-         image_vectors = embedded_vecs 
+    # if embedded_vecs is None:
+    #     if isinstance(embedding, CLIPWrapper):
+    image_vectors = np.load('./data/coco_full_CLIP.npy')
+    #     else:
+    #         assert False, 'other model not computed for full coco'
+    # else:
+    # image_vectors = embedded_vecs 
 
     
     root = './data/coco_root/'
@@ -228,9 +249,9 @@ def coco_split(coco_full : EvDataset, split : str) -> EvDataset:
 
 def dota1_full(embedding : XEmbedding, embedded_vecs : np.ndarray = None) -> EvDataset:
     root = './data/dota_dataset/'    
-    if embedded_vecs is None:
-        assert isinstance(embedding, CLIPWrapper)
-        embedded_vecs = np.load('./data/dota_224_pool_clip.npy')
+    # if embedded_vecs is None:
+    #     assert isinstance(embedding, CLIPWrapper)
+    embedded_vecs = np.load('./data/dota_224_pool_clip.npy')
         
     box_data = pd.read_parquet('./data/dota1_boxes.parquet')
     pngs = pd.Categorical(box_data.relpath, ordered=True).dtype.categories.map(lambda x : x.replace('labelTxt-v1.0', 'images/images').replace('.txt', '.png'))
@@ -245,12 +266,11 @@ def dota1_full(embedding : XEmbedding, embedded_vecs : np.ndarray = None) -> EvD
     return EvDataset(root=root, paths=relpaths, embedded_dataset=embedded_dataset, 
                      query_ground_truth=qgt, box_data=box_data, embedding=embedding)
 
-def ava22(embedding : XEmbedding, embedded_vecs : np.ndarray = None ) -> EvDataset:
-    if isinstance(embedding, CLIPWrapper):
-        image_vectors = np.load('./data/ava_dataset_embedding.npy')
-    else:
-        assert False, 'other model not computed for full lvis'
-
+def ava22(embedding : XEmbedding, embedded_vecs : np.ndarray = None) -> EvDataset:
+    # if isinstance(embedding, CLIPWrapper):
+    image_vectors = np.load('./data/ava_dataset_embedding.npy')
+    # else:
+    #     assert False, 'other model not computed for full lvis'
     root = './data/ava_dataset/images/'
     ava_files = pd.read_parquet('./data/ava_dataset_image_paths.parquet')
     ava_boxes = pd.read_parquet('./data/ava_dataset_annotations2.parquet')
