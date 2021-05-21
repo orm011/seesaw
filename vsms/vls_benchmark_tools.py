@@ -2,7 +2,6 @@ from .data_server import *
 from .search_loop_models import *
 
 def fit_reg(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=4, gpus=0, precision=32):
-    print('new fit')
     class CustomInterrupt(pl.callbacks.Callback):
         def on_keyboard_interrupt(self, trainer, pl_module):
             raise InterruptedError('custom')
@@ -167,18 +166,20 @@ def make_prdf(dat, gt):
     return prdf
 
 
+import math
 def brief_format(ftpt):
-    if ftpt == 0.:
+    if math.isclose(ftpt, 0.):
         return '0'
     
-    if ftpt == 1.:
+    if math.isclose(ftpt,1.):
         return '1'
-    
-    if .01 < ftpt < 1.:
-        dec = '{:.02f}'.format(ftpt)
+
+    if ftpt < 1.:
+        exp = -math.floor(math.log10(ftpt))        
+        fmt_string = '{:.0%df}' % (ftpt + 2)
+        dec = fmt_string.format(ftpt)    
     else:
-        dec = '{:.05f}'.format(ftpt)
-    
+        assert False
     zstripped = dec.lstrip('0').rstrip('0')
     return zstripped.rstrip('.')
 

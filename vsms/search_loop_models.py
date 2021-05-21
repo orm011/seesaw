@@ -123,7 +123,6 @@ class LookupVec(pl.LightningModule):
         Args:
             input_dim: number of dimensions of the input (at least 1)
         """
-        print(optimizer)
         super().__init__()
         self.save_hyperparameters()
         self.optimizer = optimizer
@@ -170,7 +169,6 @@ class LookupVec(pl.LightningModule):
         return self.optimizer(self.parameters(), lr=self.hparams.learning_rate)
 
 def fit_rank(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=4, gpus=0, precision=32):
-    print('new fit')
     class CustomInterrupt(pl.callbacks.Callback):
         def on_keyboard_interrupt(self, trainer, pl_module):
             raise InterruptedError('custom')

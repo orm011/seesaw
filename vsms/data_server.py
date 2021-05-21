@@ -121,9 +121,9 @@ class DB(object):
 
         return ans
 
-    def extract_subset(self, idxs, categories):
+    def extract_subset(self, idxs, categories, boxes):
         ## seems like raw subset forces copy of everything to store due to numpy refs
-        return extract_subset(self.ev, idxs, categories).copy()
+        return extract_subset(self.ev, idxs, categories, boxes).copy()
 
     def get_urls(self, idxs):
         return [self.hdb.urls[int(dbidx)].replace('thumbnails/', '') for dbidx in idxs]
@@ -163,6 +163,11 @@ class DB(object):
 
 DBActor = ray.remote(DB)
 
+def make_image_panel_db(dbactor, dbidx):
+    bfq = BoxFeedbackQueryRemote(dbactor)
+
+    #dat = get_panel_data_remote(bfq, bfq.label_db, dbidx)
+
 
 def get_panel_data_remote(q, label_db, next_idxs):
     reslabs = []
@@ -193,7 +198,6 @@ def make_image_panel_remote(bfq, idxbatch):
     return pn
 
 def fit(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=6, gpus=0, precision=32):
-    print('new fit')
     class CustomInterrupt(pl.callbacks.Callback):
         def on_keyboard_interrupt(self, trainer, pl_module):
             raise InterruptedError('custom')
@@ -256,10 +260,10 @@ def update_vector(Xt, yt, init_vec, minibatch_size):
     return tvec
 
 default_actors = {
-    'lvis':lambda m: ray.remote(DB).options(name='lvis_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=lvis_full,
+    'lvis':lambda m: ray.remote(DB).options(name='lvis_db', num_gpus=.2, num_cpus=2).remote(dataset_loader=lvis_full,
                                 model_handle=m,   
                                 embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
-                                dbsample=None,#np.load('./data/coco_30k_idxs.npy'),
+                                dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
                                 valsample=None), #np.load('./data/coco_30k_idxs.npy')[10000:20000]),
     'coco':lambda m: ray.remote(DB).options(name='coco_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=coco_full, 
                                 model_handle=m,
@@ -290,7 +294,7 @@ default_actors = {
 
 if __name__ == '__main__':    
     ray.init('auto')
-    model_actor = ray.remote(CLIPWrapper).options(name='clip', num_gpus=.2, num_cpus=1.).remote(device='cuda:0')
+    model_actor = ray.remote(CLIPWrapper).options(name='clip', num_gpus=.2, num_cpus=.1).remote(device='cuda:0')
     model_service = ModelService(model_actor)
     print('inited model')
 

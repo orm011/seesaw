@@ -45,31 +45,37 @@ class EvDataset(object):
     def __len__(self):
         return len(self.image_dataset)
 
-    def copy(ev):
-        return EvDataset(root=copy.copy(ev.root), 
-            paths=ev.paths.copy(),
-            embedded_dataset=ev.embedded_dataset.copy(),
-            query_ground_truth=ev.query_ground_truth.copy(),
-            box_data=ev.box_data.copy(),
-            embedding=ev.embedding)
+    def copy(self):
+        return EvDataset(root=copy.copy(self.root), 
+            paths=self.paths.copy(),
+            embedded_dataset=self.embedded_dataset.copy(),
+            query_ground_truth=self.query_ground_truth.copy(),
+            box_data=self.box_data.copy() if self.box_data is not None else None,
+            embedding=self.embedding)
 
-def extract_subset(ev : EvDataset, idxsample, categories='all') -> EvDataset:
+def extract_subset(ev : EvDataset, idxsample, categories='all', boxes=True) -> EvDataset:
     """makes an evdataset consisting of that index sample only
     """
-    idxsample = np.sort(idxsample) # box code assumes sorted indices
-    new_pos = np.zeros(ev.paths.shape[0]).astype('int')
-    new_pos[idxsample] = 1
-    new_pos[idxsample] = new_pos.cumsum().astype('int')[idxsample]
-    new_pos = new_pos - 1
-    random2new = new_pos
-
     if categories == 'all':
         categories = list(ev.query_ground_truth.columns.values)
 
-    good_boxes = ev.box_data.dbidx.isin(idxsample) & ev.box_data.category.isin(categories)
-    sample_box_data = ev.box_data[good_boxes]
-    sample_box_data = sample_box_data.assign(dbidx = random2new[sample_box_data.dbidx])
-    assert (sample_box_data.dbidx >= 0 ).all()
+    if boxes:
+        perm = np.argsort(idxsample)
+        idxsample = idxsample[perm] # box code assumes sorted indices
+        # idxsample = np.sort(idxsample) # box code assumes sorted indices
+        new_pos = np.zeros(ev.paths.shape[0]).astype('int')
+        new_pos[idxsample] = 1
+        new_pos[idxsample] = new_pos.cumsum().astype('int')[idxsample]
+        new_pos = new_pos - 1
+        random2new = new_pos
+
+        good_boxes = ev.box_data.dbidx.isin(idxsample) & ev.box_data.category.isin(categories)
+        sample_box_data = ev.box_data[good_boxes]
+        sample_box_data = sample_box_data.assign(dbidx = random2new[sample_box_data.dbidx])
+        assert (sample_box_data.dbidx >= 0 ).all()
+    else:
+        sample_box_data = None
+
 
     return EvDataset(root=ev.root, paths=ev.paths[idxsample],
                     embedded_dataset=ev.embedded_dataset[idxsample],
@@ -125,7 +131,8 @@ def bdd_full(embedding : XEmbedding, embedded_vecs : np.ndarray = None) -> EvDat
                      query_ground_truth=filtered_gt,
                      box_data=box_data, embedding=embedding)
 
-def objectnet_cropped(embedding : XEmbedding, embedded_vecs : np.array ) -> EvDataset:
+def objectnet_cropped(embedding : XEmbedding, embedded_vecs : np.array = None ) -> EvDataset:
+    image_vectors = np.load('./data/objnet_cropped_CLIP.npy')
     tmp = np.load('./data/objnet_vectors_cropped.npz', allow_pickle=True)
     paths = tmp['paths']
     root = './data/objectnet/cropped/'
@@ -136,11 +143,6 @@ def objectnet_cropped(embedding : XEmbedding, embedded_vecs : np.array ) -> EvDa
     query_ground_truth = df.groupby(['idx', 'path', 'category']).size().unstack(level=-1).fillna(0)
     query_ground_truth = query_ground_truth.reset_index(drop=True)
     box_data = df.assign(dbidx=df.idx, x1=10, x2=224-10, y1=10, y2=224-10)
-    
-    if isinstance(embedding,CLIPWrapper):
-        image_vectors = np.load('./data/objnet_cropped_CLIP.npy')
-    else:
-        image_vectors = tmp['vecs']
 
     emb_vectors = embedding.from_image(img_vec=image_vectors.astype('float32'))
     
@@ -151,6 +153,38 @@ def objectnet_cropped(embedding : XEmbedding, embedded_vecs : np.array ) -> EvDa
                      box_data=box_data, 
                      embedding=embedding)
 
+def coco2lvis(coco_name):
+    '''mapping of coco category names to the best approximate lvis names.
+    '''
+    coco2lvis = {
+        # the rest are lvis_name = coco_name.replace(' ', '_')
+        'car':'car_(automobile)',
+        'bus':'bus_(vehicle)',
+        'train':'train_(railroad_vehicle)',
+        'fire hydrant':'fireplug',
+        'tie':'necktie',
+        'skis':'ski',
+        'sports ball':'ball',
+        'wine glass':'wineglass',
+        'orange':'orange_(fruit)',
+        'hot dog':'sausage',
+        'donut':'doughnut',
+        'couch':'sofa',
+        'potted plant':'flowerpot',
+        'tv':'television_set',
+        'laptop':'laptop_computer',
+        'mouse':'mouse_(computer_equipment)',
+        'remote':'remote_control', 
+        'keyboard':'computer_keyboard', ## check if this is what coco means.
+        'cell phone':'cellular_telephone', 
+        'microwave':'microwave_oven',
+        'hair drier':'hair_dryer'
+    }
+
+
+    lvis_name = coco2lvis.get(coco_name, coco_name.replace(' ', '_'))
+    lvis_name = lvis_name.replace('_', ' ') # only needed bc lvis qgt did this.
+    return lvis_name
 
 def lvis_data():
     root = './data/lvis/'
@@ -173,11 +207,12 @@ def lvis_full(embedding : XEmbedding, embedded_vecs : np.array = None) -> EvData
     # for synonyms and definitions etc. can use: './data/lvis_trainval_categories.parquet'
 
     qgt = pd.read_parquet('./data/lvis_val_query_ground_truth.parquet')
+    #qgt = pd.read_parquet('./data/lvis_coco_merged_query_ground_truth.parquet')
     bd = pd.read_parquet('./data/lvis_boxes_wdbidx.parquet')    
     emb_vectors = embedding.from_image(img_vec=image_vectors.astype('float32'))
     #pd.read_parquet('./data/lvis_val_categories.parquet')
     qgt = qgt.clip(0.,1.)
-    root = './data/lvis/'
+    root = './data/coco_root/' # using ./data/lvis/ seems to be slower for browser url loading.
     coco_files = pd.read_parquet('./data/coco_full_CLIP_paths.parquet')
     coco_files = coco_files.reset_index().rename(mapper={'index':'dbidx'}, axis=1)
     paths = coco_files['paths'].values
