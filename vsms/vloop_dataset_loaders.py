@@ -2,14 +2,16 @@ from .embeddings import *
 from .cross_modal_db import EmbeddingDB
 import json
 import pandas as pd
+import os
 
 class ExplicitPathDataset(object):
     def __init__(self, root_dir, relative_path_list):
         '''
         Reads images in a directory according to an explicit list.
         '''
-        self.root = root_dir
+        self.root = os.path.abspath(root_dir)
         self.paths = relative_path_list
+        self.formatter = 'http://clauslocal:8000/{root}/{path}'.format
 
     def __len__(self):
         return self.paths.shape[0]
@@ -17,6 +19,11 @@ class ExplicitPathDataset(object):
     def __getitem__(self, idx):
         relpath = self.paths[idx]
         return PIL.Image.open('{}/{}'.format(self.root, relpath))
+
+    def get_urls(self, idxs):
+        idxs = np.array(idxs).astype('int')
+        return [self.formatter(root=self.root, path=rp) for rp in self.paths[idxs]]
+
 
 class TxDataset(object):
     def __init__(self, ds, tx):
@@ -38,9 +45,7 @@ class EvDataset(object):
         self.__dict__.update(kwargs)
         self.image_dataset = ExplicitPathDataset(root_dir=root, relative_path_list=paths)
         abs_root = os.path.abspath(root)
-        url_template = 'http://clauslocal:8000/{abs_root}/{rel_path}'
-        urls = [url_template.format(abs_root=abs_root, rel_path=rp) for rp in paths]
-        self.db = EmbeddingDB(self.image_dataset, embedding, embedded_dataset, urls=urls)
+        self.db = EmbeddingDB(self.image_dataset, embedding, embedded_dataset)
         
     def __len__(self):
         return len(self.image_dataset)
@@ -216,7 +221,6 @@ def lvis_full(embedding : XEmbedding, embedded_vecs : np.array = None) -> EvData
     coco_files = pd.read_parquet('./data/coco_full_CLIP_paths.parquet')
     coco_files = coco_files.reset_index().rename(mapper={'index':'dbidx'}, axis=1)
     paths = coco_files['paths'].values
-
 
     return EvDataset(root=root, 
                      paths=paths, 

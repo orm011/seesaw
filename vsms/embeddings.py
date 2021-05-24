@@ -255,23 +255,27 @@ def make_clip_transform(n_px, square_crop=False):
                                     + maybe_crop + [lambda image: image.convert("RGB")],
                        tensor_xforms=[T.ToTensor(),
                                       T.Normalize((0.48145466, 0.4578275, 0.40821073), 
-                                                (0.26862954, 0.26130258, 0.27577711))])
+                                                (0.26862954, 0.26130258, 0.27577711)),
+                                        lambda x : x.type(torch.float16)])
 
 class CLIPWrapper(XEmbedding):
     def __init__(self, device):
         tx = make_clip_transform(n_px=224, square_crop=False)
-        tx2 = T.Compose([tx, lambda x : x.type(torch.float16)])
         variant = "ViT-B/32"
-        kernel_size = 224 # changes with variant
         assert variant in ["ViT-B/32", "RN50"]
-        model, _ = clip.load(variant, device=device,  jit=True)
-        self.model = model.eval()
+
         self.preprocess = tx
         self.device = device
-        self.pooled_model = nn.Sequential(ManualPooling(model.visual.eval(),
+
+        model, _ = clip.load(variant, device=device,  jit=True)
+        self.base_model = model # both text and images
+
+        kernel_size = 224 # changes with variant
+        self.visual_model = ManualPooling(self.base_model.visual,
                      kernel_size=kernel_size, 
                      stride=kernel_size//2, 
-                     center=True),nn.AdaptiveAvgPool2d(1)).eval()
+                     center=True)
+        self.pooled_model = nn.Sequential(self.visual_model,nn.AdaptiveAvgPool2d(1))
 
     def from_string(self, *, string=None, str_vec=None, numpy=True):
         if str_vec is not None:
@@ -279,10 +283,10 @@ class CLIPWrapper(XEmbedding):
         else:
             with torch.no_grad():
                 text = clip.tokenize([string]).to(self.device)
-                text_features = self.model.encode_text(text)
+                text_features = self.base_model.encode_text(text)
                 return text_features.cpu().numpy().reshape(1,-1)
 
-    def from_image(self, *, preprocessed_image=None, image=None, img_vec=None, numpy=True):
+    def from_image(self, *, preprocessed_image=None, image=None, img_vec=None, numpy=True, pooled=True):
         if img_vec is not None:
             return img_vec
         elif (image is not None) or (preprocessed_image is not None):
@@ -291,7 +295,14 @@ class CLIPWrapper(XEmbedding):
             elif preprocessed_image is not None:
                 tensor = preprocessed_image
 
+
+            tensor = tensor.unsqueeze(0).to(self.device)
             with torch.no_grad():
-                image_features = self.pooled_model(tensor.unsqueeze(0).to(self.device))
-                return image_features.cpu().numpy().reshape(1,-1)
+                if pooled:
+                    image_features = self.pooled_model.eval()(tensor)
+                    return image_features.cpu().numpy().reshape(1,-1)
+                else:
+                    image_features = self.visual_model.eval()(tensor)
+                    return image_features.cpu().numpy()
+
 

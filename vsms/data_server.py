@@ -109,7 +109,7 @@ class DB(object):
         self.positive_sets = {k:pr.BitMap(v[v == 1].index) for k,v in qgt.items() }
         self.negative_sets = {k:pr.BitMap(v[v == 0].index) for k,v in qgt.items() }
 
-        self.hdb = HEmbeddingDB(ev.db)
+        self.hdb = ev.db
         self.ev = ev
         print('inited dbactor') 
     
@@ -126,7 +126,7 @@ class DB(object):
         return extract_subset(self.ev, idxs, categories, boxes).copy()
 
     def get_urls(self, idxs):
-        return [self.hdb.urls[int(dbidx)].replace('thumbnails/', '') for dbidx in idxs]
+        return self.hdb.raw.get_urls(idxs)
 
     def get_val(self):
         return (self.val_vec, self.val_gt)
@@ -159,15 +159,9 @@ class DB(object):
     def query(self, *, topk, mode, cluster_id=None, vector=None, 
               model = None, exclude=None, return_scores=False):
         return self.hdb.query(topk=topk, mode=mode, cluster_id=cluster_id, 
-                              vector=vector, model=model, exclude=exclude, return_scores=return_scores)
+                              vector=vector, exclude=exclude, return_scores=return_scores)
 
 DBActor = ray.remote(DB)
-
-def make_image_panel_db(dbactor, dbidx):
-    bfq = BoxFeedbackQueryRemote(dbactor)
-
-    #dat = get_panel_data_remote(bfq, bfq.label_db, dbidx)
-
 
 def get_panel_data_remote(q, label_db, next_idxs):
     reslabs = []
@@ -300,9 +294,8 @@ if __name__ == '__main__':
 
     actors = []
     for (k,v) in default_actors.items():
-        if k == 'lvis':
-            print('init ', k)
-            actors.append(v(model_service))
+        print('init ', k)
+        actors.append(v(model_service))
 
     input('press any key to terminate the db server: ')
     print('done!')

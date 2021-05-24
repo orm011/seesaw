@@ -38,7 +38,7 @@
           </div>
           <div class="row space"/>
         </div>
-        <div class="row drop-zone" @drop='onDrop($event)' @dragover.prevent @dragenter.prevent>
+        <!-- <div class="row drop-zone" @drop='onDrop($event)' @dragover.prevent @dragenter.prevent>
           <div class="col-3 drag-el">
               <img v-if="(dragged_id != null)" :src="gdata[dragged_id.pid].image_urls[dragged_id.itemid]" />
           </div>
@@ -46,7 +46,7 @@
             <input v-model='minus_text' placeholder="minus">
             <input v-model='plus_text' placeholder="plus" @keydown.enter="submitHybrid()">
           </div>
-        </div>
+        </div> -->
         <div class="row">
               <button v-if="gdata.length > 0" @click="next()" class="btn btn-dark btn-block">More...</button>
           </div>

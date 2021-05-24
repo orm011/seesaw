@@ -7,20 +7,25 @@ from .cross_modal_db import *
 from .embedding_plot import *
 from .embeddings import *
 import ray
-from .data_server import BoxFeedbackQuery, get_panel_data_remote, update_vector
+from .data_server import BoxFeedbackQueryRemote, get_panel_data_remote, update_vector
 
 app = Flask(__name__)
 ray.init('auto', ignore_reinit_error=True)
 
 default_dataset = 'coco'
-datasets = ['coco', 'ava', 'bdd', 'dota', 'object_net']
+datasets = ['coco', 'ava', 'bdd', 'dota', 'objectnet', 'lvis']
 dbactors = dict([(name,ray.get_actor('{}_db'.format(name))) for name in datasets])
 
 class SessionState(object):
-    def __init__(self, dataset_name):
+    def __init__(self, dataset_name, gt_class=None):
         self.current_dataset = dataset_name
         self.dbactor = dbactors[self.current_dataset]
-        self.bfq = BoxFeedbackQuery(self.dbactor, batch_size=5)
+        if gt_class is not None:
+            self.box_data = ray.get(self.dbactor.get_boxes.remote())
+        else:
+            self.box_data = None
+
+        self.bfq = BoxFeedbackQueryRemote(self.dbactor, batch_size=10,  auto_fill_boxes=self.box_data)
         self.init_vec = None
         self.acc_indices = np.array([])
 
@@ -28,7 +33,7 @@ class SessionState(object):
         if dataset_name is not None:
             self.current_dataset = dataset_name
         self.dbactor = dbactors[self.current_dataset]
-        self.bfq = BoxFeedbackQuery(self.dbactor, batch_size=5)
+        self.bfq = BoxFeedbackQueryRemote(self.dbactor, batch_size=5, auto_fill_df=)
         self.init_vec = None
         self.acc_indices = np.array([])
 

@@ -1,11 +1,34 @@
 from asyncio import Event
 from typing import Tuple
 from time import sleep
-
 import ray
+
+from ray.util import ActorPool
+
 # For typing purposes
 from ray.actor import ActorHandle
 from tqdm.auto import tqdm
+
+## Actor pool interface is different. 
+# no need for the progress bar actor there...
+## create a new pool every time because 
+# in case of interruption, actor pool state seems
+def tqdm_map(actors, actor_tup_function, tups):
+    actor_pool = ActorPool(actors)
+    for tup in tups:
+        actor_pool.submit(actor_tup_function, tup)
+
+    pbar = tqdm(total=len(tups))
+    res = []
+    while True:
+        res.append(actor_pool.get_next_unordered())
+        pbar.update(1)
+        if len(res) == len(tups):
+            break
+            
+    pbar.close()
+    return res
+
 
 # taken from https://docs.ray.io/en/master/auto_examples/progress_bar.html
 # use with pool:
@@ -91,7 +114,10 @@ class ProgressBar:
     def wrap(self, fun):
         pbar_actor = self.actor
         def wrapped(*args, **kwargs):
-            res = fun(*args, **kwargs)
-            pbar_actor.update.remote(1)
-            return res
+            try:
+                res = fun(*args, **kwargs)
+                return res
+            finally:
+                pbar_actor.update.remote(1)
+            
         return wrapped
