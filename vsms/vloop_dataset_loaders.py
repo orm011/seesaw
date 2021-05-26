@@ -76,6 +76,13 @@ class EvDataset(object):
             box_data=self.box_data.copy() if self.box_data is not None else None,
             embedding=self.embedding)
 
+def get_class_ev(ev, category, boxes=False): 
+    """restrict dataset to only those indices labelled for a given category"""
+    gt = ev.query_ground_truth[category]
+    class_idxs = gt[~gt.isna()].index.values
+    ev1 = extract_subset(ev, class_idxs, categories=[category],boxes=boxes)
+    return ev1, class_idxs
+
 def extract_subset(ev : EvDataset, idxsample, categories='all', boxes=True) -> EvDataset:
     """makes an evdataset consisting of that index sample only
     """
