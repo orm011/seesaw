@@ -253,33 +253,34 @@ def update_vector(Xt, yt, init_vec, minibatch_size):
     tvec = lr.linear.weight.detach().numpy().reshape(1,-1)   
     return tvec
 
+
 default_actors = {
-    'lvis':lambda m: ray.remote(DB).options(name='lvis_db', num_gpus=.2, num_cpus=2).remote(dataset_loader=lvis_full,
+    'lvis':lambda m,ng: ray.remote(DB).options(name='lvis_db', num_gpus=ng, num_cpus=2).remote(dataset_loader=lvis_full,
                                 model_handle=m,   
                                 embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
                                 dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
                                 valsample=None), #np.load('./data/coco_30k_idxs.npy')[10000:20000]),
-    'coco':lambda m: ray.remote(DB).options(name='coco_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=coco_full, 
+    'coco':lambda m,ng: ray.remote(DB).options(name='coco_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=coco_full, 
                                 model_handle=m,
                                 embedding_path='./data/coco_full_pooled_224_512_CLIP.npy',
                                 dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
                                 valsample=np.load('./data/coco_30k_idxs.npy')[10000:20000]),
-    'dota':lambda m: ray.remote(DB).options(name='dota_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=dota1_full,
+    'dota':lambda m,ng: ray.remote(DB).options(name='dota_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=dota1_full,
                                 model_handle=m,
                                 embedding_path='./data/dota_224_pool_clip.npy',
                                 dbsample=np.load('./data/dota_idxs.npy')[:1000], # size is 1860 or so.
                                 valsample=np.load('./data/dota_idxs.npy')[1000:]),
-    'ava': lambda m: ray.remote(DB).options(name='ava_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=ava22, 
+    'ava': lambda m,ng: ray.remote(DB).options(name='ava_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=ava22, 
                                 model_handle=m,
                                 embedding_path='./data/ava_dataset_embedding.npy',
                                 dbsample=np.load('./data/ava_randidx.npy')[:10000],
                                 valsample=np.load('./data/ava_randidx.npy')[10000:20000]), 
-    'bdd': lambda m: ray.remote(DB).options(name='bdd_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=bdd_full, 
+    'bdd': lambda m,ng: ray.remote(DB).options(name='bdd_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=bdd_full, 
                                 model_handle=m,
                                 embedding_path='./data/bdd_all_valid_feats_pool_2by4_512_CLIP.npy', 
                                 dbsample=np.load('./data/bdd_20kidxs.npy')[:10000],
                                 valsample=np.load('./data/bdd_20kidxs.npy')[10000:20000]),
-    'objectnet': lambda m: ray.remote(DB).options(name='objectnet_db', num_gpus=.2, num_cpus=.1).remote(dataset_loader=objectnet_cropped, 
+    'objectnet': lambda m,ng: ray.remote(DB).options(name='objectnet_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=objectnet_cropped, 
                                 model_handle=m,
                                 embedding_path='./data/objnet_cropped_CLIP.npy', 
                                 dbsample=np.load('./data/object_random_idx.npy')[:10000],
@@ -288,14 +289,22 @@ default_actors = {
 
 if __name__ == '__main__':    
     ray.init('auto')
-    model_actor = ray.remote(CLIPWrapper).options(name='clip', num_gpus=.2, num_cpus=.1).remote(device='cuda:0')
+
+    num_gpus = 0
+    if num_gpus == 0:
+        device = 'cpu'
+    else:
+        device = 'cuda:0'
+    
+    model_actor = ray.remote(CLIPWrapper).options(name='clip', num_gpus=num_gpus, num_cpus=.1).remote(device=device)
     model_service = ModelService(model_actor)
     print('inited model')
 
     actors = []
     for (k,v) in default_actors.items():
-        print('init ', k)
-        actors.append(v(model_service))
+        if k == 'lvis':
+            print('init ', k)
+            actors.append(v(model_service, 0))
 
     input('press any key to terminate the db server: ')
     print('done!')

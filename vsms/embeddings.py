@@ -267,7 +267,11 @@ class CLIPWrapper(XEmbedding):
         self.preprocess = tx
         self.device = device
 
-        model, _ = clip.load(variant, device=device,  jit=True)
+        if device.startswith('cuda'):
+            jit = True
+        else:
+            jit = False
+        model, _ = clip.load(variant, device=device,  jit=jit)
         self.base_model = model # both text and images
 
         kernel_size = 224 # changes with variant

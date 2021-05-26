@@ -16,6 +16,9 @@ def clean_objectnet_name(name):
     name = name.replace('/', ' or ')
     return clean_space(name)
 
+def clean_lvis_name(name):
+        return clean_space(name.replace('_', ' ').replace('(', ' ').replace(')', ' '))
+
 search_terms = {
 'objectnet':{
     'air freshener': 'air freshener',
@@ -333,7 +336,7 @@ search_terms = {
     'ziploc bag': 'ziploc bag'
 },
 'ava': {
-    'answer phone':'a person answering phone',
+    'answer phone':'a person answering a phone',
     'bend/bow (at the waist)':'a person bowing', 
     'brush teeth':'a person brushing teeth',
     'carry/hold (an object)':'a person carrying an object',

@@ -3,6 +3,7 @@ from .cross_modal_db import EmbeddingDB
 import json
 import pandas as pd
 import os
+from .ui.widgets import MImageGallery
 
 class ExplicitPathDataset(object):
     def __init__(self, root_dir, relative_path_list):
@@ -23,6 +24,23 @@ class ExplicitPathDataset(object):
     def get_urls(self, idxs):
         idxs = np.array(idxs).astype('int')
         return [self.formatter(root=self.root, path=rp) for rp in self.paths[idxs]]
+
+    def show_images(self, idxbatch, values=None):
+        ds = self
+        idxbatch = np.array(idxbatch)
+        ldata = []
+        urls = ds.get_urls(idxbatch)
+        
+        dat = {'image_urls':urls, 'ldata':ldata}
+        
+        if values is None:
+            values = np.ones_like(idxbatch)*-1
+        
+        for idx,val in zip(idxbatch, values):
+            ldata.append({'dbidx':int(idx), 'boxes':[], 'value':int(val)})
+
+        pn = MImageGallery(**dat)
+        return pn
 
 
 class TxDataset(object):

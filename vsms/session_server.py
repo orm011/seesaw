@@ -9,12 +9,12 @@ from .embeddings import *
 import ray
 from .data_server import BoxFeedbackQueryRemote, get_panel_data_remote, update_vector
 
-app = Flask(__name__)
 ray.init('auto', ignore_reinit_error=True)
-
-default_dataset = 'coco'
-datasets = ['coco', 'ava', 'bdd', 'dota', 'objectnet', 'lvis']
+default_dataset = 'lvis'
+datasets = ['lvis']#['coco', 'ava', 'bdd', 'dota', 'objectnet', 'lvis']
 dbactors = dict([(name,ray.get_actor('{}_db'.format(name))) for name in datasets])
+
+
 
 class SessionState(object):
     def __init__(self, dataset_name, gt_class=None):
@@ -25,7 +25,7 @@ class SessionState(object):
         else:
             self.box_data = None
 
-        self.bfq = BoxFeedbackQueryRemote(self.dbactor, batch_size=10,  auto_fill_boxes=self.box_data)
+        self.bfq = BoxFeedbackQueryRemote(self.dbactor, batch_size=10, auto_fill_df=self.box_data)
         self.init_vec = None
         self.acc_indices = np.array([])
 
@@ -33,7 +33,7 @@ class SessionState(object):
         if dataset_name is not None:
             self.current_dataset = dataset_name
         self.dbactor = dbactors[self.current_dataset]
-        self.bfq = BoxFeedbackQueryRemote(self.dbactor, batch_size=5, auto_fill_df=)
+        self.bfq = BoxFeedbackQueryRemote(self.dbactor, batch_size=5, auto_fill_df=self.box_data)
         self.init_vec = None
         self.acc_indices = np.array([])
 
@@ -48,6 +48,15 @@ class SessionState(object):
         return dat
 
 state = SessionState(default_dataset)
+
+
+print('inited state... about to create app')
+app = Flask(__name__)
+
+@app.route('/hello', methods=['POST'])
+def hello():
+    print(request.json)
+    return 'hello back'
 
 @app.route('/reset', methods=['POST'])
 def reset():

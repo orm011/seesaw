@@ -192,6 +192,53 @@ def fit_rank(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_e
     if not torch.is_tensor(X):
         X = torch.from_numpy(X)
     
+    assert (y >= 0).all()
+    assert (y <= 1).all()
+
+    def make_hard_neg_ds(X,y, max_size, curr_vec):
+        neg_flag = y < 1.
+        pos_flag = y > 0.
+        positions = torch.arange(y.shape[0])
+        scores = X @ curr_vec.reshape(-1,1)
+
+        neg_idx = positions[neg_flag]
+        neg_scores = scores[neg_flag]
+        hard_neg = torch.argsort(neg_scores.reshape(-1), descending=True)[:max_size]
+        hard_neg_idx = neg_idx[hard_neg]
+
+        pos_idx = positions[pos_flag]# torch.arange(y.shape[0])[pos_flag]
+        pos_scores = scores[pos_flag]
+        hard_pos = torch.argsort(pos_scores.reshape(-1), descending=False)[:max_size]
+        hard_pos_idx = pos_idx[hard_pos]
+
+        assert (y[hard_pos_idx] > 0.).all()
+        assert (y[hard_neg_idx] < 1.).all()
+
+        assert scores[hard_neg_idx[0]] >= scores[hard_neg_idx[1]]
+        assert scores[hard_pos_idx[0]] <= scores[hard_pos_idx[0]]
+        
+        if hard_pos_idx.shape[0] * hard_neg_idx.shape[0] > max_size:
+            if hard_pos_idx.shape[0] < math.sqrt(max_size):
+                neg_size = int(math.floor(max_size/hard_pos_idx.shape[0]))
+                hard_neg_idx = hard_neg_idx[:neg_size]
+            else:
+                pos_size = int(math.floor(max_size/hard_neg_idx.shape[0]))
+                hard_pos_idx = hard_pos_idx[:pos_size]
+
+        
+        assert hard_pos_idx.shape[0]*hard_neg_idx.shape[0] <= max_size
+        X1ls = []
+        X2ls = []
+        for pi in hard_pos_idx:
+            for nj in hard_neg_idx: 
+                X1ls.append(X[pi])
+                X2ls.append(X[nj])
+
+        X1 = torch.stack(X1ls)
+        X2 = torch.stack(X2ls)
+        train_ds = TensorDataset(X1,X2, torch.ones(X1.shape[0]))
+        return train_ds
+
     def make_tuple_ds(X, y, max_size):
         X1ls = []
         X2ls = []
@@ -205,12 +252,15 @@ def fit_rank(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_e
         X2 = torch.stack(X2ls)
         train_ds = TensorDataset(X1,X2, torch.ones(X1.shape[0]))
         if len(train_ds) > max_size:
+            # hard negs (want to accelerate training)
+
+
             ## random sample... # should prefer some more
             randsel = torch.randperm(len(train_ds))[:max_size]
             train_ds = Subset(train_ds, randsel)
         return train_ds
 
-    train_ds = make_tuple_ds(X, y, max_size=4*X.shape[0])
+    train_ds = make_hard_neg_ds(X, y, max_size=1600, curr_vec=mod.vec.detach())
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
     if valX is not None:
@@ -225,9 +275,9 @@ def fit_rank(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_e
 
     trainer = pl.Trainer(logger=None, 
                          gpus=gpus, precision=precision, max_epochs=max_epochs,
-                         callbacks =[],
-                        #  callbacks=es + [ #CustomInterrupt(),  # CustomTqdm()
-                        #  ], 
+                         #callbacks =[],
+                         callbacks= [ CustomInterrupt()],
+                           # CustomTqdm()#  ], 
                          checkpoint_callback=False,
                          progress_bar_refresh_rate=0, #=10
                         )
