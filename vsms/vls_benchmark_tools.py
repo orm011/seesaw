@@ -1,54 +1,6 @@
 from .data_server import *
 from .search_loop_models import *
 
-def fit_reg(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=4, gpus=0, precision=32):
-    class CustomInterrupt(pl.callbacks.Callback):
-        def on_keyboard_interrupt(self, trainer, pl_module):
-            raise InterruptedError('custom')
-
-    class CustomTqdm(pl.callbacks.progress.ProgressBar):
-        def init_train_tqdm(self):
-            """ Override this to customize the tqdm bar for training. """
-            bar = tqdm(
-                desc='Training',
-                initial=self.train_batch_idx,
-                position=(2 * self.process_position),
-                disable=self.is_disabled,
-                leave=False,
-                dynamic_ncols=True,
-                file=sys.stdout,
-                smoothing=0,
-                miniters=40,
-            )
-            return bar
-    
-    if not torch.is_tensor(X):
-        X = torch.from_numpy(X)
-    
-    train_ds = TensorDataset(X,torch.from_numpy(y))
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-
-    if valX is not None:
-        if not torch.is_tensor(valX):
-            valX = torch.from_numpy(valX)
-        val_ds = TensorDataset(valX, torch.from_numpy(valy))
-        es = [pl.callbacks.early_stopping.EarlyStopping(monitor='AP/val', mode='max', patience=3)]
-        val_loader = DataLoader(val_ds, batch_size=2000, shuffle=False, num_workers=0)
-    else:
-        val_loader = None
-        es = []
-
-    trainer = pl.Trainer(logger=None, 
-                         gpus=gpus, precision=precision, max_epochs=max_epochs,
-                         callbacks =[],
-                        #  callbacks=es + [ #CustomInterrupt(),  # CustomTqdm()
-                        #  ], 
-                         checkpoint_callback=False,
-                         progress_bar_refresh_rate=0, #=10
-                        )
-    trainer.fit(mod, train_loader, val_loader)
-
-
 def run_loop(*, dbactor, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
 model_type='logistic', **kwargs):
         frame = inspect.currentframe()
@@ -175,13 +127,16 @@ def brief_format(ftpt):
         return '1'
 
     if ftpt < 1.:
-        exp = -math.floor(math.log10(ftpt))        
-        fmt_string = '{:.0%df}' % (ftpt + 2)
+        exp = -math.floor(math.log10(abs(ftpt)))
+        fmt_string = '{:.0%df}' % (exp + 1)
         dec = fmt_string.format(ftpt)    
     else:
-        assert False
+        fmt_string = '{:.02f}'
+        dec = fmt_string.format(ftpt)
+        
     zstripped = dec.lstrip('0').rstrip('0')
     return zstripped.rstrip('.')
+
 
 def times_format(ftpt):
     return brief_format(ftpt) + 'x'
@@ -190,3 +145,130 @@ def make_labeler(fmt_func):
     def fun(arrlike):
         return list(map(fmt_func, arrlike))
     return fun
+
+
+import inspect
+from .dataset_tools import *
+from .fine_grained_embedding import *
+
+def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
+              learning_rate, max_examples, num_epochs, loss_margin, tqdm_disabled:bool, fine_grained:bool, model_type='logistic', **kwargs):  
+        def adjust_vec(vec, Xt, yt, learning_rate, loss_margin, max_examples, minibatch_size):
+            vec = torch.from_numpy(vec).type(torch.float32)
+            mod = LookupVec(Xt.shape[1], margin=loss_margin, optimizer=torch.optim.SGD, learning_rate=learning_rate, init_vec=vec)
+            fit_rank2(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), 
+                    max_examples=max_examples, batch_size=minibatch_size,max_epochs=1)
+            newvec = mod.vec.detach().numpy().reshape(1,-1)
+            return newvec        
+        # gvec = ev.fine_grained_embedding
+        # gvec_meta = ev.fine_grained_meta
+        ev0 = ev
+        frame = inspect.currentframe()
+        args, _, _, values = inspect.getargvalues(frame)
+        allargs = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'gvec', 'gvec_meta']}        
+
+        ev, class_idxs = get_class_ev(ev0, category, boxes=True)
+        dfds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
+        ds = TxDataset(dfds, tx=lambda tup : resize_to_grid(224)(im=None, boxes=tup)[1])
+
+        if fine_grained:
+            vec_meta = ev.fine_grained_meta
+            vecs = ev.fine_grained_embedding
+            hdb = FineEmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
+                embedded_dataset=vecs, vector_meta=vec_meta)
+        else:
+            dbidxs = np.arange(len(ev)).astype('int')
+            vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
+            vecs = ev.embedded_dataset
+            hdb = EmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding,embedded_dataset=vecs)
+
+        bfq = BoxFeedbackQuery(hdb, batch_size=batch_size, auto_fill_df=None)
+        rarr = ev.query_ground_truth[category]
+        print(allargs, kwargs)        
+                
+        if qstr == 'nolang':
+            init_vec=None
+            init_mode = 'random'
+        else:
+            init_vec = ev.embedding.from_string(string=qstr)
+            init_mode = 'dot'
+        
+        acc_pos = []
+        acc_neg = []
+        acc_indices = []
+        acc_results = []
+        acc_ranks = []
+        total = 0
+                
+        gt = ev.query_ground_truth[category].values
+        res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
+        if init_vec is not None:
+            tvec = init_vec/np.linalg.norm(init_vec)
+        else:
+            tvec = None
+
+        tmode = init_mode
+
+        for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
+            idxbatch = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
+            acc_indices.append(idxbatch)
+            acc_results.append(gt[idxbatch])
+
+            if interactive != 'plain':
+                if fine_grained:
+                    batchpos, batchneg = get_pos_negs_all(idxbatch, ds, vec_meta)
+                    acc_pos.append(batchpos)
+                    acc_neg.append(batchneg)
+
+                    pos = pr.BitMap.union(*acc_pos)
+                    neg = pr.BitMap.union(*acc_neg)
+                    # print('pos, neg', len(pos), len(neg))
+                    Xt = np.concatenate([vecs[pos], vecs[neg]])
+                    yt = np.concatenate([np.ones(len(pos)), np.zeros(len(neg))])
+
+                    if np.concatenate(acc_results).sum() > 0:
+                        assert len(pos) > 0
+                else:
+                    Xt = vecs[idxbatch]
+                    yt = gt[idxbatch]
+
+                if (yt.shape[0] > 0) and (yt.max() > yt.min()):
+                    tmode = 'dot'
+                    if interactive == 'sklearn':
+                        lr = sklearn.linear_model.LogisticRegression(class_weight='balanced')
+                        lr.fit(Xt, yt)
+                        tvec = lr.coef_.reshape(1,-1)        
+                    elif interactive == 'pytorch':
+                        p = yt.sum()/yt.shape[0]
+                        w = np.clip((1-p)/p, .1, 10.)
+
+                        if model_type == 'logistic':
+                            mod = PTLogisiticRegression(Xt.shape[1], learning_rate=learning_rate, C=0, 
+                                                        positive_weight=w)
+                            if warm_start == 'warm':
+                                iv = torch.from_numpy(init_vec)
+                                iv = iv / iv.norm()
+                                mod.linear.weight.data = iv.type(mod.linear.weight.dtype)
+                            elif warm_start == 'default':
+                                pass
+
+                            fit_reg(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=minibatch_size)
+                            tvec = mod.linear.weight.detach().numpy().reshape(1,-1)
+                        elif model_type in ['cosine', 'multirank']:
+                            for i in range(num_epochs):
+                                tvec = adjust_vec(tvec, Xt, yt, learning_rate=learning_rate, 
+                                                  max_examples=max_examples, 
+                                                  minibatch_size=minibatch_size,
+                                                  loss_margin=loss_margin)
+                        else:
+                            assert False, 'model type'
+
+                    else:
+                        assert False
+                else:
+                    # print('missing positives or negatives to do any training', yt.shape, yt.max(), yt.min())
+                    pass
+                
+        res['indices'] = [class_idxs[r] for r in res['indices']]
+        tup = {**allargs, **kwargs}
+        return (tup, res)

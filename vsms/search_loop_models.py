@@ -7,6 +7,30 @@ import math
 from torch.utils.data import Subset
 from tqdm.auto import tqdm
 
+from torch.utils.data import TensorDataset
+from torch.utils.data import Subset
+from torch.utils.data import DataLoader
+
+class CustomInterrupt(pl.callbacks.Callback):
+    def on_keyboard_interrupt(self, trainer, pl_module):
+        raise InterruptedError('custom')
+
+class CustomTqdm(pl.callbacks.progress.ProgressBar):
+    def init_train_tqdm(self):
+        """ Override this to customize the tqdm bar for training. """
+        bar = tqdm(
+            desc='Training',
+            initial=self.train_batch_idx,
+            position=(2 * self.process_position),
+            disable=self.is_disabled,
+            leave=False,
+            dynamic_ncols=True,
+            file=sys.stdout,
+            smoothing=0,
+            miniters=40,
+        )
+        return bar
+
 class PTLogisiticRegression(pl.LightningModule):
     def __init__(
         self,
@@ -79,34 +103,32 @@ class PTLogisiticRegression(pl.LightningModule):
     def configure_optimizers(self):
         return self.optimizer(self.parameters(), lr=self.hparams.learning_rate)
 
-from torch.utils.data import TensorDataset
-from torch.utils.data import Subset
-from torch.utils.data import DataLoader
 
-# def fit(mod, X, y, valX=None, valy=None, logger=None, batch_size=9, max_epochs=10, gpus=1, precision=16):
-#     if not torch.is_tensor(X):
-#         X = torch.from_numpy(X)
+def fit_reg(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=4, gpus=0, precision=32):    
+    if not torch.is_tensor(X):
+        X = torch.from_numpy(X)
     
-#     train_ds = TensorDataset(X,torch.from_numpy(y))
-#     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+    train_ds = TensorDataset(X,torch.from_numpy(y))
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
-#     if valX is not None:
-#         if not torch.is_tensor(valX):
-#             valX = torch.from_numpy(valX)
-#         val_ds = TensorDataset(valX, torch.from_numpy(valy))
-#     else:
-#         val_ds = train_ds
-    
-#     val_loader = DataLoader(val_ds, batch_size=1000, shuffle=False, num_workers=0)
+    if valX is not None:
+        if not torch.is_tensor(valX):
+            valX = torch.from_numpy(valX)
+        val_ds = TensorDataset(valX, torch.from_numpy(valy))
+        es = [pl.callbacks.early_stopping.EarlyStopping(monitor='AP/val', mode='max', patience=3)]
+        val_loader = DataLoader(val_ds, batch_size=2000, shuffle=False, num_workers=0)
+    else:
+        val_loader = None
+        es = []
 
-#     if logger is None:
-#         logger = pl.loggers.TensorBoardLogger(save_dir='fit_method')
-    
-#     trainer = pl.Trainer(logger=logger, gpus=gpus, precision=precision, max_epochs=max_epochs,
-#                          callbacks=[pl.callbacks.early_stopping.EarlyStopping(monitor='loss/val', patience=2)], 
-#                          progress_bar_refresh_rate=1)
-#     #  mod = models_ptlr_c0_w40[c]
-#     trainer.fit(mod, train_loader, val_loader)
+    trainer = pl.Trainer(logger=None, 
+                         gpus=gpus, precision=precision, max_epochs=max_epochs,
+                         callbacks =[CustomInterrupt()], 
+                         checkpoint_callback=False,
+                         weights_save_path='/tmp/',
+                         progress_bar_refresh_rate=0, #=10
+                        )
+    trainer.fit(mod, train_loader, val_loader)
 
 class LookupVec(pl.LightningModule):
     def __init__(
@@ -168,99 +190,91 @@ class LookupVec(pl.LightningModule):
     def configure_optimizers(self):
         return self.optimizer(self.parameters(), lr=self.hparams.learning_rate)
 
-def fit_rank(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=4, gpus=0, precision=32):
-    class CustomInterrupt(pl.callbacks.Callback):
-        def on_keyboard_interrupt(self, trainer, pl_module):
-            raise InterruptedError('custom')
+def make_hard_neg_ds(X,y, max_size, curr_vec):
+    neg_flag = y < 1.
+    pos_flag = y > 0.
+    positions = torch.arange(y.shape[0])
+    scores = X @ curr_vec.reshape(-1,1)
 
-    class CustomTqdm(pl.callbacks.progress.ProgressBar):
-        def init_train_tqdm(self):
-            """ Override this to customize the tqdm bar for training. """
-            bar = tqdm(
-                desc='Training',
-                initial=self.train_batch_idx,
-                position=(2 * self.process_position),
-                disable=self.is_disabled,
-                leave=False,
-                dynamic_ncols=True,
-                file=sys.stdout,
-                smoothing=0,
-                miniters=40,
-            )
-            return bar
+    neg_idx = positions[neg_flag]
+    neg_scores = scores[neg_flag]
+    hard_neg = torch.argsort(neg_scores.reshape(-1), descending=True)[:max_size]
+    hard_neg_idx = neg_idx[hard_neg]
+
+    pos_idx = positions[pos_flag]# torch.arange(y.shape[0])[pos_flag]
+    pos_scores = scores[pos_flag]
+    hard_pos = torch.argsort(pos_scores.reshape(-1), descending=False)[:max_size]
+    hard_pos_idx = pos_idx[hard_pos]
+
+    assert (y[hard_pos_idx] > 0.).all()
+    assert (y[hard_neg_idx] < 1.).all()
+
+    if hard_neg_idx.shape[0] >= 2:
+        assert scores[hard_neg_idx[0]] >= scores[hard_neg_idx[1]]
+
+    if hard_pos_idx.shape[0] >= 2:
+        assert scores[hard_pos_idx[0]] <= scores[hard_pos_idx[0]]
     
+    root = int(math.ceil(math.sqrt(max_size)))
+
+    if hard_pos_idx.shape[0] * hard_neg_idx.shape[0] > max_size:
+        pos_bound = root
+        neg_bound = root
+        if hard_pos_idx.shape[0] < root:
+            neg_bound = int(math.ceil(max_size/hard_pos_idx.shape[0]))
+
+        if hard_neg_idx.shape[0] < root:
+            pos_bound = int(math.ceil(max_size/hard_neg_idx.shape[0]))
+                            
+        hard_pos_idx = hard_pos_idx[:pos_bound]
+        hard_neg_idx = hard_neg_idx[:neg_bound]
+        assert hard_pos_idx.shape[0]*hard_neg_idx.shape[0] >= max_size
+        assert (hard_pos_idx.shape[0]-1)*(hard_neg_idx.shape[0]-1) < max_size
+
+    X1ls = []
+    X2ls = []
+    for pi in hard_pos_idx:
+        for nj in hard_neg_idx: 
+            X1ls.append(X[pi])
+            X2ls.append(X[nj])
+    #print(hard_pos_idx.shape, hard_neg_idx.shape)
+
+
+    X1 = torch.stack(X1ls)
+    X2 = torch.stack(X2ls)
+    train_ds = TensorDataset(X1,X2, torch.ones(X1.shape[0]))
+    
+    return train_ds
+
+def make_tuple_ds(X, y, max_size):
+    X1ls = []
+    X2ls = []
+    for i in range(X.shape[0]):
+        for j in range(X.shape[0]):
+            if y[i] > y[j]:
+                X1ls.append(X[i])
+                X2ls.append(X[j])
+
+    X1 = torch.stack(X1ls)
+    X2 = torch.stack(X2ls)
+    train_ds = TensorDataset(X1,X2, torch.ones(X1.shape[0]))
+    if len(train_ds) > max_size:
+        # hard negs (want to accelerate training)
+
+
+        ## random sample... # should prefer some more
+        randsel = torch.randperm(len(train_ds))[:max_size]
+        train_ds = Subset(train_ds, randsel)
+    return train_ds
+
+def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logger=None,  max_epochs=4, gpus=0, precision=32):
     if not torch.is_tensor(X):
         X = torch.from_numpy(X)
     
     assert (y >= 0).all()
     assert (y <= 1).all()
 
-    def make_hard_neg_ds(X,y, max_size, curr_vec):
-        neg_flag = y < 1.
-        pos_flag = y > 0.
-        positions = torch.arange(y.shape[0])
-        scores = X @ curr_vec.reshape(-1,1)
-
-        neg_idx = positions[neg_flag]
-        neg_scores = scores[neg_flag]
-        hard_neg = torch.argsort(neg_scores.reshape(-1), descending=True)[:max_size]
-        hard_neg_idx = neg_idx[hard_neg]
-
-        pos_idx = positions[pos_flag]# torch.arange(y.shape[0])[pos_flag]
-        pos_scores = scores[pos_flag]
-        hard_pos = torch.argsort(pos_scores.reshape(-1), descending=False)[:max_size]
-        hard_pos_idx = pos_idx[hard_pos]
-
-        assert (y[hard_pos_idx] > 0.).all()
-        assert (y[hard_neg_idx] < 1.).all()
-
-        assert scores[hard_neg_idx[0]] >= scores[hard_neg_idx[1]]
-        assert scores[hard_pos_idx[0]] <= scores[hard_pos_idx[0]]
-        
-        if hard_pos_idx.shape[0] * hard_neg_idx.shape[0] > max_size:
-            if hard_pos_idx.shape[0] < math.sqrt(max_size):
-                neg_size = int(math.floor(max_size/hard_pos_idx.shape[0]))
-                hard_neg_idx = hard_neg_idx[:neg_size]
-            else:
-                pos_size = int(math.floor(max_size/hard_neg_idx.shape[0]))
-                hard_pos_idx = hard_pos_idx[:pos_size]
-
-        
-        assert hard_pos_idx.shape[0]*hard_neg_idx.shape[0] <= max_size
-        X1ls = []
-        X2ls = []
-        for pi in hard_pos_idx:
-            for nj in hard_neg_idx: 
-                X1ls.append(X[pi])
-                X2ls.append(X[nj])
-
-        X1 = torch.stack(X1ls)
-        X2 = torch.stack(X2ls)
-        train_ds = TensorDataset(X1,X2, torch.ones(X1.shape[0]))
-        return train_ds
-
-    def make_tuple_ds(X, y, max_size):
-        X1ls = []
-        X2ls = []
-        for i in range(X.shape[0]):
-            for j in range(X.shape[0]):
-                if y[i] > y[j]:
-                    X1ls.append(X[i])
-                    X2ls.append(X[j])
-
-        X1 = torch.stack(X1ls)
-        X2 = torch.stack(X2ls)
-        train_ds = TensorDataset(X1,X2, torch.ones(X1.shape[0]))
-        if len(train_ds) > max_size:
-            # hard negs (want to accelerate training)
-
-
-            ## random sample... # should prefer some more
-            randsel = torch.randperm(len(train_ds))[:max_size]
-            train_ds = Subset(train_ds, randsel)
-        return train_ds
-
-    train_ds = make_hard_neg_ds(X, y, max_size=1600, curr_vec=mod.vec.detach())
+    train_ds = make_hard_neg_ds(X, y, max_size=max_examples, curr_vec=mod.vec.detach())
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
     if valX is not None:
@@ -273,12 +287,13 @@ def fit_rank(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_e
         val_loader = None
         es = []
 
-    trainer = pl.Trainer(logger=None, 
+    trainer = pl.Trainer(logger=None,
                          gpus=gpus, precision=precision, max_epochs=max_epochs,
                          #callbacks =[],
                          callbacks= [ CustomInterrupt()],
                            # CustomTqdm()#  ], 
                          checkpoint_callback=False,
+                         weights_save_path='/tmp/',
                          progress_bar_refresh_rate=0, #=10
                         )
     trainer.fit(mod, train_loader, val_loader)

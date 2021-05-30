@@ -39,9 +39,14 @@ class EmbeddingDB(object):
         all_indices.add_range(0, len(self.raw))
         self.all_indices = pr.FrozenBitMap(all_indices)
 #        self.urls = urls
-        norms = np.linalg.norm(embedded_dataset, axis=1)[:,np.newaxis]
+        self.embedded = embedded_dataset 
+     
+        #norms = np.linalg.norm(embedded_dataset, axis=1)[:,np.newaxis]
+        # if not np.isclose(norms,1.).all():
+        #     print('Warning: db activations are not normalized {}'.format(norms.max()))
+
         # self.embedded_raw = embedded_dataset  # not necesarily normalized
-        self.embedded = embedded_dataset / (norms + 1e-5)
+        # self.embedded = embedded_dataset / (norms + 1e-5)
         assert len(self.raw) == self.embedded.shape[0]
         # index = NearestNeighbors(metric='cosine')
         # index.fit(self.embedded)
@@ -63,12 +68,10 @@ class EmbeddingDB(object):
         if len(included) <= topk:
             topk = len(included)
 
-        if vector is None and model is None:
+        if vector is None:
             assert mode == 'random'
         elif vector is not None:
             assert mode in ['nearest', 'dot']
-        elif model is not None:
-            assert mode in ['model']
         else:
             assert False
             

@@ -83,19 +83,18 @@ class ModelService(XEmbedding):
 import pyroaring as pr
 
 class DB(object):
-    def __init__(self, dataset_loader, model_handle, embedding_path, dbsample, valsample):
+    def __init__(self, dataset_loader, model_handle, dbsample, valsample):
         # NB: in reality the n_px below may have been different for the embedding path we pass,
         # fix before using query by example. 
-        vecs = np.load(embedding_path)
-        ev0 = dataset_loader(model_handle, embedded_vecs=vecs)
+        ev0 = dataset_loader(model_handle)
 
         if dbsample is not None:
-            ev = extract_subset(ev0, dbsample)
+            ev = extract_subset(ev0, idxsample=dbsample)
         else:
             ev = ev0
 
         if valsample is not None:
-            val = extract_subset(ev0, valsample)
+            val = extract_subset(ev0, idxsample=valsample)
             self.val_vec = val.db.embedded
             self.val_gt = val.query_ground_truth
         else:
@@ -103,7 +102,7 @@ class DB(object):
             self.val_gt = None
 
 
-        self.qgt = ray.put(ev.query_ground_truth) # make this global so that we don't copy it for every worker
+        # self.qgt = ray.put(ev.query_ground_truth) # make this global so that we don't copy it for every worker
         # self.box_data = ray.put(ev.box_data) # same as above
         qgt = ev.query_ground_truth
         self.positive_sets = {k:pr.BitMap(v[v == 1].index) for k,v in qgt.items() }
@@ -123,7 +122,7 @@ class DB(object):
 
     def extract_subset(self, idxs, categories, boxes):
         ## seems like raw subset forces copy of everything to store due to numpy refs
-        return extract_subset(self.ev, idxs, categories, boxes).copy()
+        return extract_subset(self.ev, idxsample=idxs, categories=categories, boxes=boxes).copy()
 
     def get_urls(self, idxs):
         return self.hdb.raw.get_urls(idxs)
@@ -301,10 +300,10 @@ if __name__ == '__main__':
     print('inited model')
 
     actors = []
-    for (k,v) in default_actors.items():
-        if k == 'lvis':
-            print('init ', k)
-            actors.append(v(model_service, 0))
+    # for (k,v) in default_actors.items():
+    #     if k == 'lvis':
+    #         print('init ', k)
+    #         actors.append(v(model_service, 0))
 
     input('press any key to terminate the db server: ')
     print('done!')

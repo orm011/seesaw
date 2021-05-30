@@ -208,7 +208,171 @@ class ManualPooling(nn.Module):
         v = v.reshape(output[0].shape + (len(iis), len(jjs),))
         return v
 
-def test_pooling():
+
+# def gen_strided_blocks(im, block_size):
+block_size =224
+
+def gen_strided_blocks(vecs, width_size, stride_size, flatten=True):
+    assert flatten
+    center = False
+    h,w = vecs.shape[-2:]
+
+    ## if we are forced to cut part off, lets center where we take the pools
+    iis = list(range(0,h-width_size+1,stride_size))
+    jjs = list(range(0,w-width_size+1,stride_size))
+
+    if center:
+        offset_h = (h - (iis[-1] + width_size))//2
+        offset_w = (w - (jjs[-1] + width_size))//2
+    else:
+        offset_h = 0
+        offset_w = 0
+
+    cuts = []
+
+    for ii in iis:
+        for jj in jjs:
+            cut = vecs[...,
+                    ii + offset_h:ii + width_size + offset_h,
+                    jj + offset_w:jj + width_size + offset_w]
+            assert cut.shape[-2] == width_size
+            assert cut.shape[-1] == width_size
+            cuts.append(cut)
+    input_batch = torch.cat(cuts) # cat along batch dim.
+    return input_batch,iis,jjs
+
+def gen_strided_blocks2(im, block_size, stride_size,flatten=False):
+    assert len(im.shape) == 4
+    assert im.shape[0] == 1
+    im = im.squeeze(0)
+    assert im.shape[-1] >= block_size
+    assert im.shape[-2] >= block_size
+    
+    assert stride_size == block_size//2, 'not meant for general strides'
+    
+    def genblocks(im, block_size):
+        bh = im.shape[-2]//block_size
+        bw = im.shape[-1]//block_size
+        trim = im[:,:block_size*bh,:block_size*bw]
+        break_lines = trim.reshape(-1,bh,block_size,bw,block_size)
+        block_order = break_lines.permute(1,3,0,2,4)
+        return block_order
+    
+    stride_size = block_size//2
+    
+    blks = []
+    iis = []
+    jjs = []
+
+    for oi in [0,1]:
+        for oj in [0,1]:
+            trim = im[...,stride_size*oi:,stride_size*oj:]
+            if trim.shape.numel() == 0: # handles case where only one stride fits
+                continue
+            blk = genblocks(trim, block_size)
+            eis,ejs = torch.meshgrid(torch.arange(blk.shape[0])*2 + oi,
+                                     torch.arange(blk.shape[1])*2 + oj)
+
+            blks.append(blk)
+            iis.append(eis)
+            jjs.append(ejs)
+
+    fblks = torch.cat([blk.reshape((-1,)+blk.shape[2:]) for blk in blks])
+    fii = torch.cat([ii.reshape(-1) for ii in iis])
+    fjj = torch.cat([jj.reshape(-1) for jj in jjs])    
+    jjorder = np.argsort(fjj, kind='stable')
+    tmp_fii = fii[jjorder]
+    iiorder = np.argsort(tmp_fii,kind='stable')
+    ofii = tmp_fii[iiorder]
+    e2e_order = jjorder[iiorder]
+    
+    assert (ofii == fii[e2e_order]).all()
+    
+    ofblks = fblks[e2e_order]
+    oii = fii[e2e_order]
+    ojj = fjj[e2e_order]
+    
+    if flatten:
+        return ofblks, oii, ojj
+    else:
+        return ofblks.reshape((fii.max().item()+1, fjj.max().item()+1) + fblks.shape[1:])
+
+# def gen_strided_blocks(im, block_size,stride_size,flatten=True):
+#     assert len(im.shape) == 4
+#     assert im.shape[0] == 1
+
+#     def genblocks(im, block_size):
+#         assert len(im.shape) == 4
+#         assert im.shape[0] == 1
+#         im = im.squeeze(0)
+#         bh = im.shape[-2]//block_size
+#         bw = im.shape[-1]//block_size
+#         trim = im[...,:block_size*bh,:block_size*bw]
+#         break_lines = trim.reshape(trim.shape[:-2] + (bh,block_size,bw,block_size))
+#         block_order = break_lines.permute(1,3,0,2,4)
+#         return block_order
+
+#     blks = []
+#     iis = []
+#     jjs = []
+#     for oi in [0,1]:
+#         for oj in [0,1]:
+#             blk = genblocks(im[...,stride_size*oi:,stride_size*oj:], block_size)
+#             eis,ejs = torch.meshgrid(torch.arange(blk.shape[0])*2 + oi,
+#                                      torch.arange(blk.shape[1])*2 + oj)
+
+#             blks.append(blk)
+#             iis.append(eis)
+#             jjs.append(ejs)
+
+#     fblks = torch.cat([blk.reshape((-1,)+blk.shape[2:]) for blk in blks])
+#     fii = torch.cat([ii.reshape(-1) for ii in iis])
+#     fjj = torch.cat([jj.reshape(-1) for jj in jjs])    
+#     jjorder = np.argsort(fjj, kind='stable')
+#     tmp_fii = fii[jjorder]
+#     iiorder = np.argsort(tmp_fii,kind='stable')
+#     ofii = tmp_fii[iiorder]
+#     e2e_order = jjorder[iiorder]
+    
+#     assert (ofii == fii[e2e_order]).all()
+    
+#     ofblks = fblks[e2e_order]
+#     oii = fii[e2e_order]
+#     ojj = fjj[e2e_order]
+    
+#     if flatten:
+#         return ofblks,oii,ojj
+#     else:
+#         return ofblks.reshape((fii.max().item()+1, fjj.max().item()+1) + fblks.shape[1:])
+
+class ManualPooling2(nn.Module):
+    def __init__(self, kernel, kernel_size, stride=None, center=False):
+        super().__init__()
+        self.kernel = kernel
+        self.kernel_size = kernel_size
+        self.stride = stride if stride is not None else kernel_size
+        self.center = center
+
+    def forward(self, tensor):
+        assert tensor.shape[0] == 1, 'just do this'
+        assert len(tensor.shape) == 4, 'also'
+        vecs = tensor
+        width_size=self.kernel_size
+        layer = self.kernel
+        stride_size = self.stride
+        center = self.center
+
+        input_batch, iis, jjs = gen_strided_blocks(vecs, width_size, stride_size, flatten=True)
+        output_batch = layer(input_batch)
+
+        val_dims = range(1,len(output_batch.shape)) # non-batch dims
+        val_shape = output_batch.shape[1:]
+        
+        v = output_batch.permute(*val_dims, 0) # ij last
+        v = v.reshape((1,) + val_shape + (len(iis), len(jjs),))    
+        return v
+
+def test_pooling(pm):
     tsizes = [7,8,9,11,12,13,16]
     veclist = []
     for i in tsizes:
@@ -217,25 +381,25 @@ def test_pooling():
 
     assert len(veclist) > 0
     kernel_sizes = [6,7]
-    strides = [None, 2,3,4]
-    
+    # strides = [None, 2,3,4]
     avg_pool = lambda x : nn.AdaptiveAvgPool2d(1)(x).squeeze(-1).squeeze(-1)
     for v in veclist:
-        for stride in strides:
-            for ks in kernel_sizes:
-                reference_pooling = nn.AvgPool2d(kernel_size=ks, stride=stride)
-                test_pooling = ManualPooling(kernel=avg_pool, 
-                                              kernel_size=ks, stride=stride, center=False)
-                center_test = ManualPooling(kernel=avg_pool, 
-                                              kernel_size=ks, stride=stride, center=True)
+        for ks in kernel_sizes:
+            stride = ks//2
+            reference_pooling = nn.AvgPool2d(kernel_size=ks, stride=stride)
+            test_pooling = pm(kernel=avg_pool, 
+                                            kernel_size=ks, stride=stride, center=False)
+            center_test = pm(kernel=avg_pool, 
+                                            kernel_size=ks, stride=stride, center=True)
 
-                target = reference_pooling(v)
-                test = test_pooling(v) 
-                center = center_test(v)
-                assert test.shape == center.shape
-                assert test.shape == target.shape
-                assert torch.isclose(test, target, atol=1e-6).all()    
-test_pooling()
+            target = reference_pooling(v)
+            test = test_pooling(v) 
+            center = center_test(v)
+            assert test.shape == center.shape, f'{test.shape} {center.shape}'
+            assert test.shape == target.shape, f'{test.shape} {target.shape}'
+            assert torch.isclose(test, target, atol=1e-6).all()    
+test_pooling(ManualPooling)
+test_pooling(ManualPooling2)
 
 
 import torchvision.transforms as T
@@ -275,7 +439,7 @@ class CLIPWrapper(XEmbedding):
         self.base_model = model # both text and images
 
         kernel_size = 224 # changes with variant
-        self.visual_model = ManualPooling(self.base_model.visual,
+        self.visual_model = ManualPooling2(self.base_model.visual,
                      kernel_size=kernel_size, 
                      stride=kernel_size//2, 
                      center=True)

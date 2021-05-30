@@ -8,27 +8,30 @@ from ray.util import ActorPool
 # For typing purposes
 from ray.actor import ActorHandle
 from tqdm.auto import tqdm
+import copy
 
 ## Actor pool interface is different. 
 # no need for the progress bar actor there...
 ## create a new pool every time because 
 # in case of interruption, actor pool state seems
-def tqdm_map(actors, actor_tup_function, tups):
+def tqdm_map(actors, actor_tup_function, tups, res=None):
+    assert res == [], 'provide input'
+    
     actor_pool = ActorPool(actors)
     for tup in tups:
         actor_pool.submit(actor_tup_function, tup)
 
     pbar = tqdm(total=len(tups))
-    res = []
     while True:
-        res.append(actor_pool.get_next_unordered())
+        nxt = actor_pool.get_next_unordered()
+        ## copy to free up any references at the source
+        res.append(copy.deepcopy(nxt))
         pbar.update(1)
         if len(res) == len(tups):
             break
             
     pbar.close()
     return res
-
 
 # taken from https://docs.ray.io/en/master/auto_examples/progress_bar.html
 # use with pool:
