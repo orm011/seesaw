@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import math
 from torch.utils.data import Subset
 from tqdm.auto import tqdm
+import pyroaring as pr
 
 from torch.utils.data import TensorDataset
 from torch.utils.data import Subset
@@ -259,9 +260,6 @@ def make_tuple_ds(X, y, max_size):
     X2 = torch.stack(X2ls)
     train_ds = TensorDataset(X1,X2, torch.ones(X1.shape[0]))
     if len(train_ds) > max_size:
-        # hard negs (want to accelerate training)
-
-
         ## random sample... # should prefer some more
         randsel = torch.randperm(len(train_ds))[:max_size]
         train_ds = Subset(train_ds, randsel)
@@ -274,7 +272,9 @@ def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logg
     assert (y >= 0).all()
     assert (y <= 1).all()
 
-    train_ds = make_hard_neg_ds(X, y, max_size=max_examples, curr_vec=mod.vec.detach())
+    #train_ds = make_hard_neg_ds(X, y, max_size=max_examples, curr_vec=mod.vec.detach())
+    ridx,iis,jjs = hard_neg_tuples(mod.vec.detach().numpy(), X.numpy(), y, max_tups=max_examples)
+    train_ds = TensorDataset(X[ridx][iis],X[ridx][jjs], torch.ones(X[ridx][iis].shape[0]))
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
     if valX is not None:
@@ -297,3 +297,56 @@ def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logg
                          progress_bar_refresh_rate=0, #=10
                         )
     trainer.fit(mod, train_loader, val_loader)
+
+import numpy as np
+def hard_neg_tuples(v, Xt, yt, max_tups):
+    """returns indices for the 'hardest' ntups
+    """
+    p = np.where(yt > 0)[0]
+    n = np.where(yt < 1)[0]
+    assert p.shape[0] > 0
+    assert n.shape[0] > 0
+    
+    scores = Xt @ v.reshape(-1,1)
+    score_diffs = (scores[p].reshape(-1,1) - scores[n].reshape(1,-1))
+    iis,jjs = np.meshgrid(np.arange(p.shape[0]), np.arange(n.shape[0]), indexing='ij')
+    diff_order = np.argsort(score_diffs, axis=None)[:max_tups]
+    #   score_diffs.flatten()[diff_order]
+    pps = p[iis.flatten()[diff_order]]
+    nns = n[jjs.flatten()[diff_order]]
+
+    ridx = np.array(pr.BitMap(pps).union(pr.BitMap(nns)))
+    lookup_tab = np.zeros(Xt.shape[0], dtype='int') -1
+    lookup_tab[ridx] = np.arange(ridx.shape[0], dtype='int')
+    piis = lookup_tab[pps]
+    pjjs = lookup_tab[nns]
+    # then X[ridx][piis] and X[ridx][jjs]
+    # rdix o piis == iis <=> piis = iis
+    assert (ridx[piis] == pps).all()
+    return ridx, piis, pjjs
+
+import cvxpy as cp
+def adjust_vec2(v, Xt, yt, *, max_examples, loss_margin=.1, C=.1, solver='SCS'):
+    # y = evbin.query_ground_truth[cat][dbidxs].values
+    # X = hdb.embedded[dbidxs]
+    margin = loss_margin
+    nump = (yt > 0).sum()
+    numn = (yt < 1).sum()
+
+    ridx, piis,pjjs = hard_neg_tuples(v, Xt, yt, max_tups=max_examples)    
+    # hnds  = make_hard_neg_ds(torch.from_numpy(Xt),torch.from_numpy(yt).float(),max_size=max_examples,curr_vec=v)    
+    def rank_loss(s1, s2, margin):
+        loss = cp.sum(cp.pos(- (s1 - s2 - margin)))
+        return loss
+
+    wstr = (v/np.linalg.norm(v)).reshape(-1)
+    w = cp.Variable(shape=wstr.shape, name='w')
+    w.value = wstr
+    nweight = (nump + numn)/(nump*numn) # increase with n but also account for tuple blowup wrt n
+    X = Xt[ridx] # reduce problem size here
+
+    scores = X @ w
+    obj = rank_loss(scores[piis], scores[pjjs], loss_margin)*nweight + C*(1. - (w@wstr))
+    prob = cp.Problem(cp.Minimize(obj), constraints=[cp.norm2(w) <= 1.])
+    prob.solve(warm_start=True, solver=solver)
+    return w.value.copy().reshape(1,-1)

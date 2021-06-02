@@ -79,6 +79,14 @@ def make_evdataset(*, root, paths, embedded_dataset, query_ground_truth, box_dat
 ## make a very cheap ev dataset that can be sliced cheaply
 
 class EvDataset(object):
+    query_ground_truth : pd.DataFrame
+    box_data : pd.DataFrame
+    embedding : XEmbedding
+    embedded_dataset : np.ndarray
+    fine_grained_embedding : np.ndarray
+    fine_grained_meta : pd.DataFrame
+    imge_dataset : ExplicitPathDataset
+
     def __init__(self, *, root, paths, embedded_dataset, query_ground_truth, box_data, embedding, 
                 fine_grained_embedding=None, fine_grained_meta=None):
         """
