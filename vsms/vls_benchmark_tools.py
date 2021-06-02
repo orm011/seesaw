@@ -1,6 +1,10 @@
 from .data_server import *
 from .search_loop_models import *
 
+import inspect
+from .dataset_tools import *
+from .fine_grained_embedding import *
+
 import math
 def brief_format(ftpt):
     if math.isclose(ftpt, 0.):
@@ -28,21 +32,6 @@ def make_labeler(fmt_func):
     def fun(arrlike):
         return list(map(fmt_func, arrlike))
     return fun
-
-
-import inspect
-from .dataset_tools import *
-from .fine_grained_embedding import *
-
-
-def adjust_vec(vec, Xt, yt, learning_rate, loss_margin, max_examples, minibatch_size):
-    vec = torch.from_numpy(vec).type(torch.float32)
-    mod = LookupVec(Xt.shape[1], margin=loss_margin, optimizer=torch.optim.SGD, learning_rate=learning_rate, init_vec=vec)
-    fit_rank2(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), 
-            max_examples=max_examples, batch_size=minibatch_size,max_epochs=1)
-    newvec = mod.vec.detach().numpy().reshape(1,-1)
-    return newvec 
-
 
 def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 

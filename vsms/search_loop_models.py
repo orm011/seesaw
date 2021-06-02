@@ -7,7 +7,7 @@ import math
 from torch.utils.data import Subset
 from tqdm.auto import tqdm
 import pyroaring as pr
-
+import sys
 from torch.utils.data import TensorDataset
 from torch.utils.data import Subset
 from torch.utils.data import DataLoader
@@ -298,6 +298,16 @@ def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logg
                         )
     trainer.fit(mod, train_loader, val_loader)
 
+
+def adjust_vec(vec, Xt, yt, learning_rate, loss_margin, max_examples, minibatch_size):
+    vec = torch.from_numpy(vec).type(torch.float32)
+    mod = LookupVec(Xt.shape[1], margin=loss_margin, optimizer=torch.optim.SGD, learning_rate=learning_rate, init_vec=vec)
+    fit_rank2(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), 
+            max_examples=max_examples, batch_size=minibatch_size,max_epochs=1)
+    newvec = mod.vec.detach().numpy().reshape(1,-1)
+    return newvec 
+
+
 import numpy as np
 def hard_neg_tuples(v, Xt, yt, max_tups):
     """returns indices for the 'hardest' ntups
@@ -324,6 +334,8 @@ def hard_neg_tuples(v, Xt, yt, max_tups):
     # rdix o piis == iis <=> piis = iis
     assert (ridx[piis] == pps).all()
     return ridx, piis, pjjs
+
+
 
 import cvxpy as cp
 def adjust_vec2(v, Xt, yt, *, max_examples, loss_margin=.1, C=.1, solver='SCS'):
