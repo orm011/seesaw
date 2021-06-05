@@ -45,17 +45,6 @@ class ExplicitPathDataset(object):
         return pn
 
 
-class TxDataset(object):
-    def __init__(self, ds, tx):
-        self.ds = ds
-        self.tx = tx
-
-    def __len__(self):
-        return len(self.ds)
-
-    def __getitem__(self, idx):
-        return self.tx(self.ds[idx])
-
 import inspect, os, copy
 
 def normalize(vecs):

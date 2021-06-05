@@ -7,7 +7,7 @@ import json, os, copy
 import torch, torchvision
 import pyroaring as pr
 # from .dataset_tools import DataFrameDataset
-from .vloop_dataset_loaders import TxDataset
+from .dataset_tools import TxDataset
 from .cross_modal_db import EmbeddingDB
 import torchvision.models
 import torch.nn as nn

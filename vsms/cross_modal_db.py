@@ -31,8 +31,7 @@ class EmbeddingDB(object):
     """
     def __init__(self, raw_dataset : torch.utils.data.Dataset,
                  embedding : XEmbedding,
-                 embedded_dataset : np.ndarray,
-                 urls=None):
+                 embedded_dataset : np.ndarray):
         self.raw = raw_dataset
         self.embedding = embedding
         all_indices = pr.BitMap()
