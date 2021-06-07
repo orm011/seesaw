@@ -1,29 +1,31 @@
 <template>
     <div class="annotator_div" ref="container">
-        <canvas resize class="annotator_canvas" ref="canvas" height="$refs.image.naturalHeight"
-        width="$refs.image.naturalWidth"/>
         <img class="annotator_image" :src="image_url" ref="image" @load="draw_initial_contents" />
+        <canvas class="annotator_canvas" ref="canvas" />
     </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
     eg, the $refs and other vue component object attributes) -->
 </template>
 <style scoped>
 .annotator_div {
-    margin:1px;
-    width:600px;
-    height:600px;
+    margin:0px;
+    width:fit-content;
+    height:fit-content;
 }
 .annotator_image {
     /* max-width:100%; */
     /* max-height:100%; */
-    display:none;
+    /* display:inline; */
+    position:absolute; top:0px; left:0px;
     object-fit:scale-down; /* never rescale up */ 
 }
 .annotator_canvas {
     /* border:0px solid #d3d3d3; */
     /* max-width:100%;*/
     /* max-height:100%; */
-    display:inline-block;
+    position:absolute; top:0px; left:0px;
+    display:none; 
+    /* for now not showing it to try to fix centering issue...*/
 }
 
 </style>
@@ -71,27 +73,31 @@ export default {
         let img = this.$refs.image; 
         let cnv = this.$refs.canvas; 
 
-        let scale = Math.min(img.width/img.naturalWidth, img.height/img.naturalHeight);
-        let img_height = Math.round(scale*img.height);
-        let img_width = Math.round(scale*img.width);
+        // let scale = Math.min(img.width/img.naturalWidth, img.height/img.naturalHeight);
+        // let img_height = Math.round(scale*img.height);
+        // let img_width = Math.round(scale*img.width);
 
         // size of element outside
-        cnv.style.height = img_height + 'px';
-        cnv.style.width = img_width + 'px';
+        cnv.height = img.height;
+        cnv.width = img.width;
+        // this.$refs.container.style.width=`${img.width} px`;
+        // this.$refs.container.style.height=`${img.height} px`;
+        // cnv.style.height = img_height + 'px';
+        // cnv.style.width = img_width + 'px';
 
         paper.setup(cnv);
-        let raster = new paper.Raster(img);
+        // let raster = new paper.Raster(img);
 
         // Move raster to view center
-        raster.position = paper.view.center;
-        raster.size = paper.view.bounds;
+        // raster.position = paper.view.center;
+        // raster.size = paper.view.bounds;
         // raster.fitBounds(paper.view.bounds)
         // paper.view.onResize = (e) => { // used for responsive resizing. would need to also resize the boxes...
         //     // console.log('resized! new aspect ratio:', e.width, e.height, e.width/e.height);
         // }
-        raster.locked = true;
-        this.height_ratio = img.height / raster.height;
-        this.width_ratio = img.width / raster.width;
+        // raster.locked = true;
+        this.height_ratio =1. //img.height / raster.height;
+        this.width_ratio = 1.//img.width / raster.width;
         paper.view.draw();
         this.load_current_box_data();
 
