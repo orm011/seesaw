@@ -6,5 +6,5 @@ class MImageGallery(vue.VueTemplate):
     image_urls = List().tag(sync=True)
     ldata = List().tag(sync=True)
     template = Unicode("""
-        <m-image-gallery :image_urls='image_urls' :ldata='ldata' />
+        <m-image-gallery :image_urls='image_urls' :ldata='ldata'  />
     """).tag(sync=True)

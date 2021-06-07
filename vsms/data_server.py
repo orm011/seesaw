@@ -90,12 +90,12 @@ class DB(object):
         ev0 = dataset_loader(model_handle)
 
         if dbsample is not None:
-            ev = extract_subset(ev0, idxsample=dbsample)
+            ev = extract_subset(ev0, idxsample=np.sort(dbsample))
         else:
             ev = ev0
 
         if valsample is not None:
-            val = extract_subset(ev0, idxsample=valsample)
+            val = extract_subset(ev0, idxsample=np.sort(valsample))
             self.val_vec = val.db.embedded
             self.val_gt = val.query_ground_truth
         else:
@@ -266,14 +266,15 @@ default_actors = {
     'dota':lambda m,ng: ray.remote(DB).options(name='dota_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=dota1_full,
                                 model_handle=m,
                                 dbsample=np.load('./data/dota_idxs.npy')[:1000], # size is 1860 or so.
-                                valsample=np.load('./data/dota_idxs.npy')[1000:]),
+                                valsample=None,#np.load('./data/dota_idxs.npy')[1000:]
+                                ),
     'ava': lambda m,ng: ray.remote(DB).options(name='ava_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=ava22, 
                                 model_handle=m,
                                 dbsample=np.load('./data/ava_randidx.npy')[:10000],
                                 valsample=np.load('./data/ava_randidx.npy')[10000:20000]), 
     'bdd': lambda m,ng: ray.remote(DB).options(name='bdd_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=bdd_full, 
                                 model_handle=m,
-                                dbsample=np.load('./data/bdd_20kidxs.npy')[:10000],
+                                dbsample=np.sort(np.load('./data/bdd_20kidxs.npy')[:10000]),
                                 valsample=np.load('./data/bdd_20kidxs.npy')[10000:20000]),
     'objectnet': lambda m,ng: ray.remote(DB).options(name='objectnet_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=objectnet_cropped, 
                                 model_handle=m,
@@ -296,7 +297,7 @@ if __name__ == '__main__':
 
     actors = []
     for (k,v) in default_actors.items():
-        if k == 'lvis':
+        if k in ['lvis', 'dota']:
             print('init ', k)
             actors.append(v(model_service, 0))
 

@@ -34,7 +34,7 @@
         <div class="row" v-for="(data,idx) in gdata" :key="idx">
           <div class="row">
           <m-image-gallery v-if="data.image_urls.length > 0" :image_urls="data.image_urls" :ldata="data.ldata" 
-            v-on:update:selection="onselection($event)" v-on:itemdrag='startDrag($event, idx)' />
+            v-on:update:selection="onselection($event)" v-on:itemdrag='startDrag($event, idx)' :with_modal="true"/>
           </div>
           <div class="row space"/>
         </div>
@@ -84,7 +84,9 @@ export default {
             })
             .then(response => response.json())
             .then(data => (this.gdata = [], this.datasets=data.datasets, 
-            this.dragged_id = null, this.refine_text = '', this.current_dataset=data.current_dataset, this.selection = null))
+            this.dragged_id = null, this.refine_text = '', 
+            this.current_dataset=data.current_dataset, 
+            this.selection = null))
         },
         text(text_query){
             fetch(`/vlsapi/text?key=${encodeURIComponent(text_query)}`,   

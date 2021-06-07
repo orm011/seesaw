@@ -11,7 +11,7 @@ from .data_server import BoxFeedbackQueryRemote, get_panel_data_remote, update_v
 
 ray.init('auto', ignore_reinit_error=True)
 default_dataset = 'lvis'
-datasets = ['lvis']#['coco', 'ava', 'bdd', 'dota', 'objectnet', 'lvis']
+datasets = ['lvis', 'dota' ]#['coco', 'ava', 'bdd', 'dota', 'objectnet', 'lvis']
 dbactors = dict([(name,ray.get_actor('{}_db'.format(name))) for name in datasets])
 
 
