@@ -7,20 +7,19 @@
         @dragstart="$emit('itemdrag', [$event, index])" 
         :class="['unknown', 'rejected', 'accepted'][ldata.length === 0? 0 : ldata[index].value+1]" />
     </div>
-    <m-modal2 ref='modal2'>
+    <m-modal v-if="with_modal" ref='modal2'>
       <img :src="this.image_urls[selection]">
       <!-- <m-annotator :image_url="this.image_urls[selection]" :adata="{boxes:[]}" :read_only="false" /> -->
-    </m-modal2>
+    </m-modal>
   </div>
 </template>
 <script>
 import MAnnotator from './m-annotator.vue';
-// import MModal from './m-modal.vue';
-import MModal2 from './m-modal2.vue';
+import MModal from './m-modal.vue';
 
 
  export default {
-  components: { 'm-annotator':MAnnotator, 'm-modal2':MModal2 },
+  components: { 'm-annotator':MAnnotator, 'm-modal':MModal },
   props: {image_urls:{type:Array}, ldata:{type:Array, default:[]}, with_modal:true},
   data : function() { return {selection:null, show_modal:false}},
   created : function (){},
@@ -32,7 +31,9 @@ import MModal2 from './m-modal2.vue';
         console.log('click callback')
         this.selection = index;
         // this.$refs.modal2.src = this.image_urls[this.selection];
-        this.$refs.modal2.active = true; //this.image_urls[this.selection];
+        if (this.with_modal){
+          this.$refs.modal2.active = true; //this.image_urls[this.selection];
+        }
         // this.$refs.modal.show()
         this.$emit('update:selection', index); 
     }
