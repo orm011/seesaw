@@ -141,8 +141,12 @@ def bdd_full(embedding : XEmbedding):
     paths = np.load('./data/bdd_valid_paths.npy', allow_pickle=True)
     box_data = pd.read_parquet('./data/bdd_boxes_all_qgt_classes_imsize.parquet')
     qgt = pd.read_parquet('./data/bdd_boxes_all_qgt_classes_qgt.parquet')
-    fgmeta = pd.read_parquet('./data/bdd_20k_finegrained_acc_meta.parquet')
-    fge = np.load('./data/bdd_20k_finegrained_acc.npy')
+
+    fgmeta = pd.read_parquet('./data/bdd_multiscale_meta_all.parquet')
+    fge = np.load('./data/bdd_multiscale_vecs_all.npy')
+    if False:
+        fgmeta = pd.read_parquet('./data/bdd_20k_finegrained_acc_meta.parquet')
+        fge = np.load('./data/bdd_20k_finegrained_acc.npy')
     embedded_dataset = np.load('./data/bdd_all_valid_feats_CLIP.npy')
     ev1 = make_evdataset(root=image_root, paths=paths, 
                          embedded_dataset=embedded_dataset,
@@ -241,8 +245,11 @@ def lvis_full(embedding : XEmbedding) -> EvDataset:
     # coco_files = coco_files.reset_index().rename(mapper={'index':'dbidx'}, axis=1)
     # paths = coco_files['paths'].values
 
-    gvec_meta = pd.read_parquet('./data/lvis_finegrained_acc_meta.parquet')
-    gvecs = np.load('./data/lvis_finegrained_acc.npy')
+    gvec_meta = pd.read_parquet('./data/lvis_multigrained_all_meta.parquet')
+    gvecs = np.load('./data/lvis_multigrained_all_vecs.npy')
+
+    # gvec_meta = pd.read_parquet('./data/lvis_finegrained_acc_meta.parquet')
+    # gvecs = np.load('./data/lvis_finegrained_acc.npy')
 
     return make_evdataset(root=root, 
                      paths=paths, 
