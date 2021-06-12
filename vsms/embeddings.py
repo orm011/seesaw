@@ -11,11 +11,8 @@ import sklearn
 import torchvision.transforms as T
 import pyroaring as pr
 import typing
-from sentence_transformers import SentenceTransformer
+# from sentence_transformers import SentenceTransformer
 from .cross_modal_embedding import TextImageCrossModal
-
-
-import clip
 
 class ResNetFeatureExtractor(nn.Module):
     def __init__(self):
@@ -93,8 +90,9 @@ class XEmbedding(object):
 
 
 class VariableSizeNet(nn.Module):
-    def __init__(self, base : clip.model.ModifiedResNet, **kwargs):
+    def __init__(self, base, **kwargs):
         super().__init__()
+        import clip
         assert isinstance(base, clip.model.ModifiedResNet), 'maybe use mod.visual?'
         self.base = base
         self.attnpool = ManualPooling(base.attnpool, kernel_size=7, **kwargs)
@@ -135,6 +133,7 @@ class ClipFeatureExtractor(nn.Module):
             return self.extractor.eval()(tensor).cpu()
 
 def load_embedding_model() -> XEmbedding :
+    from sentence_transformers import SentenceTransformer
     resnet50 = ResNetFeatureExtractor()
     distilbert = SentenceTransformer('distilbert-base-nli-stsb-mean-tokens')
     model = TextImageCrossModal(caption_vec_size=768,  # ,train_cap_embeddings.shape[1],
@@ -424,6 +423,8 @@ def make_clip_transform(n_px, square_crop=False):
 
 class CLIPWrapper(XEmbedding):
     def __init__(self, device):
+        import clip
+
         tx = make_clip_transform(n_px=224, square_crop=False)
         variant = "ViT-B/32"
         assert variant in ["ViT-B/32", "RN50"]
@@ -446,6 +447,7 @@ class CLIPWrapper(XEmbedding):
         self.pooled_model = nn.Sequential(self.visual_model,nn.AdaptiveAvgPool2d(1))
 
     def from_string(self, *, string=None, str_vec=None, numpy=True):
+        import clip
         if str_vec is not None:
             return str_vec
         else:
