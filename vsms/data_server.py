@@ -17,10 +17,7 @@ from .ui import widgets
 import logging
 from tqdm.auto import tqdm
 import copy
-
-def vls_init_logger():
-    logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
-    logging.captureWarnings(True)
+from .vls_benchmark_tools import vls_init_logger
 
 class InteractiveQueryRemote(object):
     def __init__(self, dbactor, batch_size: int):
@@ -297,9 +294,10 @@ if __name__ == '__main__':
 
     actors = []
     for (k,v) in default_actors.items():
-        if k in ['lvis', 'dota']:
-            print('init ', k)
-            actors.append(v(model_service, 0))
+        pass
+        # if k in ['lvis', 'dota']:
+        #     print('init ', k)
+        #     actors.append(v(model_service, 0))
 
     input('press any key to terminate the db server: ')
     print('done!')

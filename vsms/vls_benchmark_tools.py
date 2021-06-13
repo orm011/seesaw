@@ -1,11 +1,18 @@
-from .data_server import *
+#from .data_server import *
 from .search_loop_models import *
 
 import inspect
 from .dataset_tools import *
+from .vloop_dataset_loaders import EvDataset
 from .fine_grained_embedding import *
 
 import math
+
+def vls_init_logger():
+    import logging
+    logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
+    logging.captureWarnings(True)
+
 def brief_format(ftpt):
     if math.isclose(ftpt, 0.):
         return '0'
