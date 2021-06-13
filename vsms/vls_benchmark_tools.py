@@ -3,7 +3,7 @@ from .search_loop_models import *
 
 import inspect
 from .dataset_tools import *
-from .vloop_dataset_loaders import EvDataset
+from .vloop_dataset_loaders import EvDataset, get_class_ev
 from .fine_grained_embedding import *
 
 import math
