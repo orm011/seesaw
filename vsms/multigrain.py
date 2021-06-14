@@ -221,19 +221,23 @@ class AugmentedDB(object):
     def __len__(self):
         return len(self.raw)
 
-    def _query_prelim(self, *, vector, topk, exclude=None, zoom_level=0):
+    def _query_prelim(self, *, vector, topk,  zoom_level, exclude=None):
         if exclude is None:
             exclude = pr.BitMap([])
         
+
         included_dbidx = pr.BitMap(self.all_indices).difference(exclude)
         vec_meta = self.vector_meta
         vecs = self.embedded  # = restrict_fine_grained(self.vector_meta, self.embedded, included_dbidx)
         
+        # breakpoint()
         vec_meta = vec_meta.reset_index(drop=True)
-        vec_meta = vec_meta[~vec_meta.dbidx.isin(exclude) & vec_meta.zoom_level == zoom_level]
-        vecs = vecs[vec_meta.index.values]         
+        vec_meta = vec_meta[(~vec_meta.dbidx.isin(exclude))]
+        if zoom_level is not None:
+            vec_meta = vec_meta[vec_meta.zoom_level == zoom_level]
 
-        
+        vecs = vecs[vec_meta.index.values]
+
         if len(included_dbidx) == 0:
             return np.array([])
 
@@ -253,14 +257,13 @@ class AugmentedDB(object):
         assert topscores.dbidx.unique().shape[0] <= topk
         return topscores
         
-    def query(self, *, vector, topk, shortlist_size=None, rel_weight_coarse=1.):
+    def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1):
         if shortlist_size is None:
             shortlist_size = topk*5
         
         db = self
         qvec=vector
-        
-        scmeta = self._query_prelim(vector=qvec, topk=shortlist_size, zoom_level=0)
+        scmeta = self._query_prelim(vector=qvec, topk=shortlist_size, zoom_level=None, exclude=exclude)
 
         scs = []    
         for i,tup in enumerate(scmeta.itertuples()):

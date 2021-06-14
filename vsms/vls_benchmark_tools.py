@@ -1,11 +1,16 @@
 #from .data_server import *
 from .search_loop_models import *
+from .search_loop_tools import *
 
 import inspect
 from .dataset_tools import *
 from .vloop_dataset_loaders import EvDataset, get_class_ev
 from .fine_grained_embedding import *
-
+from .multigrain import AugmentedDB
+from .cross_modal_db import EmbeddingDB
+from .search_loop_models import adjust_vec, adjust_vec2
+import numpy as np
+import sklearn.metrics
 import math
 
 def vls_init_logger():
@@ -40,143 +45,149 @@ def make_labeler(fmt_func):
         return list(map(fmt_func, arrlike))
     return fun
 
+
 def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
-              tqdm_disabled:bool, fine_grained:bool, model_type='logistic', solver_opts={}, **kwargs):  
-       
-        # gvec = ev.fine_grained_embedding
-        # gvec_meta = ev.fine_grained_meta
-        ev0 = ev
-        frame = inspect.currentframe()
-        args, _, _, values = inspect.getargvalues(frame)
-        allargs = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'gvec', 'gvec_meta']}        
+              tqdm_disabled:bool, granularity:str,
+               model_type='logistic', solver_opts={}, 
+               **kwargs):         
+    assert 'fine_grained' not in kwargs
+    assert isinstance(granularity, str)
+    # gvec = ev.fine_grained_embedding
+    # gvec_meta = ev.fine_grained_meta
+    ev0 = ev
+    frame = inspect.currentframe()
+    args, _, _, values = inspect.getargvalues(frame)
+    allargs = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'gvec', 'gvec_meta']}        
 
-        ev, class_idxs = get_class_ev(ev0, category, boxes=True)
-        dfds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
-        ds = TxDataset(dfds, tx=lambda tup : resize_to_grid(224)(im=None, boxes=tup)[1])
+    ev, class_idxs = get_class_ev(ev0, category, boxes=True)
+    dfds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
+    ds = TxDataset(dfds, tx=lambda tup : resize_to_grid(224)(im=None, boxes=tup)[1])
 
-        if fine_grained == True:
-            vec_meta = ev.fine_grained_meta
-            vecs = ev.fine_grained_embedding
-            hdb = FineEmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-                embedded_dataset=vecs, vector_meta=vec_meta)
-        elif fine_grained == 'multi':
-            assert False, 'not using this at the moment'
-            vec_meta_fine = ev.fine_grained_meta.assign(scale='fine')
-            vecs_fine = ev.fine_grained_embedding
+    if granularity == 'fine':
+        vec_meta = ev.fine_grained_meta
+        vecs = ev.fine_grained_embedding
+        vec_meta = vec_meta[vec_meta.zoom_level == 0]
+        vecs = vecs[vec_meta.index.values]
+        vec_meta.reset_index(drop=True)
+        hdb = FineEmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
+            embedded_dataset=vecs, vector_meta=vec_meta)
+    elif granularity == 'multi':
+        # assert False, 'not using this at the moment'
+        vec_meta = ev.fine_grained_meta
+        vecs = ev.fine_grained_embedding
+        # dbidxs = np.arange(len(ev)).astype('int')
+        # vec_meta_coarse = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
+        # vec_meta_coarse = vec_meta_coarse.assign(scale='coarse')
+        # vecs_coarse = ev.embedded_dataset
+        # vec_meta = pd.concat([vec_meta_fine, vec_meta_coarse], ignore_index=True)
+        # vecs = np.concatenate([vecs_fine, vecs_coarse])
 
-            dbidxs = np.arange(len(ev)).astype('int')
-            vec_meta_coarse = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
-            vec_meta_coarse = vec_meta_coarse.assign(scale='coarse')
-            vecs_coarse = ev.embedded_dataset
+        hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
+            embedded_dataset=vecs, vector_meta=vec_meta)
+            
+    elif granularity == 'coarse':
+        dbidxs = np.arange(len(ev)).astype('int')
+        vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
+        vecs = ev.embedded_dataset
+        hdb = EmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding,embedded_dataset=vecs)
+    else:
+        assert False
 
-            vec_meta = pd.concat([vec_meta_fine, vec_meta_coarse], ignore_index=True)
-            vecs = np.concatenate([vecs_fine, vecs_coarse])
+    bfq = BoxFeedbackQuery(hdb, batch_size=batch_size, auto_fill_df=None)
+    rarr = ev.query_ground_truth[category]
+    print(allargs, kwargs)        
+            
+    if qstr == 'nolang':
+        init_vec=None
+        init_mode = 'random'
+    else:
+        init_vec = ev.embedding.from_string(string=qstr)
+        init_mode = 'dot'
+    
+    acc_pos = []
+    acc_neg = []
+    acc_indices = []
+    acc_results = []
+    acc_ranks = []
+    total = 0
+            
+    gt = ev.query_ground_truth[category].values
+    res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
+    if init_vec is not None:
+        init_vec = init_vec/np.linalg.norm(init_vec)
+        tvec = init_vec#/np.linalg.norm(init_vec)
+    else:
+        tvec = None
 
-            hdb = FineEmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-                embedded_dataset=vecs, vector_meta=vec_meta)
-        else:
-            dbidxs = np.arange(len(ev)).astype('int')
-            vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
-            vecs = ev.embedded_dataset
-            hdb = EmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding,embedded_dataset=vecs)
+    tmode = init_mode
 
-        bfq = BoxFeedbackQuery(hdb, batch_size=batch_size, auto_fill_df=None)
-        rarr = ev.query_ground_truth[category]
-        print(allargs, kwargs)        
-                
-        if qstr == 'nolang':
-            init_vec=None
-            init_mode = 'random'
-        else:
-            init_vec = ev.embedding.from_string(string=qstr)
-            init_mode = 'dot'
-        
-        acc_pos = []
-        acc_neg = []
-        acc_indices = []
-        acc_results = []
-        acc_ranks = []
-        total = 0
-                
-        gt = ev.query_ground_truth[category].values
-        res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
-        if init_vec is not None:
-            init_vec = init_vec/np.linalg.norm(init_vec)
-            tvec = init_vec#/np.linalg.norm(init_vec)
-        else:
-            tvec = None
+    for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
+        idxbatch = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
+        acc_indices.append(idxbatch)
+        acc_results.append(gt[idxbatch])
 
-        tmode = init_mode
+        if interactive != 'plain':
+            if granularity in ['fine', 'multi']:
+                batchpos, batchneg = get_pos_negs_all(idxbatch, ds, vec_meta)
+                acc_pos.append(batchpos)
+                acc_neg.append(batchneg)
 
-        for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
-            idxbatch = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
-            acc_indices.append(idxbatch)
-            acc_results.append(gt[idxbatch])
+                pos = pr.BitMap.union(*acc_pos)
+                neg = pr.BitMap.union(*acc_neg)
+                # print('pos, neg', len(pos), len(neg))
+                Xt = np.concatenate([vecs[pos], vecs[neg]])
+                yt = np.concatenate([np.ones(len(pos)), np.zeros(len(neg))])
 
-            if interactive != 'plain':
-                if fine_grained:
-                    batchpos, batchneg = get_pos_negs_all(idxbatch, ds, vec_meta)
-                    acc_pos.append(batchpos)
-                    acc_neg.append(batchneg)
+                if np.concatenate(acc_results).sum() > 0:
+                    assert len(pos) > 0
+            else:
+                Xt = vecs[idxbatch]
+                yt = gt[idxbatch]
 
-                    pos = pr.BitMap.union(*acc_pos)
-                    neg = pr.BitMap.union(*acc_neg)
-                    # print('pos, neg', len(pos), len(neg))
-                    Xt = np.concatenate([vecs[pos], vecs[neg]])
-                    yt = np.concatenate([np.ones(len(pos)), np.zeros(len(neg))])
+            if (yt.shape[0] > 0) and (yt.max() > yt.min()):
+                tmode = 'dot'
+                if interactive == 'sklearn':
+                    lr = sklearn.linear_model.LogisticRegression(class_weight='balanced')
+                    lr.fit(Xt, yt)
+                    tvec = lr.coef_.reshape(1,-1)        
+                elif interactive == 'pytorch':
+                    p = yt.sum()/yt.shape[0]
+                    w = np.clip((1-p)/p, .1, 10.)
 
-                    if np.concatenate(acc_results).sum() > 0:
-                        assert len(pos) > 0
-                else:
-                    Xt = vecs[idxbatch]
-                    yt = gt[idxbatch]
+                    if model_type == 'logistic':
+                        mod = PTLogisiticRegression(Xt.shape[1], learning_rate=learning_rate, C=0, 
+                                                    positive_weight=w)
+                        if warm_start == 'warm':
+                            iv = torch.from_numpy(init_vec)
+                            iv = iv / iv.norm()
+                            mod.linear.weight.data = iv.type(mod.linear.weight.dtype)
+                        elif warm_start == 'default':
+                            pass
 
-                if (yt.shape[0] > 0) and (yt.max() > yt.min()):
-                    tmode = 'dot'
-                    if interactive == 'sklearn':
-                        lr = sklearn.linear_model.LogisticRegression(class_weight='balanced')
-                        lr.fit(Xt, yt)
-                        tvec = lr.coef_.reshape(1,-1)        
-                    elif interactive == 'pytorch':
-                        p = yt.sum()/yt.shape[0]
-                        w = np.clip((1-p)/p, .1, 10.)
-
-                        if model_type == 'logistic':
-                            mod = PTLogisiticRegression(Xt.shape[1], learning_rate=learning_rate, C=0, 
-                                                        positive_weight=w)
-                            if warm_start == 'warm':
-                                iv = torch.from_numpy(init_vec)
-                                iv = iv / iv.norm()
-                                mod.linear.weight.data = iv.type(mod.linear.weight.dtype)
-                            elif warm_start == 'default':
-                                pass
-
-                            fit_reg(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=minibatch_size)
-                            tvec = mod.linear.weight.detach().numpy().reshape(1,-1)
-                        elif model_type in ['cosine', 'multirank']:
-                            for i in range(num_epochs):
-                                tvec = adjust_vec(tvec, Xt, yt, learning_rate=learning_rate, 
-                                                  max_examples=max_examples, 
-                                                  minibatch_size=minibatch_size,
-                                                  loss_margin=loss_margin)
-                        elif model_type == 'solver':
-                                tvec = adjust_vec2(tvec, Xt, yt, **solver_opts)
-                        else:
-                            assert False, 'model type'
-
+                        fit_reg(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=minibatch_size)
+                        tvec = mod.linear.weight.detach().numpy().reshape(1,-1)
+                    elif model_type in ['cosine', 'multirank']:
+                        for i in range(num_epochs):
+                            tvec = adjust_vec(tvec, Xt, yt, learning_rate=learning_rate, 
+                                                max_examples=max_examples, 
+                                                minibatch_size=minibatch_size,
+                                                loss_margin=loss_margin)
+                    elif model_type == 'solver':
+                        tvec = adjust_vec2(tvec, Xt, yt, **solver_opts)
                     else:
-                        assert False
-                else:
-                    # print('missing positives or negatives to do any training', yt.shape, yt.max(), yt.min())
-                    pass
-                
-        res['indices'] = [class_idxs[r] for r in res['indices']]
-        tup = {**allargs, **kwargs}
-        return (tup, res)
+                        assert False, 'model type'
 
-import numpy as np
-import sklearn.metrics
+                else:
+                    assert False
+            else:
+                # print('missing positives or negatives to do any training', yt.shape, yt.max(), yt.min())
+                pass
+            
+    res['indices'] = [class_idxs[r] for r in res['indices']]
+    tup = {**allargs, **kwargs}
+    return (tup, res)
+
 
 def ndcg_rank_score(ytrue, ordered_idxs):
     '''
@@ -186,7 +197,9 @@ def ndcg_rank_score(ytrue, ordered_idxs):
     ytrue = ytrue.astype('float')
     # create a score that is consistent with the ranking.
     ypred = np.zeros_like(ytrue)
-    ypred[ordered_idxs] = np.arange(ordered_idxs.shape[0],0,-1)/ordered_idxs.shape[0]
+    fake_scores = np.arange(ordered_idxs.shape[0],0,-1)/ordered_idxs.shape[0]
+    assert (fake_scores > 0).all()
+    ypred[ordered_idxs] = fake_scores
     return sklearn.metrics.ndcg_score(ytrue.reshape(1,-1), y_score=ypred.reshape(1,-1), k=ordered_idxs.shape[0])
 
 def test_score_sanity():
