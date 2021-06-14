@@ -85,7 +85,7 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
 
         hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
             embedded_dataset=vecs, vector_meta=vec_meta)
-            
+
     elif granularity == 'coarse':
         dbidxs = np.arange(len(ev)).astype('int')
         vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
@@ -130,6 +130,14 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
         if interactive != 'plain':
             if granularity in ['fine', 'multi']:
                 batchpos, batchneg = get_pos_negs_all(idxbatch, ds, vec_meta)
+                batchpos = np.array(batchpos)
+                batchneg = np.array(batchneg)
+
+                vm1 = vec_meta.iloc[batchpos].zoom_level == 0
+                vm2 = vec_meta.iloc[batchneg].zoom_level == 0
+                batchpos = pr.BitMap(batchpos[vm1.values])
+                batchneg = pr.BitMap(batchneg[vm2.values]) # vec_meta.iloc[batchpos].zoom_level == 0]
+
                 acc_pos.append(batchpos)
                 acc_neg.append(batchneg)
 
