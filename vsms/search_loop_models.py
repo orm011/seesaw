@@ -335,8 +335,6 @@ def hard_neg_tuples(v, Xt, yt, max_tups):
     assert (ridx[piis] == pps).all()
     return ridx, piis, pjjs
 
-
-
 import cvxpy as cp
 def adjust_vec2(v, Xt, yt, *, max_examples, loss_margin=.1, C=.1, solver='SCS'):
     # y = evbin.query_ground_truth[cat][dbidxs].values

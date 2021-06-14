@@ -6,12 +6,13 @@ import inspect
 from .dataset_tools import *
 from .vloop_dataset_loaders import EvDataset, get_class_ev
 from .fine_grained_embedding import *
-from .multigrain import AugmentedDB
+from .multigrain import *
 from .cross_modal_db import EmbeddingDB
 from .search_loop_models import adjust_vec, adjust_vec2
 import numpy as np
 import sklearn.metrics
 import math
+from .util import *
 
 def vls_init_logger():
     import logging
@@ -129,15 +130,18 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
 
         if interactive != 'plain':
             if granularity in ['fine', 'multi']:
-                batchpos, batchneg = get_pos_negs_all(idxbatch, ds, vec_meta)
-                batchpos = np.array(batchpos)
-                batchneg = np.array(batchneg)
+                batchpos, batchneg = get_pos_negs_all_v2(idxbatch, ds, vec_meta)
+                ### here, get all boxes. extract features. use those as positive vecs. (noindex)
+                ## where are the boxes?
+                # copy_locals()#breakpoint()
+                # breakpoint()
+                # batchpos = np.array(batchpos)
+                # batchneg = np.array(batchneg)
 
-                vm1 = vec_meta.iloc[batchpos].zoom_level == 0
-                vm2 = vec_meta.iloc[batchneg].zoom_level == 0
-                batchpos = pr.BitMap(batchpos[vm1.values])
-                batchneg = pr.BitMap(batchneg[vm2.values]) # vec_meta.iloc[batchpos].zoom_level == 0]
-
+                # vm1 = vec_meta.iloc[batchpos].zoom_level == 0
+                # vm2 = vec_meta.iloc[batchneg].zoom_level == 0
+                # batchpos = pr.BitMap(batchpos[vm1.values])
+                # batchneg = pr.BitMap(batchneg[vm2.values]) # vec_meta.iloc[batchpos].zoom_level == 0]
                 acc_pos.append(batchpos)
                 acc_neg.append(batchneg)
 

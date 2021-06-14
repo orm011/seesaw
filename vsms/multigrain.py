@@ -149,16 +149,16 @@ import torchvision.ops
 #torchvision.ops.box_iou()
 
 def box_iou(tup, boxes):
-    b1 = torch.tensor([tup.x1, tup.y1, tup.x2, tup.y2]).view(1,-1)
-    
+    b1 = torch.from_numpy(np.stack([tup.x1.values, tup.y1.values, tup.x2.values, tup.y2.values], axis=1))
     bxdata = np.stack([boxes.x1.values, boxes.y1.values, boxes.x2.values,boxes.y2.values], axis=1)
     b2 = torch.from_numpy(bxdata)
-    ious =   torchvision.ops.box_iou(b1, b2)
-    return ious.reshape(-1).numpy()
+    ious = torchvision.ops.box_iou(b1, b2)
+    return ious.numpy()
 
 def augment_score2(db,tup,qvec,vec_meta,vecs, rw_coarse=1.):
     vec_meta = vec_meta.reset_index(drop=True)    
-    vec_meta = vec_meta.assign(iou=box_iou(tup, vec_meta))
+    ious = box_iou(tup, vec_meta)
+    vec_meta = vec_meta.assign(iou=ious.reshape(-1))
     max_boxes = vec_meta.groupby('zoom_level').iou.idxmax()
     max_boxes = max_boxes.sort_index(ascending=True) # largest zoom level (zoomed out) goes last 
     relevant_meta = vec_meta.iloc[max_boxes]
@@ -179,7 +179,7 @@ def get_boxes(vec_meta):
     x2 = x1 + 224
     factor = vec_meta.zoom_factor
     boxes = vec_meta.assign(**{'x1':x1*factor, 'x2':x2*factor, 'y1':y1*factor, 'y2':y2*factor})[['x1','y1','x2','y2']]
-    return boxes 
+    return boxes
 
 def makedb(evs, dataset, category):
         ev,_ = get_class_ev(evs[dataset], category=category)
@@ -192,6 +192,67 @@ def try_augment(localxclip, evs, dataset, category, cutoff=40, rel_weight_coarse
     qvec = qvec/np.linalg.norm(qvec)
     idxs = db.query(vector=qvec, topk=10, shortlist_size=cutoff, rel_weight_coarse=rel_weight_coarse)
     return db.raw.show_images(idxs, ev.query_ground_truth[category][idxs])
+
+
+def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
+    idxs = pr.BitMap(dbidxs)
+    relvecs = vec_meta[vec_meta.dbidx.isin(idxs)]
+    
+    pos = []
+    neg = []
+    for idx in dbidxs:
+        acc_vecs = relvecs[relvecs.dbidx == idx]
+        acc_boxes = get_boxes(acc_vecs)
+        label_boxes = ds[idx]
+        ious = box_iou(label_boxes, acc_boxes)
+        total_iou = ious.sum(axis=0) 
+        negatives = total_iou == 0
+        negvec_positions = acc_vecs.index[negatives].values
+
+        # get the highest iou positives for each 
+        max_ious_id = np.argmax(ious,axis=1)
+        max_ious = np.max(ious, axis=1)
+        
+        pos_idxs = pr.BitMap(max_ious_id[max_ious > 0])
+        
+        
+#         breakpoint()
+#         #max_ious_id[valmax > 0]        
+#         positives = total_iou > .2 # eg. two granularities one within the other give you .25.
+        posvec_positions = acc_vecs.index[pos_idxs].values
+        pos.append(posvec_positions)
+        neg.append(negvec_positions)
+        
+    posidxs = pr.BitMap(np.concatenate(pos))
+    negidxs = pr.BitMap(np.concatenate(neg))
+    return posidxs, negidxs
+
+# def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
+#     idxs = pr.BitMap(dbidxs)
+#     relvecs = vec_meta[vec_meta.dbidx.isin(idxs)]
+    
+#     pos = []
+#     neg = []
+#     for idx in dbidxs:
+#         acc_vecs = relvecs[relvecs.dbidx == idx]
+#         acc_boxes = get_boxes(acc_vecs)
+#         label_boxes = ds[idx]
+#         ious = box_iou(label_boxes, acc_boxes)
+#         total_iou = ious.sum(axis=0) 
+#         negatives = total_iou == 0
+#         negvec_positions = acc_vecs.index[negatives].values
+
+#         # get the highest iou positives for each 
+
+#         positives = total_iou > .2 # eg. two granularities one within the other give you .25.
+#         posvec_positions = acc_vecs.index[positives].values
+        
+#         pos.append(posvec_positions)
+#         neg.append(negvec_positions)
+        
+#     posidxs = pr.BitMap(np.concatenate(pos))
+#     negidxs = pr.BitMap(np.concatenate(neg))
+#     return posidxs, negidxs
 
 
 class AugmentedDB(object):
@@ -224,7 +285,6 @@ class AugmentedDB(object):
     def _query_prelim(self, *, vector, topk,  zoom_level, exclude=None):
         if exclude is None:
             exclude = pr.BitMap([])
-        
 
         included_dbidx = pr.BitMap(self.all_indices).difference(exclude)
         vec_meta = self.vector_meta
@@ -269,6 +329,7 @@ class AugmentedDB(object):
         for i,tup in enumerate(scmeta.itertuples()):
             relmeta = db.vector_meta[db.vector_meta.dbidx == tup.dbidx]
             relvecs = db.embedded[relmeta.index.values]
+            tup = scmeta.iloc[i:i+1]
             sc = augment_score2(db, tup, qvec, relmeta, relvecs, rw_coarse=rel_weight_coarse)
             scs.append(sc)
 
