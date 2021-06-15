@@ -60,51 +60,79 @@ def readjust_interval(x1, x2, max_x):
     assert (x2p <= max_x).all()
     return x1p, x2p
 
-def random_seg_start(x1, x2, target_x, max_x, n=1):
+def random_seg_start(x1, x2, target_x, max_x, off_center_range, n=1):
     dist = x2 - x1
     assert (dist <= target_x).all()
-    start_offset = np.random.rand(n)*(target_x - dist)
-    start = x1 - start_offset 
+    gap = (target_x - dist)
+    start_offset = .5 + (np.random.rand(n) - .5)*off_center_range
+    assert (start_offset >= 0.).all()
+    assert (start_offset <= 1.).all()
+    assert (abs(start_offset - .5) <= off_center_range).all()
+    start = x1 - start_offset*gap
     end = start + target_x
     start, end = readjust_interval(start,end,max_x)
     return start, end
 
-def random_container_box(b, n=1):
+def add_clearance(x1,x2,max_x, clearance_ratio):
+    cx = (x1 + x2)/2
+    dx = x2 - x1
+    diff = dx*clearance_ratio*.5
+    return readjust_interval(cx - diff, cx + diff, max_x)
+
+def add_box_clearance(b, max_x, max_y, clearance_ratio):
+    x1,x2 = add_clearance(b.x1, b.x2, max_x, clearance_ratio)
+    y1,y2 = add_clearance(b.y1, b.y2, max_y, clearance_ratio)
+    return {'x1':x1, 'x2':x2, 'y1':y1, 'y2':y2}
+
+def random_container_box(b, scale_range=3.3, aspect_ratio_range=1.2, off_center_range=1., clearance=1.2, n=1):
+    assert clearance >= aspect_ratio_range
+
     bw = b.x2 - b.x1
     bh = b.y2 - b.y1
     max_d = max(bw,bh)
-    
-    sc1 = b.im_height/bh
-    sc2 = b.im_width/bw
-    max_scale = min(sc1, sc2, 3.3) # don't do more than 3x
-    scale = np.exp(np.random.rand(n)*np.log(max_scale))
-    assert (scale >= 1.).all()
+    sc1 = b.im_height/max_d
+    sc2 = b.im_width/max_d
+
+    min_scale = min(sc1, sc2, clearance)
+    clearance = min(min_scale, clearance)
+
+    max_scale = min(sc1, sc2, scale_range*clearance) # don't do more than 3x
+    max_scale = max(min_scale, max_scale)
+
+    scale = np.exp(np.random.rand(n)*np.log(max_scale/min_scale))*min_scale
+    # assert (scale >= clearance).all()
+    # assert (scale <= scale_range).all()
+
     target_x = scale*max_d
     target_y = target_x
-    assert (bw < target_x).all()
-    assert (bh < target_y).all()
+    assert (bw <= target_x).all()
+    assert (bh <= target_y).all()
     
-    lratio = 2*(np.random.rand(n) - .5)*np.log(1.2)
+    lratio = 2*(np.random.rand(n) - .5)*np.log(aspect_ratio_range)
     ratio = np.exp(lratio/2)
-    assert (ratio <= 1.2).all()
-    assert (ratio >= 1/1.2).all()
+
+    upper = math.sqrt(aspect_ratio_range)
+    assert (ratio <= upper).all()
+    assert (ratio >= 1/upper).all()
         
     target_y = target_y*ratio
     target_x = target_x/ratio #np.ones_like(ratio)
-        
-    start_x, end_x = random_seg_start(b.x1, b.x2, target_x, b.im_width, n=n)
-    start_y, end_y = random_seg_start(b.y1, b.y2, target_y, b.im_height,n=n)
+    start_x, end_x = random_seg_start(b.x1, b.x2, target_x, b.im_width, off_center_range=off_center_range, n=n)
+    start_y, end_y = random_seg_start(b.y1, b.y2, target_y, b.im_height, off_center_range=off_center_range, n=n)
     
     assert (start_x <= b.x1).all()
     assert (end_x >= b.x2).all()
     
     return pd.DataFrame({'x1':start_x, 'x2': end_x, 'y1':start_y, 'y2':end_y})
 
-def randomly_extended_crop(im, box):
-    rbs = random_container_box(box, n=1)
+def randomly_extended_crop(im, box, scale_range, aspect_ratio_range, off_center_range, clearance, n):
+    rbs = random_container_box(box, scale_range, aspect_ratio_range, off_center_range, clearance, n=n)
+    crs = []
     for cb in rbs.itertuples():
         cr = im.crop((cb.x1, cb.y1, cb.x2, cb.y2))
+        crs.append(cr)
     return cr
+
 
 def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
@@ -122,7 +150,10 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
 
     ev, class_idxs = get_class_ev(ev0, category, boxes=True)
     dfds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
-    ds = TxDataset(dfds, tx=lambda tup : resize_to_grid(224)(im=None, boxes=tup)[1])
+    
+    rsz = resize_to_grid(224)
+    ds = TxDataset(dfds, tx=lambda tup : rsz(im=None, boxes=tup)[1])
+    imds = TxDataset(ev.image_dataset, tx = lambda im : rsz(im=im, boxes=None)[0])
 
     if granularity == 'fine':
         vec_meta = ev.fine_grained_meta
@@ -181,6 +212,7 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
         tvec = None
 
     tmode = init_mode
+    pos_vecs = []
 
     for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
         idxbatch = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
@@ -207,11 +239,22 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
                 pos = pr.BitMap.union(*acc_pos)
                 neg = pr.BitMap.union(*acc_neg)
                 # print('pos, neg', len(pos), len(neg))
+
+                for idx in idxbatch:
+                    boxes = ds[idx]
+                    if boxes.shape[0] == 0:
+                        continue
+                    im = imds[idx]
+                    for b in boxes.iteritems():
+                        cr = randomly_extended_crop(im, b, scale_range=1., aspect_ratio_range=1., off_center_range=0., clearance=1.5, n=1)
+
+                        ev.embedding.from_image(image=cr)
+
                 Xt = np.concatenate([vecs[pos], vecs[neg]])
                 yt = np.concatenate([np.ones(len(pos)), np.zeros(len(neg))])
                 ## TODO: run extractor on augmented boxes
                 ## TODO: run it on nicely centered boxes to make sure
-                
+
 
                 if np.concatenate(acc_results).sum() > 0:
                     assert len(pos) > 0
