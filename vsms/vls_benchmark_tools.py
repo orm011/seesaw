@@ -62,19 +62,29 @@ def readjust_interval(x1, x2, max_x):
 
 def random_seg_start(x1, x2, target_x, max_x, off_center_range, n=1):
     dist = x2 - x1
-    assert (dist <= target_x).all()
-    gap = (target_x - dist)
-    start_offset = .5 + (np.random.rand(n) - .5)*off_center_range
-    assert (start_offset >= 0.).all()
-    assert (start_offset <= 1.).all()
-    assert (abs(start_offset - .5) <= off_center_range).all()
-    start = x1 - start_offset*gap
+    # assert (dist <= target_x).all(), dont enforce containment
+    center = (x2 + x1)/2
+
+    rel_offset = (np.random.rand(n) - .5)*off_center_range
+
+    ## perturb offset a bit. but do keep center within crop
+    if (dist < target_x).all():
+        offset = rel_offset * (target_x - dist) * .5
+    else:
+        assert (dist >= target_x).all() # figure out what to do when some are and some arent.
+        offset = rel_offset * target_x * .5
+    
+    start = center - target_x*.5
+    start = start + offset
     end = start + target_x
-    start, end = readjust_interval(start,end,max_x)
+    start, end = readjust_interval(start, end, max_x)
+    assert np.isclose(end - start, target_x).all()
+    assert (start <= center).all()
+    assert (center <= end).all()
     return start, end
 
 def add_clearance(x1,x2,max_x, clearance_ratio):
-    cx = (x1 + x2)/2
+    cx = (x1 + x2)*.5
     dx = x2 - x1
     diff = dx*clearance_ratio*.5
     return readjust_interval(cx - diff, cx + diff, max_x)
@@ -90,14 +100,12 @@ def random_container_box(b, scale_range=3.3, aspect_ratio_range=1.2, off_center_
     bw = b.x2 - b.x1
     bh = b.y2 - b.y1
     max_d = max(bw,bh)
-    sc1 = b.im_height/max_d
-    sc2 = b.im_width/max_d
+    max_len = min(b.im_height, b.im_width)
+    img_scale = max_len/max_d
 
-    min_scale = min(sc1, sc2, clearance)
-    clearance = min(min_scale, clearance)
-
-    max_scale = min(sc1, sc2, scale_range*clearance) # don't do more than 3x
-    max_scale = max(min_scale, max_scale)
+    min_scale = min(img_scale, clearance)
+    max_scale = min(img_scale, scale_range*clearance) # don't do more than 3x
+    assert img_scale >= max_scale >= min_scale
 
     scale = np.exp(np.random.rand(n)*np.log(max_scale/min_scale))*min_scale
     # assert (scale >= clearance).all()
@@ -105,24 +113,32 @@ def random_container_box(b, scale_range=3.3, aspect_ratio_range=1.2, off_center_
 
     target_x = scale*max_d
     target_y = target_x
-    assert (bw <= target_x).all()
-    assert (bh <= target_y).all()
+    assert ((bw <= target_x) | (target_x == max_len)).all()
+    assert ((bh <= target_y) | (target_y == max_len)).all()
     
-    lratio = 2*(np.random.rand(n) - .5)*np.log(aspect_ratio_range)
-    ratio = np.exp(lratio/2)
+    if False:
+        lratio = 2*(np.random.rand(n) - .5)*np.log(aspect_ratio_range)
+        ratio = np.exp(lratio/2)
 
-    upper = math.sqrt(aspect_ratio_range)
-    assert (ratio <= upper).all()
-    assert (ratio >= 1/upper).all()
-        
+        upper = math.sqrt(aspect_ratio_range)
+        assert (ratio <= upper).all()
+        assert (ratio >= 1/upper).all()
+
+        ## TODO: after adjusting the box, it is possible that we violate prevously valid constraints wrt. 
+        ## the object box or wrt the containing image. The ratio limits need to be bound based on these constraints
+        ## before applying randomness
+    else:
+        ratio = 1.
+
+
     target_y = target_y*ratio
     target_x = target_x/ratio #np.ones_like(ratio)
     start_x, end_x = random_seg_start(b.x1, b.x2, target_x, b.im_width, off_center_range=off_center_range, n=n)
     start_y, end_y = random_seg_start(b.y1, b.y2, target_y, b.im_height, off_center_range=off_center_range, n=n)
     
-    assert (start_x <= b.x1).all()
-    assert (end_x >= b.x2).all()
-    
+    assert ((bw > target_x) | (start_x <= b.x1)).all()
+    assert ((bw > target_x) | (end_x >= b.x2)).all()
+
     return pd.DataFrame({'x1':start_x, 'x2': end_x, 'y1':start_y, 'y2':end_y})
 
 def randomly_extended_crop(im, box, scale_range, aspect_ratio_range, off_center_range, clearance, n):
@@ -131,7 +147,7 @@ def randomly_extended_crop(im, box, scale_range, aspect_ratio_range, off_center_
     for cb in rbs.itertuples():
         cr = im.crop((cb.x1, cb.y1, cb.x2, cb.y2))
         crs.append(cr)
-    return cr
+    return crs
 
 
 def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
@@ -143,6 +159,8 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
     assert isinstance(granularity, str)
     # gvec = ev.fine_grained_embedding
     # gvec_meta = ev.fine_grained_meta
+    min_box_size = 60 # in pixels. fov is 224 min. TODO: ground truth should ignore these.
+    augment_n = 7 # number of random augments 
     ev0 = ev
     frame = inspect.currentframe()
     args, _, _, values = inspect.getargvalues(frame)
@@ -214,6 +232,12 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
     tmode = init_mode
     pos_vecs = []
 
+    clip_tx = T.Compose([
+                    T.ToTensor(), 
+                    T.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+                    #lambda x : x.type(torch.float16)
+                    ])
+
     for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
         idxbatch = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
         acc_indices.append(idxbatch)
@@ -222,39 +246,43 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
         if interactive != 'plain':
             if granularity in ['fine', 'multi']:
                 batchpos, batchneg = get_pos_negs_all_v2(idxbatch, ds, vec_meta)
-                ### here, get all boxes. extract features. use those as positive vecs. (noindex)
-                ## where are the boxes?
-                # copy_locals('loopvars')#breakpoint()
-                # breakpoint()
-                # batchpos = np.array(batchpos)
-                # batchneg = np.array(batchneg)
-
-                # vm1 = vec_meta.iloc[batchpos].zoom_level == 0
-                # vm2 = vec_meta.iloc[batchneg].zoom_level == 0
-                # batchpos = pr.BitMap(batchpos[vm1.values])
-                # batchneg = pr.BitMap(batchneg[vm2.values]) # vec_meta.iloc[batchpos].zoom_level == 0]
+                ## we are currently ignoring these positives
                 acc_pos.append(batchpos)
                 acc_neg.append(batchneg)
 
                 pos = pr.BitMap.union(*acc_pos)
                 neg = pr.BitMap.union(*acc_neg)
-                # print('pos, neg', len(pos), len(neg))
 
                 for idx in idxbatch:
                     boxes = ds[idx]
+                    widths = (boxes.x2 - boxes.x1)
+                    heights = (boxes.y2 - boxes.y1)
+                    boxes = boxes[(widths >= min_box_size) & (heights >= min_box_size)]
+
                     if boxes.shape[0] == 0:
                         continue
+                    # only read image if there is something
                     im = imds[idx]
-                    for b in boxes.iteritems():
-                        cr = randomly_extended_crop(im, b, scale_range=1., aspect_ratio_range=1., off_center_range=0., clearance=1.5, n=1)
 
-                        ev.embedding.from_image(image=cr)
+                    for b in boxes.itertuples():
+                        if augment_n > 1:
+                            crs = randomly_extended_crop(im, b, scale_range=3., aspect_ratio_range=1., off_center_range=1., 
+                                    clearance=1.3, n=augment_n)
+                        else:
+                            crs = randomly_extended_crop(im, b, scale_range=1., aspect_ratio_range=1., off_center_range=0., 
+                                    clearance=1.5, n=augment_n)
 
-                Xt = np.concatenate([vecs[pos], vecs[neg]])
-                yt = np.concatenate([np.ones(len(pos)), np.zeros(len(neg))])
-                ## TODO: run extractor on augmented boxes
-                ## TODO: run it on nicely centered boxes to make sure
+                        for cr in crs:
+                            if augment_n > 1:
+                                cr = T.RandomHorizontalFlip()(cr)
 
+                            cr = cr.resize((224,224), resample=3)
+                            vec = ev.embedding.from_image(preprocessed_image=clip_tx(cr))
+                            pos_vecs.append(vec)
+
+                allpos = np.concatenate(pos_vecs) if len(pos_vecs) > 0 else np.zeros((0,512))
+                Xt = np.concatenate([allpos, vecs[neg]])
+                yt = np.concatenate([np.ones(len(allpos)), np.zeros(len(neg))])
 
                 if np.concatenate(acc_results).sum() > 0:
                     assert len(pos) > 0
