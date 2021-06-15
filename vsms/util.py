@@ -1,6 +1,6 @@
 import inspect
 
-def copy_locals():
+def copy_locals(dest_name : str = None):
     '''
         copies all local variables from this context into the jupyter top level, eg, for easier 
         debugging of data and for prototyping new code that is eventually meant to run within this context.
@@ -20,5 +20,9 @@ def copy_locals():
         print('is this being called from within a jupyter notebook?')
         return
     
-    print('copying variables to <module> globals...', list(local_dict.keys()))
-    notebook_caller.frame.f_globals.update(local_dict)
+    if dest_name is None:
+        print('copying variables to <module> globals...', list(local_dict.keys()))
+        notebook_caller.frame.f_globals.update(local_dict)
+    else:
+        print('copying variables to <module> variable {}'.format(dest_name)) #list(local_dict.keys()))
+        notebook_caller.frame.f_globals[dest_name] = local_dict

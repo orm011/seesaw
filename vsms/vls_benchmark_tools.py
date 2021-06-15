@@ -46,6 +46,65 @@ def make_labeler(fmt_func):
         return list(map(fmt_func, arrlike))
     return fun
 
+import numpy as np
+
+def readjust_interval(x1, x2, max_x):
+    left_excess = -np.clip(x1,-np.inf,0)
+    right_excess = np.clip(x2 - max_x, 0,np.inf)
+
+    x1p = x1 + left_excess - right_excess
+    x2p = x2 + left_excess - right_excess
+    
+    assert ((x2p - x1p) == (x2 - x1)).all()
+    assert (x1p >= 0).all()
+    assert (x2p <= max_x).all()
+    return x1p, x2p
+
+def random_seg_start(x1, x2, target_x, max_x, n=1):
+    dist = x2 - x1
+    assert (dist <= target_x).all()
+    start_offset = np.random.rand(n)*(target_x - dist)
+    start = x1 - start_offset 
+    end = start + target_x
+    start, end = readjust_interval(start,end,max_x)
+    return start, end
+
+def random_container_box(b, n=1):
+    bw = b.x2 - b.x1
+    bh = b.y2 - b.y1
+    max_d = max(bw,bh)
+    
+    sc1 = b.im_height/bh
+    sc2 = b.im_width/bw
+    max_scale = min(sc1, sc2, 3.3) # don't do more than 3x
+    scale = np.exp(np.random.rand(n)*np.log(max_scale))
+    assert (scale >= 1.).all()
+    target_x = scale*max_d
+    target_y = target_x
+    assert (bw < target_x).all()
+    assert (bh < target_y).all()
+    
+    lratio = 2*(np.random.rand(n) - .5)*np.log(1.2)
+    ratio = np.exp(lratio/2)
+    assert (ratio <= 1.2).all()
+    assert (ratio >= 1/1.2).all()
+        
+    target_y = target_y*ratio
+    target_x = target_x/ratio #np.ones_like(ratio)
+        
+    start_x, end_x = random_seg_start(b.x1, b.x2, target_x, b.im_width, n=n)
+    start_y, end_y = random_seg_start(b.y1, b.y2, target_y, b.im_height,n=n)
+    
+    assert (start_x <= b.x1).all()
+    assert (end_x >= b.x2).all()
+    
+    return pd.DataFrame({'x1':start_x, 'x2': end_x, 'y1':start_y, 'y2':end_y})
+
+def randomly_extended_crop(im, box):
+    rbs = random_container_box(box, n=1)
+    for cb in rbs.itertuples():
+        cr = im.crop((cb.x1, cb.y1, cb.x2, cb.y2))
+    return cr
 
 def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
@@ -133,7 +192,7 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
                 batchpos, batchneg = get_pos_negs_all_v2(idxbatch, ds, vec_meta)
                 ### here, get all boxes. extract features. use those as positive vecs. (noindex)
                 ## where are the boxes?
-                # copy_locals()#breakpoint()
+                # copy_locals('loopvars')#breakpoint()
                 # breakpoint()
                 # batchpos = np.array(batchpos)
                 # batchneg = np.array(batchneg)
@@ -150,6 +209,9 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
                 # print('pos, neg', len(pos), len(neg))
                 Xt = np.concatenate([vecs[pos], vecs[neg]])
                 yt = np.concatenate([np.ones(len(pos)), np.zeros(len(neg))])
+                ## TODO: run extractor on augmented boxes
+                ## TODO: run it on nicely centered boxes to make sure
+                
 
                 if np.concatenate(acc_results).sum() > 0:
                     assert len(pos) > 0
