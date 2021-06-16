@@ -51,9 +51,20 @@ def normalize(vecs):
     norms = np.linalg.norm(vecs, axis=1)[:,np.newaxis]
     return vecs/(norms + 1e-6)
 
+
+def get_qgt(box_data, min_box_size):
+    box_data = box_data.assign(width=box_data.x2 - box_data.x1, height = box_data.y2 - box_data.y1)
+    box_data = box_data[(box_data.width >= min_box_size) & (box_data.height >= min_box_size)]
+    frame_gt = box_data.groupby(['dbidx', 'category']).size().unstack(-1)
+    frame_gt = frame_gt.fillna(0).clip(0,1)
+    return frame_gt
+
 def make_evdataset(*, root, paths, embedded_dataset, query_ground_truth, box_data, embedding, 
-                fine_grained_embedding=None, fine_grained_meta=None):
-    query_ground_truth = query_ground_truth.clip(0.,1.)
+                fine_grained_embedding=None, fine_grained_meta=None, min_box_size=0.):
+
+    query_ground_truth = make_qgt(box_data, min_box_size) # boxes are still there 
+    # for use by algorithms but not used for accuracy metrics
+    #query_ground_truth = query_ground_truth.clip(0.,1.)
     root = os.path.abspath(root)
     embedded_dataset = normalize(embedded_dataset.astype('float32'))
 
@@ -143,11 +154,11 @@ def bdd_full(embedding : XEmbedding):
     qgt = pd.read_parquet('./data/bdd_boxes_all_qgt_classes_qgt.parquet')
 
     fgmeta = pd.read_parquet('./data/bdd_multiscale_meta_all.parquet')
-    fge = np.load('./data/bdd_multiscale_vecs_all.npy')
+    fge = np.load('./data/bdd_multiscale_vecs_all.npy', mmap_mode='r')
     if False:
         fgmeta = pd.read_parquet('./data/bdd_20k_finegrained_acc_meta.parquet')
         fge = np.load('./data/bdd_20k_finegrained_acc.npy')
-    embedded_dataset = np.load('./data/bdd_all_valid_feats_CLIP.npy')
+    embedded_dataset = np.load('./data/bdd_all_valid_feats_CLIP.npy', mmap_mode='r')
     ev1 = make_evdataset(root=image_root, paths=paths, 
                          embedded_dataset=embedded_dataset,
                          query_ground_truth=qgt,

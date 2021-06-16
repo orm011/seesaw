@@ -214,11 +214,6 @@ def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
         max_ious = np.max(ious, axis=1)
         
         pos_idxs = pr.BitMap(max_ious_id[max_ious > 0])
-        
-        
-#         breakpoint()
-#         #max_ious_id[valmax > 0]        
-#         positives = total_iou > .2 # eg. two granularities one within the other give you .25.
         posvec_positions = acc_vecs.index[pos_idxs].values
         pos.append(posvec_positions)
         neg.append(negvec_positions)
@@ -226,33 +221,6 @@ def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
     posidxs = pr.BitMap(np.concatenate(pos))
     negidxs = pr.BitMap(np.concatenate(neg))
     return posidxs, negidxs
-
-# def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
-#     idxs = pr.BitMap(dbidxs)
-#     relvecs = vec_meta[vec_meta.dbidx.isin(idxs)]
-    
-#     pos = []
-#     neg = []
-#     for idx in dbidxs:
-#         acc_vecs = relvecs[relvecs.dbidx == idx]
-#         acc_boxes = get_boxes(acc_vecs)
-#         label_boxes = ds[idx]
-#         ious = box_iou(label_boxes, acc_boxes)
-#         total_iou = ious.sum(axis=0) 
-#         negatives = total_iou == 0
-#         negvec_positions = acc_vecs.index[negatives].values
-
-#         # get the highest iou positives for each 
-
-#         positives = total_iou > .2 # eg. two granularities one within the other give you .25.
-#         posvec_positions = acc_vecs.index[positives].values
-        
-#         pos.append(posvec_positions)
-#         neg.append(negvec_positions)
-        
-#     posidxs = pr.BitMap(np.concatenate(pos))
-#     negidxs = pr.BitMap(np.concatenate(neg))
-#     return posidxs, negidxs
 
 
 class AugmentedDB(object):
@@ -337,3 +305,118 @@ class AugmentedDB(object):
         agg = final.groupby('dbidx').aug_score.max().reset_index().sort_values('aug_score', ascending=False)
         idxs = agg.dbidx.iloc[:topk]
         return idxs
+
+import math
+import annoy
+from annoy import AnnoyIndex
+class IndexedDB(object):
+    """Structure holding a dataset,
+     together with precomputed embeddings
+     and (optionally) data structure
+    """
+    def __init__(self, raw_dataset : torch.utils.data.Dataset,
+                 embedding : XEmbedding,
+                 embedded_dataset : np.ndarray,
+                 vector_meta : pd.DataFrame, 
+                 index_path : str):
+        self.raw = raw_dataset
+        self.embedding = embedding
+        self.embedded = embedded_dataset
+        self.vector_meta = vector_meta.assign(**get_boxes(vector_meta))
+        self.vec_index = AnnoyIndex(512, 'dot')
+        self.vec_index.load(index_path)
+
+        all_indices = pr.BitMap()
+        assert len(self.raw) == vector_meta.dbidx.unique().shape[0]
+        assert embedded_dataset.shape[0] == vector_meta.shape[0]
+        all_indices.add_range(0, len(self.raw))
+        self.all_indices = pr.FrozenBitMap(all_indices)
+        
+        #norms = np.linalg.norm(embedded_dataset, axis=1)[:,np.newaxis]
+        # if not np.isclose(norms,0).all():
+        #     print('warning: embeddings are not normalized?', norms.max())
+    
+    def __len__(self):
+        return len(self.raw)
+
+    def _query_prelim(self, *, vector, topk,  zoom_level, exclude=None):
+        if exclude is None:
+            exclude = pr.BitMap([])
+
+        included_dbidx = pr.BitMap(self.all_indices).difference(exclude)
+        vec_meta = self.vector_meta
+        
+        if len(included_dbidx) == 0:
+            return np.array([])
+
+        if len(included_dbidx) <= topk:
+            topk = len(included_dbidx)
+            
+        ## want to return proposals only for images we have not seen yet...
+        ## but library does not allow this...
+        ## guess how much we need... and check
+        
+        def get_nns_by_vector():
+            i = 0
+            try_n = (len(exclude) + topk)*10
+            while True:
+                if i > 1:
+                    print('warning, we are looping too much. adjust initial params?')
+
+                search_k = int(np.clip(try_n * 100, 50000, 500000)) 
+                # search_k is a very important param for accuracy do not reduce below 30k unless you have a 
+                # really good reason. the upper limit is 
+                idxs, scores = self.vec_index.get_nns_by_vector(vector.reshape(-1), n=try_n, 
+                                                                search_k=search_k,
+                                                                include_distances=True)
+
+                found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
+                if len(found_idxs.difference(exclude)) >= topk:
+                    break
+                
+                try_n = try_n*2
+                i+=1
+
+            return np.array(idxs).astype('int'), np.array(scores)
+            
+
+        idxs, scores = get_nns_by_vector()
+        topscores = vec_meta.iloc[idxs]
+        topscores = topscores.assign(score=scores)
+        topscores = topscores[~topscores.dbidx.isin(exclude)]
+        bydbidx = topscores.groupby('dbidx').score.max()
+        bydbidx = bydbidx.sort_values(ascending=False)
+        candidates = pr.BitMap(bydbidx.index.values[:topk])
+        topscores = topscores[topscores.dbidx.isin(candidates)]
+        assert topscores.dbidx.unique().shape[0] == topk
+        assert candidates.intersection_cardinality(exclude) == 0
+        return topscores, candidates
+        
+    def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1):
+        if shortlist_size is None:
+            shortlist_size = topk*5
+        
+        db = self
+        qvec=vector
+        scmeta, candidate_id = self._query_prelim(vector=qvec, topk=shortlist_size, zoom_level=None, exclude=exclude)
+
+        nframes = len(candidate_id)
+        dbidxs = np.zeros(nframes)*-1
+        dbscores = np.zeros(nframes)
+        for i,(dbidx,gp) in enumerate(scmeta.groupby('dbidx')):
+            dbidxs[i] = dbidx
+            relmeta = db.vector_meta[db.vector_meta.dbidx == dbidx]
+            relvecs = db.embedded[relmeta.index.values]
+            frame_scs = np.zeros(gp.shape[0])
+            for i in range(len(frame_scs)):
+                tup = gp.iloc[i:i+1]
+                frame_scs[i] = augment_score2(db, tup, qvec, relmeta, relvecs, rw_coarse=rel_weight_coarse)
+
+            dbscores[i] = np.max(frame_scs)
+
+        # final = scmeta.assign(aug_score=np.array(scs))
+        # agg = final.groupby('dbidx').aug_score.max().reset_index().sort_values('aug_score', ascending=False)
+        topkidx = np.argsort(-dbscores)[:topk]
+        return dbidxs[topkidx].astype('int')
+        # idxs = agg.dbidx.iloc[:topk]
+        # return idxs

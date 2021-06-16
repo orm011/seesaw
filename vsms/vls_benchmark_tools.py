@@ -159,8 +159,7 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
     assert isinstance(granularity, str)
     # gvec = ev.fine_grained_embedding
     # gvec_meta = ev.fine_grained_meta
-    min_box_size = 60 # in pixels. fov is 224 min. TODO: ground truth should ignore these.
-    augment_n = 7 # number of random augments 
+    # min_box_size = 60 # in pixels. fov is 224 min. TODO: ground truth should ignore these.
     ev0 = ev
     frame = inspect.currentframe()
     args, _, _, values = inspect.getargvalues(frame)

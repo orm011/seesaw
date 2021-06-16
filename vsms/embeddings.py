@@ -465,14 +465,34 @@ class CLIPWrapper(XEmbedding):
             elif preprocessed_image is not None:
                 tensor = preprocessed_image
 
-
-            tensor = tensor.unsqueeze(0).to(self.device)
+            if len(tensor.shape) == 3:
+                tensor = tensor.unsqueeze(0)
+                
+            tensor = tensor.to(self.device)
+            
             with torch.no_grad():
-                if pooled:
+                if pooled == True:
                     image_features = self.pooled_model.eval()(tensor)
                     return image_features.cpu().numpy().reshape(1,-1)
-                else:
+                elif pooled == False:
                     image_features = self.visual_model.eval()(tensor)
+                    return image_features.cpu().numpy()
+                elif pooled == 'bypass':
+                    # tensor is assumed N x 3 x 224 x 224 
+                    image_features = self.base_model.visual.eval()(tensor)
                     return image_features.cpu().numpy()
 
 
+import ray
+class ModelService(XEmbedding):
+    def __init__(self, model_ref):
+        self.model_ref = model_ref
+
+    def from_string(self, *args, **kwargs):
+        return ray.get(self.model_ref.from_string.remote(*args, **kwargs))
+
+    def from_image(self, *args, **kwargs):
+        return ray.get(self.model_ref.from_image.remote(*args, **kwargs))
+
+    def from_raw(self, *args,  **kwargs):
+        return ray.get(self.model_ref.from_raw.remote(*args, **kwargs))
