@@ -52,12 +52,16 @@ def readjust_interval(x1, x2, max_x):
     left_excess = -np.clip(x1,-np.inf,0)
     right_excess = np.clip(x2 - max_x, 0,np.inf)
 
-    x1p = x1 + left_excess - right_excess
-    x2p = x2 + left_excess - right_excess
-    
-    assert ((x2p - x1p) == (x2 - x1)).all()
-    assert (x1p >= 0).all()
-    assert (x2p <= max_x).all()
+    offset = left_excess - right_excess
+
+    x1p = x1 + offset
+    x2p = x2 + offset
+    x1p = np.clip(x1p,0,max_x) # trim any approx error
+    x2p = np.clip(x2p,0,max_x) # same
+
+    assert np.isclose(x2p - x1p, x2 - x1).all()
+    assert (x1p >= 0).all(), x1p
+    assert (x2p <= max_x).all(), x2p
     return x1p, x2p
 
 def random_seg_start(x1, x2, target_x, max_x, off_center_range, n=1):
@@ -149,17 +153,43 @@ def randomly_extended_crop(im, box, scale_range, aspect_ratio_range, off_center_
         crs.append(cr)
     return crs
 
+def process_crops(crs, tx, embedding):
+    if len(crs) == 0:
+        return np.zeros((0,512))
+
+    tensors = []
+    for cr in crs:
+        cr = cr.resize((224,224), resample=3)
+        ts = tx(cr)
+        tensors.append(ts)
+
+    allts = torch.stack(tensors)
+
+    emvecs = []
+    bs = 20
+    for i in range(0,len(allts), bs):
+        batch = allts[i:i+bs]
+        embs = embedding.from_image(preprocessed_image=batch, pooled='bypass')
+        emvecs.append(embs)
+
+    embs = np.concatenate(emvecs)
+    return embs
+
 
 def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
               tqdm_disabled:bool, granularity:str,
+               positive_vector_type, n_augment,
                model_type='logistic', solver_opts={}, 
                **kwargs):         
     assert 'fine_grained' not in kwargs
     assert isinstance(granularity, str)
+    assert positive_vector_type in ['image_only', 'image_and_vec', 'vec_only', None]
     # gvec = ev.fine_grained_embedding
     # gvec_meta = ev.fine_grained_meta
     # min_box_size = 60 # in pixels. fov is 224 min. TODO: ground truth should ignore these.
+    min_box_size = 10
+    augment_n = n_augment # number of random augments 
     ev0 = ev
     frame = inspect.currentframe()
     args, _, _, values = inspect.getargvalues(frame)
@@ -190,9 +220,9 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
         # vecs_coarse = ev.embedded_dataset
         # vec_meta = pd.concat([vec_meta_fine, vec_meta_coarse], ignore_index=True)
         # vecs = np.concatenate([vecs_fine, vecs_coarse])
-
-        hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-            embedded_dataset=vecs, vector_meta=vec_meta)
+        index_path = './data/bdd_10k_allgrains_index.ann'
+        hdb = IndexedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
+            embedded_dataset=vecs, vector_meta=vec_meta, index_path=index_path)
 
     elif granularity == 'coarse':
         dbidxs = np.arange(len(ev)).astype('int')
@@ -219,6 +249,7 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
     acc_results = []
     acc_ranks = []
     total = 0
+    acc_vecs = [np.zeros((0,512))]
             
     gt = ev.query_ground_truth[category].values
     res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
@@ -229,12 +260,10 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
         tvec = None
 
     tmode = init_mode
-    pos_vecs = []
-
     clip_tx = T.Compose([
                     T.ToTensor(), 
                     T.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-                    #lambda x : x.type(torch.float16)
+                    lambda x : x.type(torch.float16)
                     ])
 
     for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
@@ -252,34 +281,44 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
                 pos = pr.BitMap.union(*acc_pos)
                 neg = pr.BitMap.union(*acc_neg)
 
-                for idx in idxbatch:
-                    boxes = ds[idx]
-                    widths = (boxes.x2 - boxes.x1)
-                    heights = (boxes.y2 - boxes.y1)
-                    boxes = boxes[(widths >= min_box_size) & (heights >= min_box_size)]
+                if positive_vector_type in ['image_only', 'image_and_vec']:
+                    crs = []
+                    for idx in idxbatch:
+                        boxes = ds[idx]
+                        widths = (boxes.x2 - boxes.x1)
+                        heights = (boxes.y2 - boxes.y1)
+                        boxes = boxes[(widths >= min_box_size) & (heights >= min_box_size)]
 
-                    if boxes.shape[0] == 0:
-                        continue
-                    # only read image if there is something
-                    im = imds[idx]
+                        if boxes.shape[0] == 0:
+                            continue
+                        # only read image if there is something
+                        im = imds[idx]
 
-                    for b in boxes.itertuples():
-                        if augment_n > 1:
-                            crs = randomly_extended_crop(im, b, scale_range=3., aspect_ratio_range=1., off_center_range=1., 
-                                    clearance=1.3, n=augment_n)
-                        else:
-                            crs = randomly_extended_crop(im, b, scale_range=1., aspect_ratio_range=1., off_center_range=0., 
-                                    clearance=1.5, n=augment_n)
-
-                        for cr in crs:
+                        for b in boxes.itertuples():
                             if augment_n > 1:
-                                cr = T.RandomHorizontalFlip()(cr)
+                                pcrs = randomly_extended_crop(im, b, scale_range=3., aspect_ratio_range=1., off_center_range=1., 
+                                        clearance=1.3, n=augment_n)
+                                for cr in pcrs:
+                                    cr = T.RandomHorizontalFlip()(cr)
+                                    crs.append(cr)
+                            else:
+                                pcrs = randomly_extended_crop(im, b, scale_range=1., aspect_ratio_range=1., off_center_range=0., 
+                                        clearance=1.5, n=1)
 
-                            cr = cr.resize((224,224), resample=3)
-                            vec = ev.embedding.from_image(preprocessed_image=clip_tx(cr))
-                            pos_vecs.append(vec)
+                                for cr in pcrs:
+                                    crs.append(cr)
+                
+                    tmp = process_crops(crs, clip_tx, ev.embedding)
+                    acc_vecs.append(tmp)
+                    impos = np.concatenate(acc_vecs)
 
-                allpos = np.concatenate(pos_vecs) if len(pos_vecs) > 0 else np.zeros((0,512))
+                if positive_vector_type == 'image_only':
+                    allpos = impos  
+                if positive_vector_type == 'vec_only':
+                    allpos = vecs[pos]
+                elif positive_vector_type == 'image_and_vec':
+                    allpos = np.concatenate([impos, vecs[pos]])
+
                 Xt = np.concatenate([allpos, vecs[neg]])
                 yt = np.concatenate([np.ones(len(allpos)), np.zeros(len(neg))])
 
