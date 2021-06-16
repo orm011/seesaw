@@ -356,7 +356,7 @@ class IndexedDB(object):
         ## but library does not allow this...
         ## guess how much we need... and check
         
-        def get_nns_by_vector():
+        def get_nns_by_vector_approx():
             i = 0
             try_n = (len(exclude) + topk)*10
             while True:
@@ -378,9 +378,14 @@ class IndexedDB(object):
                 i+=1
 
             return np.array(idxs).astype('int'), np.array(scores)
-            
 
-        idxs, scores = get_nns_by_vector()
+        def get_nns_by_vector_exact():
+            scores = self.embedded @ vector.reshape(-1)
+            scorepos = np.argsort(-scores)
+            return scorepos, scores[scorepos]
+
+
+        idxs, scores = get_nns_by_vector_approx()
         topscores = vec_meta.iloc[idxs]
         topscores = topscores.assign(score=scores)
         topscores = topscores[~topscores.dbidx.isin(exclude)]
@@ -407,12 +412,12 @@ class IndexedDB(object):
             dbidxs[i] = dbidx
             relmeta = db.vector_meta[db.vector_meta.dbidx == dbidx]
             relvecs = db.embedded[relmeta.index.values]
-            frame_scs = np.zeros(gp.shape[0])
-            for i in range(len(frame_scs)):
-                tup = gp.iloc[i:i+1]
-                frame_scs[i] = augment_score2(db, tup, qvec, relmeta, relvecs, rw_coarse=rel_weight_coarse)
+            boxscs = np.zeros(gp.shape[0])
+            for j in range(gp.shape[0]):
+                tup = gp.iloc[j:j+1]
+                boxscs[j] = augment_score2(db, tup, qvec, relmeta, relvecs, rw_coarse=rel_weight_coarse)
 
-            dbscores[i] = np.max(frame_scs)
+            dbscores[i] = np.max(boxscs)
 
         # final = scmeta.assign(aug_score=np.array(scs))
         # agg = final.groupby('dbidx').aug_score.max().reset_index().sort_values('aug_score', ascending=False)
