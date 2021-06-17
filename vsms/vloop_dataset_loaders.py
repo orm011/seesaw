@@ -62,7 +62,7 @@ def get_qgt(box_data, min_box_size):
 def make_evdataset(*, root, paths, embedded_dataset, query_ground_truth, box_data, embedding, 
                 fine_grained_embedding=None, fine_grained_meta=None, min_box_size=0.):
 
-    query_ground_truth = make_qgt(box_data, min_box_size) # boxes are still there 
+    query_ground_truth = get_qgt(box_data, min_box_size) # boxes are still there 
     # for use by algorithms but not used for accuracy metrics
     #query_ground_truth = query_ground_truth.clip(0.,1.)
     root = os.path.abspath(root)

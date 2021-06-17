@@ -160,7 +160,7 @@ def augment_score2(db,tup,qvec,vec_meta,vecs, rw_coarse=1.):
     ious = box_iou(tup, vec_meta)
     vec_meta = vec_meta.assign(iou=ious.reshape(-1))
     max_boxes = vec_meta.groupby('zoom_level').iou.idxmax()
-    max_boxes = max_boxes.sort_index(ascending=True) # largest zoom level (zoomed out) goes last 
+    max_boxes = max_boxes.sort_index(ascending=True) # largest zoom level (zoomed out) goes last
     relevant_meta = vec_meta.iloc[max_boxes]
     relevant_iou = relevant_meta.iou > 0 #there should be at least some overlap for it to be relevant
     max_boxes = max_boxes[relevant_iou.values]
@@ -222,119 +222,35 @@ def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
     negidxs = pr.BitMap(np.concatenate(neg))
     return posidxs, negidxs
 
-
-class AugmentedDB(object):
-    """Structure holding a dataset,
-     together with precomputed embeddings
-     and (optionally) data structure
-    """
-    def __init__(self, raw_dataset : torch.utils.data.Dataset,
-                 embedding : XEmbedding,
-                 embedded_dataset : np.ndarray,
-                 vector_meta : pd.DataFrame):
-        self.raw = raw_dataset
-        self.embedding = embedding
-        self.embedded = embedded_dataset
-        self.vector_meta = vector_meta.assign(**get_boxes(vector_meta))
-
-        all_indices = pr.BitMap()
-        assert len(self.raw) == vector_meta.dbidx.unique().shape[0]
-        assert embedded_dataset.shape[0] == vector_meta.shape[0]
-        all_indices.add_range(0, len(self.raw))
-        self.all_indices = pr.FrozenBitMap(all_indices)
-        
-        #norms = np.linalg.norm(embedded_dataset, axis=1)[:,np.newaxis]
-        # if not np.isclose(norms,0).all():
-        #     print('warning: embeddings are not normalized?', norms.max())
-    
-    def __len__(self):
-        return len(self.raw)
-
-    def _query_prelim(self, *, vector, topk,  zoom_level, exclude=None):
-        if exclude is None:
-            exclude = pr.BitMap([])
-
-        included_dbidx = pr.BitMap(self.all_indices).difference(exclude)
-        vec_meta = self.vector_meta
-        vecs = self.embedded  # = restrict_fine_grained(self.vector_meta, self.embedded, included_dbidx)
-        
-        # breakpoint()
-        vec_meta = vec_meta.reset_index(drop=True)
-        vec_meta = vec_meta[(~vec_meta.dbidx.isin(exclude))]
-        if zoom_level is not None:
-            vec_meta = vec_meta[vec_meta.zoom_level == zoom_level]
-
-        vecs = vecs[vec_meta.index.values]
-
-        if len(included_dbidx) == 0:
-            return np.array([])
-
-        if len(included_dbidx) <= topk:
-            topk = len(included_dbidx)
-
-        scores = vecs @ vector.reshape(-1)
-        topscores = vec_meta.assign(score=scores).sort_values('score', ascending=False)
-        # return topk unique images.
-        seen_idx = set()
-        for i,idx in enumerate(topscores.dbidx.values):
-            seen_idx.add(idx)
-            if len(seen_idx) == topk:
-                break
-
-        topscores = topscores.iloc[:i]
-        assert topscores.dbidx.unique().shape[0] <= topk
-        return topscores
-        
-    def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1):
-        if shortlist_size is None:
-            shortlist_size = topk*5
-        
-        db = self
-        qvec=vector
-        scmeta = self._query_prelim(vector=qvec, topk=shortlist_size, zoom_level=None, exclude=exclude)
-
-        scs = []    
-        for i,tup in enumerate(scmeta.itertuples()):
-            relmeta = db.vector_meta[db.vector_meta.dbidx == tup.dbidx]
-            relvecs = db.embedded[relmeta.index.values]
-            tup = scmeta.iloc[i:i+1]
-            sc = augment_score2(db, tup, qvec, relmeta, relvecs, rw_coarse=rel_weight_coarse)
-            scs.append(sc)
-
-        final = scmeta.assign(aug_score=np.array(scs))
-        agg = final.groupby('dbidx').aug_score.max().reset_index().sort_values('aug_score', ascending=False)
-        idxs = agg.dbidx.iloc[:topk]
-        return idxs
-
 import math
 import annoy
 from annoy import AnnoyIndex
-class IndexedDB(object):
-    """Structure holding a dataset,
-     together with precomputed embeddings
-     and (optionally) data structure
+class AugmentedDB(object):
+    """implements a two stage lookup
     """
     def __init__(self, raw_dataset : torch.utils.data.Dataset,
                  embedding : XEmbedding,
                  embedded_dataset : np.ndarray,
                  vector_meta : pd.DataFrame, 
-                 index_path : str):
+                 index_path : str = None):
         self.raw = raw_dataset
         self.embedding = embedding
         self.embedded = embedded_dataset
-        self.vector_meta = vector_meta.assign(**get_boxes(vector_meta))
-        self.vec_index = AnnoyIndex(512, 'dot')
-        self.vec_index.load(index_path)
+        self.vector_meta = vector_meta
+
+        if index_path is not None:
+            self.vec_index = AnnoyIndex(512, 'dot')
+            self.vec_index.load(index_path)
+            assert self.vec_index.n_items() == len(self.embedded)
+        else:
+            self.vec_index = None
 
         all_indices = pr.BitMap()
         assert len(self.raw) == vector_meta.dbidx.unique().shape[0]
         assert embedded_dataset.shape[0] == vector_meta.shape[0]
         all_indices.add_range(0, len(self.raw))
         self.all_indices = pr.FrozenBitMap(all_indices)
-        
-        #norms = np.linalg.norm(embedded_dataset, axis=1)[:,np.newaxis]
-        # if not np.isclose(norms,0).all():
-        #     print('warning: embeddings are not normalized?', norms.max())
+
     
     def __len__(self):
         return len(self.raw)
@@ -384,18 +300,22 @@ class IndexedDB(object):
             scorepos = np.argsort(-scores)
             return scorepos, scores[scorepos]
 
+        if self.vec_index is not None:
+            idxs, scores = get_nns_by_vector_approx()
+        else:
+            idxs, scores = get_nns_by_vector_exact()
 
-        idxs, scores = get_nns_by_vector_approx()
-        topscores = vec_meta.iloc[idxs]
+        # work only with the two columns here bc dataframe can be large
+        topscores = vec_meta[['dbidx']].iloc[idxs]
         topscores = topscores.assign(score=scores)
         topscores = topscores[~topscores.dbidx.isin(exclude)]
-        bydbidx = topscores.groupby('dbidx').score.max()
-        bydbidx = bydbidx.sort_values(ascending=False)
-        candidates = pr.BitMap(bydbidx.index.values[:topk])
-        topscores = topscores[topscores.dbidx.isin(candidates)]
-        assert topscores.dbidx.unique().shape[0] == topk
+        scoresbydbidx = topscores.groupby('dbidx').score.max().sort_values(ascending=False)
+        score_cutoff = scoresbydbidx.iloc[topk-1] # kth largest score
+        topscores = topscores[topscores.score >=  score_cutoff]
+        candidates =  pr.BitMap(topscores.dbidx)
+        assert len(candidates) >= topk
         assert candidates.intersection_cardinality(exclude) == 0
-        return topscores, candidates
+        return topscores.index.values, candidates
         
     def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1):
         if shortlist_size is None:
@@ -403,18 +323,25 @@ class IndexedDB(object):
         
         db = self
         qvec=vector
-        scmeta, candidate_id = self._query_prelim(vector=qvec, topk=shortlist_size, zoom_level=None, exclude=exclude)
+        meta_idx, candidate_id = self._query_prelim(vector=qvec, topk=shortlist_size, zoom_level=None, exclude=exclude)
 
+        fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(candidate_id)]
+        fullmeta = fullmeta.assign(**get_boxes(fullmeta))
+
+        scmeta = self.vector_meta.iloc[meta_idx]
+        scmeta = scmeta.assign(**get_boxes(scmeta))
         nframes = len(candidate_id)
         dbidxs = np.zeros(nframes)*-1
         dbscores = np.zeros(nframes)
-        for i,(dbidx,gp) in enumerate(scmeta.groupby('dbidx')):
+
+        ## for each frame, compute augmented scores for each tile and record max
+        for i,(dbidx,frame_vec_meta) in enumerate(scmeta.groupby('dbidx')):
             dbidxs[i] = dbidx
-            relmeta = db.vector_meta[db.vector_meta.dbidx == dbidx]
+            relmeta = fullmeta[fullmeta.dbidx == dbidx] # get metadata for all boxes in frame.
             relvecs = db.embedded[relmeta.index.values]
-            boxscs = np.zeros(gp.shape[0])
-            for j in range(gp.shape[0]):
-                tup = gp.iloc[j:j+1]
+            boxscs = np.zeros(frame_vec_meta.shape[0])
+            for j in range(frame_vec_meta.shape[0]):
+                tup = frame_vec_meta.iloc[j:j+1]
                 boxscs[j] = augment_score2(db, tup, qvec, relmeta, relvecs, rw_coarse=rel_weight_coarse)
 
             dbscores[i] = np.max(boxscs)

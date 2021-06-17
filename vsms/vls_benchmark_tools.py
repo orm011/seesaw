@@ -211,17 +211,11 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
         hdb = FineEmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
             embedded_dataset=vecs, vector_meta=vec_meta)
     elif granularity == 'multi':
-        # assert False, 'not using this at the moment'
         vec_meta = ev.fine_grained_meta
         vecs = ev.fine_grained_embedding
-        # dbidxs = np.arange(len(ev)).astype('int')
-        # vec_meta_coarse = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
-        # vec_meta_coarse = vec_meta_coarse.assign(scale='coarse')
-        # vecs_coarse = ev.embedded_dataset
-        # vec_meta = pd.concat([vec_meta_fine, vec_meta_coarse], ignore_index=True)
-        # vecs = np.concatenate([vecs_fine, vecs_coarse])
-        index_path = './data/bdd_10k_allgrains_index.ann'
-        hdb = IndexedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
+        #index_path = './data/bdd_10k_allgrains_index.ann'
+        index_path = None
+        hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
             embedded_dataset=vecs, vector_meta=vec_meta, index_path=index_path)
 
     elif granularity == 'coarse':
@@ -268,7 +262,7 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
 
     for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
         idxbatch = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
-        acc_indices.append(idxbatch)
+        acc_indices.append(idxbatch.copy()) # trying to figure out leak
         acc_results.append(gt[idxbatch])
 
         if interactive != 'plain':
