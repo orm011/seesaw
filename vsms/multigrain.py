@@ -214,6 +214,9 @@ def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
         max_ious = np.max(ious, axis=1)
         
         pos_idxs = pr.BitMap(max_ious_id[max_ious > 0])
+        # if label_boxes.shape[0] > 0: # some boxes are size 0 bc. of some bug in the data, so don't assert here.
+        #     assert len(pos_idxs) > 0
+
         posvec_positions = acc_vecs.index[pos_idxs].values
         pos.append(posvec_positions)
         neg.append(negvec_positions)
@@ -225,6 +228,20 @@ def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
 import math
 import annoy
 from annoy import AnnoyIndex
+import random
+import os
+
+def build_index(vecs, file_name):
+    t = AnnoyIndex(512, 'dot') 
+    for i in range(len(vecs)):
+        t.add_item(i, vecs[i])
+    t.build(n_trees=100) # tested 100 on bdd, works well, could do more.
+    t.save(file_name)
+    u = AnnoyIndex(512, 'dot')
+    u.load(file_name) # verify can load.
+    return u
+
+
 class AugmentedDB(object):
     """implements a two stage lookup
     """

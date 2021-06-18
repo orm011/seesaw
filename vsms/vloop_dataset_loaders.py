@@ -51,6 +51,17 @@ def normalize(vecs):
     norms = np.linalg.norm(vecs, axis=1)[:,np.newaxis]
     return vecs/(norms + 1e-6)
 
+def load_vecs(path):
+    vecs = np.load(path)
+    check_vecs(vecs)
+    return vecs
+
+def check_vecs(vecs):
+    assert vecs.dtype == 'float32'
+    samp = np.random.permutation(len(vecs))[:1000] # don't run it on everything.
+    vecs = vecs[samp]
+    norms = np.linalg.norm(vecs, axis=-1)
+    assert np.isclose(norms, 1., atol=1e-5, rtol=1e-5).all(), (norms.min(), norms.max())
 
 def get_qgt(box_data, min_box_size):
     box_data = box_data.assign(width=box_data.x2 - box_data.x1, height = box_data.y2 - box_data.y1)
@@ -62,14 +73,18 @@ def get_qgt(box_data, min_box_size):
 def make_evdataset(*, root, paths, embedded_dataset, query_ground_truth, box_data, embedding, 
                 fine_grained_embedding=None, fine_grained_meta=None, min_box_size=0.):
 
-    query_ground_truth = get_qgt(box_data, min_box_size) # boxes are still there 
+    #if query_ground_truth is None:
+    #query_ground_truth = get_qgt(box_data, min_box_size) # boxes are still there 
     # for use by algorithms but not used for accuracy metrics
-    #query_ground_truth = query_ground_truth.clip(0.,1.)
+    query_ground_truth = query_ground_truth.clip(0.,1.)
+    # assert query_ground_truth.max() == 1.
+    # assert query_ground_truth.min() == 0.
+
     root = os.path.abspath(root)
-    embedded_dataset = normalize(embedded_dataset.astype('float32'))
+    check_vecs(embedded_dataset)
 
     if fine_grained_embedding is not None:
-        fine_grained_embedding = normalize(fine_grained_embedding.astype('float32'))
+        check_vecs(fine_grained_embedding)
 
     return EvDataset(root=root, paths=paths, embedded_dataset=embedded_dataset, 
             query_ground_truth=query_ground_truth, 
@@ -110,26 +125,38 @@ def get_class_ev(ev, category, boxes=False):
     return ev1, class_idxs
 
 def extract_subset(ev : EvDataset, *, idxsample=None, categories=None, boxes=True) -> EvDataset:
-    """makes an evdataset consisting of that index sample only
+    """makes an evdataset consisting of those categories and those index samples only
     """
     if categories is None:
         categories = ev.query_ground_truth.columns.values
 
     if idxsample is None:
         idxsample = np.arange(len(ev), dtype='int')
+    else:
+        assert (np.sort(idxsample) == idxsample).all(), 'sort it because some saved data assumed it was sorted here'
 
-    assert (np.sort(idxsample) == idxsample).all(), 'sort it'
-    
     categories = set(categories)
     idxset = pr.BitMap(idxsample)
 
+    qgt = ev.query_ground_truth[categories]
+    embedded_dataset = ev.embedded_dataset
+    paths = ev.paths
+
+    if not (idxset == pr.BitMap(range(len(ev)))): # special case where everything is copied
+        qgt = qgt.iloc[idxsample].reset_index(drop=True)
+        embedded_dataset = embedded_dataset[idxsample]
+        paths = ev.paths[idxsample]
+
     if boxes:
         good_boxes = ev.box_data.dbidx.isin(idxset) & ev.box_data.category.isin(categories)
-        sample_box_data = ev.box_data[good_boxes]
-        lookup_table = np.zeros(len(ev), dtype=np.int) - 1
-        lookup_table[idxsample] = np.arange(idxsample.shape[0], dtype=np.int)
-        sample_box_data = sample_box_data.assign(dbidx = lookup_table[sample_box_data.dbidx])
-        assert (sample_box_data.dbidx >= 0 ).all()
+        if good_boxes.all(): # avoid copying when we want everything anyway (common case)
+            sample_box_data = ev.box_data
+        else:
+            sample_box_data = ev.box_data[good_boxes]
+            lookup_table = np.zeros(len(ev), dtype=np.int) - 1
+            lookup_table[idxsample] = np.arange(idxsample.shape[0], dtype=np.int)
+            sample_box_data = sample_box_data.assign(dbidx = lookup_table[sample_box_data.dbidx])
+            assert (sample_box_data.dbidx >= 0 ).all()
     else:
         sample_box_data = None
 
@@ -139,9 +166,9 @@ def extract_subset(ev : EvDataset, *, idxsample=None, categories=None, boxes=Tru
         meta = None
         vec = None
 
-    return EvDataset(root=ev.root, paths=ev.paths[idxsample],
-                    embedded_dataset=ev.embedded_dataset[idxsample],
-                    query_ground_truth=ev.query_ground_truth[categories].iloc[idxsample].reset_index(drop=True),
+    return EvDataset(root=ev.root, paths=paths,
+                    embedded_dataset=embedded_dataset,
+                    query_ground_truth=qgt,
                     box_data=sample_box_data,
                     embedding=ev.embedding,
                     fine_grained_embedding=vec,
@@ -153,12 +180,20 @@ def bdd_full(embedding : XEmbedding):
     box_data = pd.read_parquet('./data/bdd_boxes_all_qgt_classes_imsize.parquet')
     qgt = pd.read_parquet('./data/bdd_boxes_all_qgt_classes_qgt.parquet')
 
-    fgmeta = pd.read_parquet('./data/bdd_multiscale_meta_all.parquet')
-    fge = np.load('./data/bdd_multiscale_vecs_all.npy', mmap_mode='r')
-    if False:
-        fgmeta = pd.read_parquet('./data/bdd_20k_finegrained_acc_meta.parquet')
-        fge = np.load('./data/bdd_20k_finegrained_acc.npy')
-    embedded_dataset = np.load('./data/bdd_all_valid_feats_CLIP.npy', mmap_mode='r')
+
+    #nm.to_parquet('./data/bdd_multiscale_meta_all2.parquet')
+    #np.save('./data/bdd_multiscale_vecs_all2_normalized_float16.npy',nv.astype('float16'))
+    fgmeta = pd.read_parquet('./data/bdd_multiscale_meta_all2.parquet')
+    fge = load_vecs('./data/bdd_multiscale_vecs_all2_normalized_float32.npy')
+    assert fgmeta.shape[0] == fge.shape[0]
+    # fge = np.load('./data/bdd_multiscale_vecs_all2_normalized_float32.npy', mmap_mode='r')
+
+    # fgmeta = pd.read_parquet('./data/bdd_20k_finegrained_acc_meta.parquet')
+    # fge = np.load('./data/bdd_20k_finegrained_acc.npy')
+
+    # embedded_dataset = np.load('./data/bdd_all_valid_feats_CLIP.npy', mmap_mode='r')
+    embedded_dataset = load_vecs('./data/bdd_all_valid_feats_CLIP_normalized_float32.npy')
+    # embedded_dataset = np.load('./data/bdd_all_valid_feats_CLIP_normalized_float32.npy', mmap_mode='r')
     ev1 = make_evdataset(root=image_root, paths=paths, 
                          embedded_dataset=embedded_dataset,
                          query_ground_truth=qgt,
@@ -169,7 +204,7 @@ def bdd_full(embedding : XEmbedding):
     return ev1
 
 def objectnet_cropped(embedding : XEmbedding, embedded_vecs : np.array = None ) -> EvDataset:
-    image_vectors = np.load('./data/objnet_cropped_CLIP.npy')
+    image_vectors = np.load('./data/objnet_cropped_CLIP.npy', mmap_mode='r')
     tmp = np.load('./data/objnet_vectors_cropped.npz', allow_pickle=True)
     paths = tmp['paths']
     root = './data/objectnet/cropped/'
@@ -250,15 +285,16 @@ def lvis_full(embedding : XEmbedding) -> EvDataset:
     # bd = pd.read_parquet('./data/lvis_boxes_wdbidx.parquet')    
     # emb_vectors = embedding.from_image(img_vec=image_vectors.astype('float32'))
     # pd.read_parquet('./data/lvis_val_categories.parquet')
-    emb_vectors = np.load('./data/coco_full_CLIP.npy')
+    #emb_vectors = np.load('./data/coco_full_CLIP.npy', mmap_mode='r')
+    emb_vectors = load_vecs('./data/coco_full_CLIP_normalized_float32.npy')
+    #emb_vectors = np.load('./data/coco_full_CLIP_normalized_float32.npy',mmap_mode='r')
     root = './data/coco_root/' # using ./data/lvis/ seems to be slower for browser url loading.
     # coco_files = pd.read_parquet('./data/coco_full_CLIP_paths.parquet')
     # coco_files = coco_files.reset_index().rename(mapper={'index':'dbidx'}, axis=1)
     # paths = coco_files['paths'].values
 
-    gvec_meta = pd.read_parquet('./data/lvis_multigrained_all_meta.parquet')
-    gvecs = np.load('./data/lvis_multigrained_all_vecs.npy')
-
+    gvec_meta = pd.read_parquet('./data/lvis_multiscale_meta_all.parquet')
+    gvecs = load_vecs('./data/lvis_multiscale_vecs_all_normalized_float32.npy')#, mmap_mode='r')
     # gvec_meta = pd.read_parquet('./data/lvis_finegrained_acc_meta.parquet')
     # gvecs = np.load('./data/lvis_finegrained_acc.npy')
 
@@ -272,7 +308,9 @@ def lvis_full(embedding : XEmbedding) -> EvDataset:
 
 
 def coco_full(embedding : XEmbedding) -> EvDataset:
-    emb_vectors = np.load('./data/coco_full_CLIP.npy')
+
+    emb_vectors = load_vecs('./data/coco_full_CLIP_normalized_float32.npy')
+    # emb_vectors = np.load('./data/coco_full_CLIP.npy', mmap_mode='r')
     root = './data/coco_root/'
     paths = np.load('./data/coco_paths.npy', allow_pickle=True)
     box_data = pd.read_parquet('./data/coco_boxes_imsize.parquet')
@@ -306,8 +344,13 @@ def coco_full(embedding : XEmbedding) -> EvDataset:
     # qgt = qgt.fillna(0)
     # qgt = qgt.rename(mapper=id2name, axis=1)
     # qgt = qgt.clip(0,1)
-    gvec_meta = pd.read_parquet('./data/lvis_finegrained_acc_meta.parquet')
-    gvecs = np.load('./data/lvis_finegrained_acc.npy')
+    # nm.to_parquet('./data/lvis_multiscale_meta_all.parquet')
+    # np.save('./data/lvis_multiscale_vecs_all_normalized_float16.npy',nv.astype('float16'))
+    #
+    gvec_meta = pd.read_parquet('./data/lvis_multiscale_meta_all.parquet')
+    gvecs = load_vecs('./data/lvis_multiscale_vecs_all_normalized_float32.npy')
+    # gvec_meta = pd.read_parquet('./data/lvis_finegrained_acc_meta.parquet')
+    # gvecs = np.load('./data/lvis_finegrained_acc.npy',mmap_mode='r')
 
     return make_evdataset(root=root, paths=paths, embedded_dataset=emb_vectors, 
                      query_ground_truth=qgt, box_data=box_data, embedding=embedding, fine_grained_embedding=gvecs,
@@ -327,7 +370,7 @@ def coco_split(coco_full : EvDataset, split : str) -> EvDataset:
 def dota1_full(embedding : XEmbedding) -> EvDataset:
     root = './data/dota_dataset/'    
     relpaths= np.load('./data/dota1_paths.npy', allow_pickle=True)
-    embedded_vecs = np.load('./data/dota_224_pool_clip.npy')
+    embedded_vecs = load_vecs('./data/dota_224_pool_clip_normalized_float32.npy')#, mmap_mode='r')
     box_data = pd.read_parquet('./data/dota1_boxes_imsize.parquet')
     # box_data = pd.read_parquet('./data/dota1_boxes.parquet')
     # pngs = pd.Categorical(box_data.relpath, ordered=True).dtype.categories.map(lambda x : x.replace('labelTxt-v1.0', 'images/images').replace('.txt', '.png'))
@@ -340,8 +383,10 @@ def dota1_full(embedding : XEmbedding) -> EvDataset:
     assert qgt.shape[0] == relpaths.shape[0]
     # qgt = qgt.clip(0,1)#gt(0).astype('float')        
     # embedded_dataset = embedding.from_image(img_vec=embedded_vecs)
-    fge = np.load('./data/dota_finegrained_acc.npy')
-    fgmeta = pd.read_parquet('./data/dota_finegrained_acc_meta.parquet')
+    fgmeta = pd.read_parquet('./data/dota_multiscale_meta_all.parquet')
+    fge = load_vecs('./data/dota_multiscale_vecs_all_normalized_float32.npy')
+    # fge = np.load('./data/dota_finegrained_acc.npy',mmap_mode='r')
+    # fgmeta = pd.read_parquet('./data/dota_finegrained_acc_meta.parquet')
 
     return make_evdataset(root=root, paths=relpaths, embedded_dataset=embedded_vecs, 
                      query_ground_truth=qgt, box_data=box_data, embedding=embedding,fine_grained_embedding=fge,

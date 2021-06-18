@@ -316,8 +316,9 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
                 Xt = np.concatenate([allpos, vecs[neg]])
                 yt = np.concatenate([np.ones(len(allpos)), np.zeros(len(neg))])
 
-                if np.concatenate(acc_results).sum() > 0:
-                    assert len(pos) > 0
+                # not really valid. some boxes are area 0. they should be ignored.but they affect qgt
+                # if np.concatenate(acc_results).sum() > 0:
+                #    assert len(pos) > 0
             else:
                 Xt = vecs[idxbatch]
                 yt = gt[idxbatch]

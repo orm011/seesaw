@@ -11,15 +11,16 @@ def restrict_fine_grained(vec_meta, vec, indxs):
     assert vec_meta.shape[0] == vec.shape[0]
     assert (indxs[1:] > indxs[:-1]).all(), 'must be sorted'
     mask = vec_meta.dbidx.isin(pr.BitMap(indxs))
+    if mask.all():
+        return vec_meta, vec
+
     vec_meta = vec_meta[mask]
     vec = vec[mask]
-
     lookup_table = np.zeros(vec_meta.dbidx.max()+1).astype('int') - 1
     lookup_table[indxs] = np.arange(indxs.shape[0], dtype='int')
     new_dbidx = lookup_table[vec_meta.dbidx]
     assert (new_dbidx >= 0).all()
     vec_meta = vec_meta.assign(dbidx=new_dbidx) # this line shows up in profiler
-    
     assert vec_meta.dbidx.unique().shape[0] == indxs.shape[0], 'missing fine-grained embedding for some of the indices requested'
     assert vec_meta.shape[0] == vec.shape[0]
     return vec_meta.reset_index(drop=True), vec
