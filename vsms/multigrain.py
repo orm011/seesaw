@@ -334,7 +334,8 @@ class AugmentedDB(object):
         assert candidates.intersection_cardinality(exclude) == 0
         return topscores.index.values, candidates
         
-    def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1):
+    def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1, **kwargs):
+        print('ignoring extra args:', kwargs)
         if shortlist_size is None:
             shortlist_size = topk*5
         

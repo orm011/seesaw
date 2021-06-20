@@ -203,8 +203,9 @@ def bdd_full(embedding : XEmbedding):
 
     return ev1
 
-def objectnet_cropped(embedding : XEmbedding, embedded_vecs : np.array = None ) -> EvDataset:
-    image_vectors = np.load('./data/objnet_cropped_CLIP.npy', mmap_mode='r')
+def objectnet_cropped(embedding : XEmbedding) -> EvDataset:
+    image_vectors = load_vecs('./data/objnet_cropped_CLIP_normalized_float32.npy')
+    #np.load('./data/objnet_cropped_CLIP.npy', mmap_mode='r')
     tmp = np.load('./data/objnet_vectors_cropped.npz', allow_pickle=True)
     paths = tmp['paths']
     root = './data/objectnet/cropped/'
@@ -222,6 +223,8 @@ def objectnet_cropped(embedding : XEmbedding, embedded_vecs : np.array = None ) 
     fgmeta = pd.DataFrame({'dbidx':np.arange(len(fge))})
     fgmeta['iis'] = 0
     fgmeta['jjs'] = 0
+    fgmeta['zoom_level'] = 0
+    fgmeta['zoom_factor'] = 1.
     
     return make_evdataset(root=root, 
                      paths=paths, 

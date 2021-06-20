@@ -79,6 +79,7 @@ class ModelService(XEmbedding):
         return ray.get(self.model_ref.from_raw.remote(*args, **kwargs))
 
 import pyroaring as pr
+from .multigrain import AugmentedDB
 
 class DB(object):
     def __init__(self, dataset_loader, model_handle, dbsample, valsample):
@@ -106,7 +107,14 @@ class DB(object):
         self.positive_sets = {k:pr.BitMap(v[v == 1].index) for k,v in qgt.items() }
         self.negative_sets = {k:pr.BitMap(v[v == 0].index) for k,v in qgt.items() }
 
-        self.hdb = EmbeddingDB(ev.image_dataset,ev.embedding,ev.embedded_dataset)
+        vec_meta = ev.fine_grained_meta
+        vecs = ev.fine_grained_embedding
+        #index_path = './data/bdd_10k_allgrains_index.ann'
+        index_path = None
+        self.hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
+            embedded_dataset=vecs, vector_meta=vec_meta, index_path=index_path)
+
+        #self.hdb = EmbeddingDB(ev.image_dataset,ev.embedding,ev.embedded_dataset)
         self.ev = ev
         print('inited dbactor') 
     
@@ -253,8 +261,9 @@ def update_vector(Xt, yt, init_vec, minibatch_size):
 
 default_actors = {
     'lvis':lambda m,ng: ray.remote(DB).options(name='lvis_db', num_gpus=ng, num_cpus=2).remote(dataset_loader=lvis_full,
-                                model_handle=m,   
-                                dbsample=np.sort(np.load('./data/coco_30k_idxs.npy')[:10000]),
+                                model_handle=m,  
+                                dbsample = None,
+                                #dbsample=np.sort(np.load('./data/coco_30k_idxs.npy')[:10000]),
                                 valsample=None), #np.load('./data/coco_30k_idxs.npy')[10000:20000]),
     'coco':lambda m,ng: ray.remote(DB).options(name='coco_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=coco_full, 
                                 model_handle=m,
@@ -294,10 +303,9 @@ if __name__ == '__main__':
 
     actors = []
     for (k,v) in default_actors.items():
-        pass
-        # if k in ['lvis', 'dota']:
-        #     print('init ', k)
-        #     actors.append(v(model_service, 0))
+        if k in ['lvis', 'dota']:
+            print('init ', k)
+            actors.append(v(model_service, 0))
 
     input('press any key to terminate the db server: ')
     print('done!')

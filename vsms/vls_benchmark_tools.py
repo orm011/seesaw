@@ -14,29 +14,35 @@ import sklearn.metrics
 import math
 from .util import *
 
+# ignore this comment
+
 def vls_init_logger():
     import logging
     logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
     logging.captureWarnings(True)
 
-def brief_format(ftpt):
-    if math.isclose(ftpt, 0.):
-        return '0'
-    
-    if math.isclose(ftpt,1.):
-        return '1'
-
-    if ftpt < 1.:
-        exp = -math.floor(math.log10(abs(ftpt)))
-        fmt_string = '{:.0%df}' % (exp + 1)
-        dec = fmt_string.format(ftpt)    
-    else:
-        fmt_string = '{:.02f}'
-        dec = fmt_string.format(ftpt)
+def brief_formatter(num_sd):
+    assert num_sd > 0
+    def formatter(ftpt):
+        if math.isclose(ftpt, 0.):
+            return '0'
         
-    zstripped = dec.lstrip('0').rstrip('0')
-    return zstripped.rstrip('.')
+        if math.isclose(ftpt,1.):
+            return '1'
 
+        if ftpt < 1.:
+            exp = -math.floor(math.log10(abs(ftpt)))
+            fmt_string = '{:.0%df}' % (exp + num_sd - 1)
+            dec = fmt_string.format(ftpt)    
+        else:
+            fmt_string = '{:.02f}'
+            dec = fmt_string.format(ftpt)
+            
+        zstripped = dec.lstrip('0').rstrip('0')
+        return zstripped.rstrip('.')
+    return formatter
+
+brief_format = brief_formatter(1)
 
 def times_format(ftpt):
     return brief_format(ftpt) + 'x'
@@ -472,6 +478,36 @@ def compute_metrics(results, indices, gt):
                precision=precision[-1], recall=recall[-1], average_precision=average_precision[-1])
 
 
+
+def process_tups(evs, benchresults, keys, at_N):
+    tups = []
+    ## lvis: qgt has 0,1 and nan. 0 are confirmed negative. 1 are confirmed positive.
+    for k in keys:#['lvis','dota','objectnet', 'coco', 'bdd' ]:#,'bdd','ava', 'coco']:
+        val = benchresults[k]
+        ev = evs[k]
+    #     qgt = benchgt[k]
+        for tup,exp in val:
+            hits = np.concatenate(exp['results'])
+            indices = np.concatenate(exp['indices'])
+            index_set = pr.BitMap(indices)
+            assert len(index_set) == indices.shape[0], 'check no repeated indices'
+            #ranks = np.concatenate(exp['ranks'])
+            #non_nan = ~np.isnan(ranks)
+            gtfull = ev.query_ground_truth[tup['category']].clip(0,1)
+            gt = gtfull[~gtfull.isna()]
+            idx_map = dict(zip(gt.index,np.arange(gt.shape[0]).astype('int')))
+            local_idx = np.array([idx_map[idx] for idx in indices])
+            metrics = compute_metrics(hits[:at_N], local_idx[:at_N], gt)
+    #         if tup['category'] == 'snowy weather':
+    #             break
+
+            output_tup = {**tup, **metrics}
+            #output_tup['unique_ranks'] = np.unique(ranks[non_nan]).shape[0]
+            output_tup['dataset'] = k
+            tups.append(output_tup)
+            
+    return pd.DataFrame(tups)
+
 def side_by_side_comparison(stats, baseline_variant, metric):
     v1 = stats
     metrics = list(set(['nfound', 'nfirst'] + [metric]))
@@ -492,6 +528,18 @@ def side_by_side_comparison(stats, baseline_variant, metric):
     sbs = sbs.assign(ratio=sbs[metric]/sbs['base'])
     sbs = sbs.assign(delta=sbs[metric] - sbs['base'])
     return sbs
+
+def better_same_worse(stats, variant, baseline_variant='plain', metric='ndcg_score', reltol=1.1,
+                     summary=True):
+    sbs = side_by_side_comparison(stats, baseline_variant='plain', metric='ndcg_score')
+    invtol = 1/reltol
+    sbs = sbs.assign(better=sbs.ndcg_score > reltol*sbs.base, worse=sbs.ndcg_score < invtol*sbs.base,
+                    same=sbs.ndcg_score.between(invtol*sbs.base, reltol*sbs.base))
+    bsw = sbs[sbs.variant == variant].groupby('dataset')[['better', 'same', 'worse']].sum()
+    if summary:
+        return bsw
+    else:
+        return sbs
 
 
 import datetime
