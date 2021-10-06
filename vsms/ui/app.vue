@@ -2,14 +2,14 @@
 <div>
   <!-- adapted from https://github.com/twbs/bootstrap/blob/main/site/content/docs/5.0/examples/dashboard/index.html  -->
   <header class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow">
-        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3" href="#">VLS</a>
+        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3" href="#">VSL</a>
+        <input class="form-control form-control-dark w-auto" type="text" placeholder="Search" aria-label="Search" 
+          v-model="text_query" v-on:keydown.enter="text(text_query)"/>
         <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" 
         data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" 
         aria-expanded="false" aria-label="Toggle navigation">
           <span class="navbar-toggler-icon"></span>
         </button>
-        <input class="form-control form-control-dark w-100" type="text" placeholder="Search" aria-label="Search" 
-          v-model="text_query" v-on:keydown.enter="text(text_query)"/>
         <div class="navbar-nav col-lg-1 px-3"/>
   </header>
   <div class="container-fluid">

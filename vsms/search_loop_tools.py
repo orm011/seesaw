@@ -116,11 +116,11 @@ class InteractiveQuery(object):
         if 'batch_size' in kwargs:
             del kwargs['batch_size']
             
-        idxs = self.db.query(*args, topk=batch_size, **kwargs, exclude=self.seen)
+        idxs, other = self.db.query(*args, topk=batch_size, **kwargs, exclude=self.seen)
         self.query_history.append((args, kwargs))
         self.seen.update(idxs)
         self.acc_idxs.append(idxs)
-        return idxs
+        return idxs, other
 
     def repeat_last(self):
         '''

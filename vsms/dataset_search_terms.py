@@ -19,7 +19,7 @@ def clean_objectnet_name(name):
 def clean_lvis_name(name):
         return clean_space(name.replace('_', ' ').replace('(', ' ').replace(')', ' '))
 
-search_terms = {
+_search_terms = {
 'objectnet':{
     'air freshener': 'air freshener',
     'alarm clock': 'alarm clock',
@@ -335,87 +335,6 @@ search_terms = {
     'wrench': 'wrench',
     'ziploc bag': 'ziploc bag'
 },
-'ava': {
-    'answer phone':'a person answering a phone',
-    'bend/bow (at the waist)':'a person bowing', 
-    'brush teeth':'a person brushing teeth',
-    'carry/hold (an object)':'a person carrying an object',
-    'catch (an object)':'a person catching an object',
-    'chop':'a person chopping something',
-    'climb (e.g., a mountain)':'a person climbing a mountain',
-    'clink glass':'people clinking glasses',
-    'close (e.g., a door, a box)':'a person closing something', 
-    'cook':'a person cooking', 
-    'crawl':'a person crawling', 
-    'crouch/kneel':'a person crouching', 
-    'cut':'a person cutting something',
-    'dance':'a person dancing', 
-    'dig':'a person digging', 
-    'dress/put on clothing':'a person dressing up', 
-    'drink':'a person drinking',
-    'drive (e.g., a car, a truck)':'a person driving a vehicle', 
-    'eat':'a person eating', 
-    'enter':'a person entering somewhere', 
-    'exit':'a person exiting', 
-    'extract':'a person extracting something',
-    'fall down':'a person falling down', 
-    'fight/hit (a person)':'a person hitting someone', 
-    'fishing':'a person fishing', 
-    'get up':'a person getting up',
-    'give/serve (an object) to (a person)':'a person giving an object to someone', 
-    'grab (a person)':'a person grabbing someone else', 
-    'hand clap':'a person clapping their hands',
-    'hand shake':'people shaking hands', 
-    'hand wave':'a person waving their hand', 
-    'hit (an object)':'a person hitting an object', 
-    'hug (a person)':'people hugging',
-    'jump/leap':'a person jumping', 
-    'kick (a person)':'a person kicking someone', 
-    'kick (an object)':'a person kicking something', 
-    'kiss (a person)':'people kissing',
-    'lie/sleep':'a person sleeping', 
-    'lift (a person)':'a person lifting someone else', 
-    'lift/pick up': 'a person picking something up',
-    'listen (e.g., to music)':'a person listening to something', 
-    'listen to (a person)':'a person listening to someone else', 
-    'martial art':'a person doing martial arts',
-    'open (e.g., a window, a car door)':'a person opening something', 
-    'paint':'a person painting', 
-    'play board game':'a person playing a board game',
-    'play musical instrument':'a person playing an instrument', 
-    'play with kids':'a person playing with kids', 
-    'play with pets':'a person playing with a pet',
-    'point to (an object)':'a person pointing',
-    'press':'a person pressing', 
-    'pull (an object)':'a person pulling an object', 
-    'push (an object)':'a person pushing an object',
-    'push (another person)':'a person pushing another person', 
-    'put down':'a person putting something down', 
-    'read':'a person reading',
-    'ride (e.g., a bike, a car, a horse)':'a person riding something', 
-    'row boat':'a person rowing', 
-    'run/jog': 'a person running',
-    'sail boat':'a person sailing a boat', 
-    'shoot':'a person shooting', 
-    'shovel':'a person shoveling',
-    'sing to (e.g., self, a person, a group)':'a person singing', 
-    'sit':'a person sitting', 
-    'smoke':'a person smoking', 
-    'stand':'a person standing',
-    'stir':'a person stirring', 
-    'swim':'a person swimming', 
-    'take (an object) from (a person)':'a person taking an object from someone else', 
-    'take a photo':'a person taking a photo',
-    'talk to (e.g., self, a person, a group)':'a person talking',
-    'text on/look at a cellphone':'a person texting on their phone', 
-    'throw':'a person throwing something', 
-    'touch (an object)':'a person touching something',
-    'turn (e.g., a screwdriver)':'a person turning something', 
-    'walk':'a person walking', 'watch (a person)':'a person watching someone',
-    'watch (e.g., TV)':'a person watching tv', 
-    'work on a computer':'a person working on a computer', 
-    'write':'a person writing things'
-},
 'bdd': {
     'motor':'motorcycle',
     'rider':'bike rider',
@@ -451,5 +370,11 @@ search_terms = {
     'swimming-pool': 'swimming pool', 
     'tennis-court': 'tennis court'
 },
-'lvis': {},
 }
+
+def category2query(dataset, cat):    
+    if dataset == 'lvis':
+        return clean_lvis_name(cat)
+    else:
+        assert dataset in _search_terms
+        return _search_terms[dataset].get(cat, cat)

@@ -39,7 +39,7 @@ class InteractiveQueryRemote(object):
             del kwargs['batch_size']
             
         idxref = self.dbactor.query.remote(*args, topk=batch_size, **kwargs, exclude=self.seen)
-        idxs = ray.get(idxref)
+        idxs, _ = ray.get(idxref)
         self.query_history.append((args, kwargs))
         self.seen.update(idxs)
         self.acc_idxs.append(idxs)
@@ -258,9 +258,12 @@ def update_vector(Xt, yt, init_vec, minibatch_size):
     tvec = lr.linear.weight.detach().numpy().reshape(1,-1)   
     return tvec
 
+import functools
+
+lvishot = functools.partial(lvis_category, category='hot-air balloon')
 
 default_actors = {
-    'lvis':lambda m,ng: ray.remote(DB).options(name='lvis_db', num_gpus=ng, num_cpus=2).remote(dataset_loader=lvis_full,
+    'lvis':lambda m,ng: ray.remote(DB).options(name='lvis_db', num_gpus=ng, num_cpus=2).remote(dataset_loader=lvishot,
                                 model_handle=m,  
                                 dbsample = None,
                                 #dbsample=np.sort(np.load('./data/coco_30k_idxs.npy')[:10000]),
@@ -303,7 +306,7 @@ if __name__ == '__main__':
 
     actors = []
     for (k,v) in default_actors.items():
-        if k in ['lvis', 'dota']:
+        if k in ['lvis']:
             print('init ', k)
             actors.append(v(model_service, 0))
 

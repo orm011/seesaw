@@ -208,7 +208,7 @@ def objectnet_cropped(embedding : XEmbedding) -> EvDataset:
     #np.load('./data/objnet_cropped_CLIP.npy', mmap_mode='r')
     tmp = np.load('./data/objnet_vectors_cropped.npz', allow_pickle=True)
     paths = tmp['paths']
-    root = './data/objectnet/cropped/'
+    root = './data/objectnet/images/'## lost cropped copy with drive
     dir2cat = json.load(open('./data/objectnet/mappings/folder_to_objectnet_label.json'))
     categories = list(map(lambda x : dir2cat[x.split('/')[0]].lower(), paths))
 
@@ -309,6 +309,12 @@ def lvis_full(embedding : XEmbedding) -> EvDataset:
                      embedding=embedding, fine_grained_embedding=gvecs,
                      fine_grained_meta=gvec_meta)
 
+def lvis_category(embedding: XEmbedding, category : str) -> EvDataset:
+    ''' makes dataset for a single lvis category (using only the labelled subset)
+    '''
+    ev0 = lvis_full(embedding)
+    ev, class_idxs = get_class_ev(ev0, category, boxes=True)
+    return ev
 
 def coco_full(embedding : XEmbedding) -> EvDataset:
 

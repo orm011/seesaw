@@ -325,6 +325,7 @@ class AugmentedDB(object):
         # work only with the two columns here bc dataframe can be large
         topscores = vec_meta[['dbidx']].iloc[idxs]
         topscores = topscores.assign(score=scores)
+        allscores = topscores
         topscores = topscores[~topscores.dbidx.isin(exclude)]
         scoresbydbidx = topscores.groupby('dbidx').score.max().sort_values(ascending=False)
         score_cutoff = scoresbydbidx.iloc[topk-1] # kth largest score
@@ -332,16 +333,16 @@ class AugmentedDB(object):
         candidates =  pr.BitMap(topscores.dbidx)
         assert len(candidates) >= topk
         assert candidates.intersection_cardinality(exclude) == 0
-        return topscores.index.values, candidates
+        return topscores.index.values, candidates, allscores
         
     def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1, **kwargs):
-        print('ignoring extra args:', kwargs)
+#        print('ignoring extra args:', kwargs)
         if shortlist_size is None:
             shortlist_size = topk*5
         
         db = self
         qvec=vector
-        meta_idx, candidate_id = self._query_prelim(vector=qvec, topk=shortlist_size, zoom_level=None, exclude=exclude)
+        meta_idx, candidate_id, allscores = self._query_prelim(vector=qvec, topk=shortlist_size, zoom_level=None, exclude=exclude)
 
         fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(candidate_id)]
         fullmeta = fullmeta.assign(**get_boxes(fullmeta))
@@ -367,6 +368,6 @@ class AugmentedDB(object):
         # final = scmeta.assign(aug_score=np.array(scs))
         # agg = final.groupby('dbidx').aug_score.max().reset_index().sort_values('aug_score', ascending=False)
         topkidx = np.argsort(-dbscores)[:topk]
-        return dbidxs[topkidx].astype('int')
+        return dbidxs[topkidx].astype('int'), allscores # return fullmeta 
         # idxs = agg.dbidx.iloc[:topk]
         # return idxs
