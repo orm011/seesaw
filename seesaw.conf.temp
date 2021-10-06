@@ -1,0 +1,25 @@
+## nginx web server config file
+## adapt to your own environment by replacing envvars
+## export PORT=9000 APIPORT=5000 WORKDIR=/nvme_drive/orm/vlsworkspace/; cat ./seesaw.conf.temp | envsubst > ./seesaw.conf
+## the file needs to be in your nginx server's /etc/nginx/sites.d/ path 
+## eg. when using nginx installed with conda, can do this with
+## ln -rs seesaw.conf $CONDA_PREFIX/etc/nginx/sites.d/
+## workdir has subdirs /data and /repo. repo is the clone of this repo.
+
+server {
+   listen *:$PORT;
+   
+   location /data { # serve images and other static files
+    root $WORKDIR;
+    autoindex on;
+   }
+
+   location /ui {
+     root $WORKDIR/repo/vsms/;
+     index index.html;
+   }
+
+   location /api { # relay api calls to session_server.py
+     proxy_pass  http://localhost:$APIPORT/;
+   }
+}

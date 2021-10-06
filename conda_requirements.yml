@@ -1,0 +1,37 @@
+dependencies:
+  - python=3.8
+  - pip
+  - numpy
+  - scipy
+  - scikit-learn
+  - pandas
+  - pyarrow
+  - pillow
+  - pytorch
+  - torchvision
+  - tensorboard
+  - flask
+  - cudatoolkit>=11.1
+  - nginx
+  # - pynndescent
+  # - cvxpy
+  - pip:
+    - ray
+    - tqdm
+    - pytorch-lightning
+    - torchmetrics
+    - ipyvue
+    - pyroaring
+    - plotnine
+    - annoy
+    - notebook
+    - ipykernel
+    - ipywidgets
+    - ftfy 
+    - regex
+    - git+https://github.com/openai/CLIP.git
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - anaconda
