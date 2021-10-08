@@ -12,9 +12,9 @@ class ExplicitPathDataset(object):
         '''
         Reads images in a directory according to an explicit list.
         '''
-        self.root = os.path.abspath(root_dir)
+        self.root = root_dir.lstrip('./')
         self.paths = relative_path_list
-        self.formatter = 'http://clauslocal:8000/{root}/{path}'.format
+        self.formatter = 'http://localhost:9000/{root}/{path}'.format
 
     def __len__(self):
         return self.paths.shape[0]
@@ -80,7 +80,7 @@ def make_evdataset(*, root, paths, embedded_dataset, query_ground_truth, box_dat
     # assert query_ground_truth.max() == 1.
     # assert query_ground_truth.min() == 0.
 
-    root = os.path.abspath(root)
+    #root = os.path.abspath(root)
     check_vecs(embedded_dataset)
 
     if fine_grained_embedding is not None:

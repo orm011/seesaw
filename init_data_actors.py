@@ -1,23 +1,26 @@
 import ray
 import torch.optim
 import sys
-import pyroaring as pr
 from ray.util.multiprocessing import Pool
 import inspect
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, TensorDataset
-
-from .cross_modal_db import *
-from .embeddings import *
-from .dataset_tools import *
-from .vloop_dataset_loaders import *
-from .search_loop_models import *
-from .search_loop_tools import *
-from .ui import widgets
-import logging
 from tqdm.auto import tqdm
 import copy
-from .vls_benchmark_tools import vls_init_logger
+import logging
+import pyroaring as pr
+import time
+import functools
+
+from seesaw import *
+# from .cross_modal_db import *
+# from .embeddings import *
+# from .dataset_tools import *
+# from .vloop_dataset_loaders import *
+# from .search_loop_models import *
+# from .search_loop_tools import *
+# from .ui import widgets
+# from .vls_benchmark_tools import vls_init_logger
 
 class InteractiveQueryRemote(object):
     def __init__(self, dbactor, batch_size: int):
@@ -77,9 +80,6 @@ class ModelService(XEmbedding):
 
     def from_raw(self, *args,  **kwargs):
         return ray.get(self.model_ref.from_raw.remote(*args, **kwargs))
-
-import pyroaring as pr
-from .multigrain import AugmentedDB
 
 class DB(object):
     def __init__(self, dataset_loader, model_handle, dbsample, valsample):
@@ -258,21 +258,20 @@ def update_vector(Xt, yt, init_vec, minibatch_size):
     tvec = lr.linear.weight.detach().numpy().reshape(1,-1)   
     return tvec
 
-import functools
 
 lvishot = functools.partial(lvis_category, category='hot-air balloon')
 
 default_actors = {
-    'lvis':lambda m,ng: ray.remote(DB).options(name='lvis_db', num_gpus=ng, num_cpus=2).remote(dataset_loader=lvishot,
+    'lvis':lambda m,ng: ray.remote(DB).options(name='lvis_db', lifetime="detached", num_gpus=ng, num_cpus=2).remote(dataset_loader=lvishot,
                                 model_handle=m,  
                                 dbsample = None,
                                 #dbsample=np.sort(np.load('./data/coco_30k_idxs.npy')[:10000]),
                                 valsample=None), #np.load('./data/coco_30k_idxs.npy')[10000:20000]),
-    'coco':lambda m,ng: ray.remote(DB).options(name='coco_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=coco_full, 
+    'coco':lambda m,ng: ray.remote(DB).options(name='coco_db', lifetime="detached", num_gpus=ng, num_cpus=.1).remote(dataset_loader=coco_full, 
                                 model_handle=m,
                                 dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
                                 valsample=np.load('./data/coco_30k_idxs.npy')[10000:20000]),
-    'dota':lambda m,ng: ray.remote(DB).options(name='dota_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=dota1_full,
+    'dota':lambda m,ng: ray.remote(DB).options(name='dota_db', lifetime="detached", num_gpus=ng, num_cpus=.1).remote(dataset_loader=dota1_full,
                                 model_handle=m,
                                 dbsample=np.load('./data/dota_idxs.npy')[:1000], # size is 1860 or so.
                                 valsample=None,#np.load('./data/dota_idxs.npy')[1000:]
@@ -281,26 +280,22 @@ default_actors = {
                                 model_handle=m,
                                 dbsample=np.load('./data/ava_randidx.npy')[:10000],
                                 valsample=np.load('./data/ava_randidx.npy')[10000:20000]), 
-    'bdd': lambda m,ng: ray.remote(DB).options(name='bdd_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=bdd_full, 
+    'bdd': lambda m,ng: ray.remote(DB).options(name='bdd_db', lifetime="detached", num_gpus=ng, num_cpus=.1).remote(dataset_loader=bdd_full, 
                                 model_handle=m,
                                 dbsample=np.sort(np.load('./data/bdd_20kidxs.npy')[:10000]),
                                 valsample=np.load('./data/bdd_20kidxs.npy')[10000:20000]),
-    'objectnet': lambda m,ng: ray.remote(DB).options(name='objectnet_db', num_gpus=ng, num_cpus=.1).remote(dataset_loader=objectnet_cropped, 
+    'objectnet': lambda m,ng: ray.remote(DB).options(name='objectnet_db', lifetime="detached", num_gpus=ng, num_cpus=.1).remote(dataset_loader=objectnet_cropped, 
                                 model_handle=m,
                                 dbsample=np.load('./data/object_random_idx.npy')[:10000],
                                 valsample=np.load('./data/object_random_idx.npy')[10000:20000])
 }
 
-if __name__ == '__main__':    
-    ray.init('auto')
 
-    num_gpus = 0
-    if num_gpus == 0:
-        device = 'cpu'
-    else:
-        device = 'cuda:0'
-    
-    model_actor = ray.remote(CLIPWrapper).options(name='clip', num_gpus=num_gpus, num_cpus=.1).remote(device=device)
+if __name__ == '__main__':    
+    ray.init('auto', namespace='seesaw')
+
+    model_actor = ray.get_actor('clip')
+    # ray.remote(CLIPWrapper).options(name='clip', lifetime='detached', num_gpus=num_gpus, num_cpus=.1).remote(device=device)
     model_service = ModelService(model_actor)
     print('inited model')
 
@@ -310,6 +305,8 @@ if __name__ == '__main__':
             print('init ', k)
             actors.append(v(model_service, 0))
 
-    input('press any key to terminate the db server: ')
-    print('done!')
 
+    ## I find that if the script ends immediately, the actor dies even in detached mode, so use this
+    ## (can still run in background)
+    time.sleep(20)
+    print('db loaded')    
