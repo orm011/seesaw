@@ -1,7 +1,6 @@
-# installing dependencies:
-`conda env create -n seesaw -f ./conda_requirements.yml`
-
-`conda activate seesaw`
-
+- build dockerfile:
+- download some data to use (coming soon):
+- run docker:
+- access ui from your browser:
 
 

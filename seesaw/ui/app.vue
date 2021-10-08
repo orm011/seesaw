@@ -66,7 +66,7 @@ export default {
     data () { return {  gdata:[], selection: null, datasets:[], current_dataset:'coco', 
     dragged_id:null}},
     mounted (){
-        fetch('/vlsapi/getstate', {cache: "reload"})
+        fetch('/api/getstate', {cache: "reload"})
             .then(response => response.json())
             .then(data => (this.gdata.push(data), this.datasets = data.datasets))
     },
@@ -77,7 +77,7 @@ export default {
           let reqdata = {todataset:dsname};
           console.log(reqdata);
 
-            fetch(`/vlsapi/reset`,   
+            fetch(`/api/reset`,   
                 {method: 'POST', 
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(reqdata)
@@ -89,7 +89,7 @@ export default {
             this.selection = null))
         },
         text(text_query){
-            fetch(`/vlsapi/text?key=${encodeURIComponent(text_query)}`,   
+            fetch(`/api/text?key=${encodeURIComponent(text_query)}`,   
                 {method: 'POST', 
                 headers: {'Content-Type': 'application/json'}, 
                 body: JSON.stringify({})}
@@ -99,7 +99,7 @@ export default {
         },
         next(){
           console.log(' this' , this);
-            fetch(`/vlsapi/next`, {method:'POST',
+            fetch(`/api/next`, {method:'POST',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify(this.gdata.length > 0 ? this.gdata[this.gdata.length - 1] : {}) // body data type must match "Content-Type" header
                             })
@@ -136,7 +136,7 @@ export default {
           let dbidx = this.gdata[this.dragged_id.pid].ldata[this.dragged_id.itemid].dbidx
           let reqdata = {'dbidx':dbidx, 'minus_text':this.minus_text, 'plus_text':this.plus_text}
           console.log(reqdata)
-            fetch(`/vlsapi/search_hybrid`,   
+            fetch(`/api/search_hybrid`,   
                 {method: 'POST', 
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(reqdata)

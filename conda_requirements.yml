@@ -7,16 +7,16 @@ dependencies:
   - pandas
   - pyarrow
   - pillow
-  - pytorch
-  - torchvision
+  - pytorch>=1.8
+  - torchvision>=0.9 # without this I sometimes see a really old version (0.2) installed
   - tensorboard
   - flask
   - cudatoolkit>=11.1
-  - nginx
   # - pynndescent
-  # - cvxpy
+  - cvxpy
   - pip:
-    - ray
+    - bokeh
+    - ray[default]==1.6
     - tqdm
     - pytorch-lightning
     - torchmetrics

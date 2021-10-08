@@ -1,19 +1,24 @@
 import flask
 from flask import Flask, request
-from .search_loop_models import *
-from .search_loop_tools import *
-from .vloop_dataset_loaders import *
-from .cross_modal_db import *
-from .embedding_plot import *
-from .embeddings import *
 import ray
-from .data_server import BoxFeedbackQueryRemote, get_panel_data_remote, update_vector
 
-ray.init('auto', ignore_reinit_error=True)
+
+from seesaw import *
+# from .search_loop_models import *
+# from .search_loop_tools import *
+# from .vloop_dataset_loaders import *
+# from .cross_modal_db import *
+# from .embedding_plot import *
+# from .embeddings import *
+from init_data_actors import BoxFeedbackQueryRemote, get_panel_data_remote, update_vector
+
+
+ray.init('auto', 
+    #ignore_reinit_error=True,
+        namespace='seesaw')
 default_dataset = 'lvis'
 datasets = ['lvis',  ]#['coco', 'ava', 'bdd', 'dota', 'objectnet', 'lvis']
 dbactors = dict([(name,ray.get_actor('{}_db'.format(name))) for name in datasets])
-
 
 
 class SessionState(object):
@@ -133,3 +138,5 @@ def next():
     # print('after labels', acc_results)
     return flask.jsonify(**dat)
 
+if __name__ == '__main__':
+    pass
