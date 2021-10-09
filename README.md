@@ -6,7 +6,7 @@ DOCKER_BUILDKIT=1 is optional, mostly useful if you will be rebuilding docker fi
 
 - download some data to use (sample data coming soon):
 - run container from image and  run run.bash script: 
-The main service port is 9000 if want to remap it. Other useful ports are 8265 for the ray dashboard and 5000 for the internal api server.
+The main service port is 9000 if want to remap it. Other useful ports are 8265 for the ray dashboard and 8888 for a notebook server.
 Scripts assume there is a repo folder and a data folder you should provide.
 
 You can map port 9000 to an available host port eg here we map 9000 in the container (the main port) to 9001 in the host.
