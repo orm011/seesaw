@@ -25,7 +25,10 @@ RUN echo 'conda activate seesaw' >> ~/.bashrc
 # RUN --mount=type=cache,target=/root/.cache/clip  # this version did not work, stuff was gone at runtime 
 RUN python -c "import clip; _ = clip.load('ViT-B/32', device='cpu', jit=False)" && ls /root/.cache/clip
 
-# install server config for app
+# install ipython kernel
+RUN python -m ipykernel install --user --name seesaw --display-name "Python (seesaw)"
+
+# install nginx server config for app
 COPY ./seesaw.conf /etc/nginx/sites-enabled/
 RUN rm /etc/nginx/sites-enabled/default
 EXPOSE 9000
@@ -34,12 +37,16 @@ RUN nginx -T
 RUN service nginx reload
 # server logs available at /var/log/nginx/error.log 
 
-# # folder structure
+## data folder
 RUN mkdir data
 VOLUME data
 
-# expose also API server and ray dashboard
-EXPOSE 5000 8265
+## notebook folder
+RUN mkdir notebooks
+VOLUME notebooks
+
+# expose also API server, ray dashboard and jupyter notebook
+EXPOSE 5000 8265 8888
 
 ## do this as late as possible within this file, everything after will be redone every time
 COPY . repo

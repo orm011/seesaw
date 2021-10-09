@@ -343,7 +343,6 @@ def coco_full(embedding : XEmbedding) -> EvDataset:
     # h = box_data.bbox.apply(lambda x : x[3])
     # box_data = box_data.assign(x1 = xmin, y1 = ymin, x2 = xmin + w, y2=ymin + h, w=w, h=h)
 
-
     # ## need query ground truth
     # coco_val = json.load(open('./data/coco_root/annotations/instances_val2017.json'))
     # id2name = {c['id']:c['name'] for c in coco_val['categories']}
@@ -374,6 +373,25 @@ def coco_split(coco_full : EvDataset, split : str) -> EvDataset:
 
     idxs = { 'val':val_set_dbidx, 'train':train_set_dbidx }
     return extract_subset(coco_full, idxs[split])
+
+
+def mini_coco(embedding : XEmbedding) -> EvDataset:
+    image_root = './data/mini_coco/images/'
+    relpaths = np.load('./data/mini_coco/relpaths.npy', allow_pickle=True)
+    box_data = pd.read_parquet('./data/mini_coco/box_data.parquet')
+    embedded_dataset = np.load('./data/mini_coco/embedded_dataset.npy')
+    fine_grained_embedding = np.load('./data/mini_coco/fine_grained_embedding.npy')
+    fine_grained_meta = pd.read_parquet('./data/mini_coco/fine_grained_meta.parquet')
+
+    qgt = box_data.groupby(['dbidx', 'category']).size().unstack(level=1).fillna(0)
+    # assert qgt.shape[0] == relpaths.shape[0]
+
+
+    return make_evdataset(root=image_root, paths=relpaths, embedded_dataset=embedded_dataset, 
+                     query_ground_truth=qgt, box_data=box_data, embedding=embedding,fine_grained_embedding=fine_grained_embedding,
+                     fine_grained_meta=fine_grained_meta)
+
+
 
 
 def dota1_full(embedding : XEmbedding) -> EvDataset:

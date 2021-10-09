@@ -271,6 +271,10 @@ default_actors = {
                                 model_handle=m,
                                 dbsample=np.load('./data/coco_30k_idxs.npy')[:10000],
                                 valsample=np.load('./data/coco_30k_idxs.npy')[10000:20000]),
+    'mini_coco':lambda m,ng: ray.remote(DB).options(name='mini_coco_db', lifetime="detached", num_gpus=ng, num_cpus=.1).remote(dataset_loader=mini_coco, 
+                                model_handle=m,
+                                dbsample=None, #np.load('./data/coco_30k_idxs.npy')[:10000],
+                                valsample=None), # np.load('./data/coco_30k_idxs.npy')[10000:20000]),
     'dota':lambda m,ng: ray.remote(DB).options(name='dota_db', lifetime="detached", num_gpus=ng, num_cpus=.1).remote(dataset_loader=dota1_full,
                                 model_handle=m,
                                 dbsample=np.load('./data/dota_idxs.npy')[:1000], # size is 1860 or so.
@@ -301,7 +305,7 @@ if __name__ == '__main__':
 
     actors = []
     for (k,v) in default_actors.items():
-        if k in ['lvis']:
+        if k in ['mini_coco']:
             print('init ', k)
             actors.append(v(model_service, 0))
 

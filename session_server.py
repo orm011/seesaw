@@ -16,8 +16,8 @@ from init_data_actors import BoxFeedbackQueryRemote, get_panel_data_remote, upda
 ray.init('auto', 
     #ignore_reinit_error=True,
         namespace='seesaw')
-default_dataset = 'lvis'
-datasets = ['lvis',  ]#['coco', 'ava', 'bdd', 'dota', 'objectnet', 'lvis']
+default_dataset = 'mini_coco'
+datasets = ['mini_coco',] #'lvis',  ]#['coco', 'ava', 'bdd', 'dota', 'objectnet', 'lvis']
 dbactors = dict([(name,ray.get_actor('{}_db'.format(name))) for name in datasets])
 
 

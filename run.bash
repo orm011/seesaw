@@ -7,12 +7,16 @@ set -euxo pipefail # stop on error etc.
 service nginx start # will listen on :9000
 ### see seesaw.conf for details
 
-ray start --head 2>&1 > ./ray.log # dashboard on :8265
-python ./repo/init_model_actor.py &
+(cd notebooks &&  jupyter notebook --allow-root --no-browser --ip=localhost --port 8888 --NotebookApp.token='' --NotebookApp.password='') &
+# 2>&1 > ./notebook.logs 
+
+ray start --head
+python ./repo/init_model_actor.py & # check ray dashboard for logs
 sleep 1
-python ./repo/init_data_actors.py & #2>&1 > ./data_server.log &
+python ./repo/init_data_actors.py &  # check ray dashboard for logs
 sleep 1
 FLASK_ENV=development FLASK_APP=./repo/session_server.py python -m flask run -p 5000
+
 
 
 
