@@ -12,10 +12,11 @@ DOCKER_BUILDKIT=1 is optional, mostly useful if you will be rebuilding docker fi
 The main service port is 9000 if want to remap it. Other useful ports are 8265 for the ray dashboard and 8888 for a notebook server.
 Scripts assume there is a repo folder and a data folder you should provide.
 
-You can map port 9000 to an available host port eg here we map 9000 in the container (the main port) to 9001 in the host.
+You can map port 9000 to an available host port eg here we map 9000 in the container (the main application port) to 9001 in the host.
 
 
-  `docker run \
+  ```
+  docker run \
     --network bridge \
     -p 127.0.0.1:9001:9000 \
     -p 127.0.0.1:8889:8888 \
@@ -25,7 +26,8 @@ You can map port 9000 to an available host port eg here we map 9000 in the conta
     -v /nvme_drive/orm/nbs/vloop_notebooks/:/workdir/notebooks/ \
     -v /nvme_drive/orm/vlsworkspace/data/:/workdir/notebooks/data  \
     -it seesaw_image:latest  \
-    /bin/bash --login -c '. repo/run.bash'`
+    /bin/bash --login -c '. repo/run.bash'
+   ```
 
 
 - the application entry point is and show now work:
@@ -33,6 +35,3 @@ You can map port 9000 to an available host port eg here we map 9000 in the conta
  
 - if you map things as above, a running notebook is available at 
 `http://localhost:8889`  
-
-### pre-built image
-I have saved a working image in dockerhub: orm011/seesaw, this may be a good starting point if deps have broken.
