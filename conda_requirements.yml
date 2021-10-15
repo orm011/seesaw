@@ -5,18 +5,19 @@ dependencies:
   - scipy
   - scikit-learn
   - pandas
-  - pyarrow
+  - pyarrow>4.0.0
   - pillow
-  - pytorch>=1.8
-  - torchvision>=0.9 # without this I sometimes see a really old version (0.2) installed
+  - pytorch>=1.9
+  - torchvision>=0.10 # without this I sometimes see a really old version (0.2) installed
   - tensorboard
   - flask
   - cudatoolkit>=11.1
-  # - pynndescent
-  - cvxpy
+  - pynndescent
+  - cython
+#  - cvxpy
   - pip:
     - bokeh
-    - ray[default]==1.6
+    - ray[default]>=1.7
     - tqdm
     - pytorch-lightning
     - torchmetrics

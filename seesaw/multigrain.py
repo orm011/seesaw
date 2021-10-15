@@ -1,3 +1,6 @@
+import torchvision
+from torchvision import transforms as T
+
 import numpy as np
 import pandas as pd
 from .dataset_tools import *
@@ -9,11 +12,18 @@ from .embeddings import make_clip_transform, ImTransform, XEmbedding
 from .vloop_dataset_loaders import get_class_ev
 from .dataset_search_terms import  *
 import pyroaring as pr
+from operator import itemgetter
+import PIL
+
+from ray.data.extensions import TensorArray, TensorDtype
 
 def postprocess_results(acc):
     flat_acc = {'iis':[], 'jjs':[], 'dbidx':[], 'vecs':[], 'zoom_factor':[], 'zoom_level':[]}
     flat_vecs = []
-    for acc0,sf,dbidx,zl in acc:
+
+    #{'accs':accs, 'sf':sf, 'dbidx':dbidx, 'zoom_level':zoom_level}
+    for item in acc:
+        acc0,sf,dbidx,zl = itemgetter('accs', 'sf', 'dbidx', 'zoom_level')(item)
         acc0 = acc0.squeeze(0)
         acc0 = acc0.transpose((1,2,0))
 
@@ -33,7 +43,6 @@ def postprocess_results(acc):
         flat_acc['zoom_factor'].append(zf)
         flat_acc['zoom_level'].append(zl)
 
-
     flat = {}
     for k,v in flat_acc.items():
         flat[k] = np.concatenate(v)
@@ -42,7 +51,12 @@ def postprocess_results(acc):
     del flat['vecs']
 
     vec_meta = pd.DataFrame(flat)
-    return vec_meta, vecs
+    vecs = vecs.astype('float32')
+    vecs = vecs/(np.linalg.norm(vecs, axis=-1, keepdims=True) + 1e-6)
+    vec_meta = vec_meta.assign(file_path=item['file_path'])
+
+    vec_meta = vec_meta.assign(vectors=TensorArray(vecs))
+    return vec_meta
 
 def preprocess_ds(localxclip, ds, debug=False):
     txds = TxDataset(ds, tx=pyramid_tx(non_resized_transform(224)))
@@ -71,7 +85,7 @@ def pyramid_centered(im,i,j):
         crs.append(im.crop(tup))
     return crs
 
-def zoom_out(im, factor=.5, abs_min=224):
+def zoom_out(im : PIL.Image, factor=.5, abs_min=224):
     """
         returns image one zoom level out, and the scale factor used
     """
@@ -90,17 +104,33 @@ def zoom_out(im, factor=.5, abs_min=224):
     assert min(im1.size) >= abs_min
     return im1, target_factor
 
-def pyramid(im, factor=.5, abs_min=224):
+def pyramid(im, factor, abs_min=224):
+    ## if im size is less tha the minimum, expand image to fit minimum
     ims = []
-    factors = [1.]
+    factors = []
+
+    if min(im.size) < abs_min:
+        sf = abs_min/min(im.size)
+        w,h=im.size
+        target_w = max(math.floor(w*sf),224)
+        target_h = max(math.floor(h*sf),224)
+        im0 = im.resize((target_w, target_h))
+        ims.append(im0)
+        factors.append(sf)
+    else:
+        ims.append(im)
+        factors.append(1.)
+
+    assert min(ims[0].size) >= abs_min
     while True:
         im, sf = zoom_out(im)
+        if min(im.size) <= abs_min:
+            break
+
         ims.append(im)
         factors.append(sf*factors[-1])
-        if min(im.size) == abs_min:
-            break
             
-    return ims, factors[1:]
+    return ims, factors
 
 def trim_edge(target_divisor=112):
     def fun(im1):
@@ -112,12 +142,44 @@ def trim_edge(target_divisor=112):
         
     return fun
 
+class TrimEdge:
+    def __init__(self, target_divisor=112):
+        self.target_divisor = target_divisor
+
+    def __call__(self, im1):
+        w1,h1 = im1.size
+        spare_h = h1 % self.target_divisor
+        spare_w = w1 % self.target_divisor
+        im1 = im1.crop((0,0,w1-spare_w, h1-spare_h))
+        return im1
+
+def torgb(image):
+    return image.convert('RGB')
+
+def tofloat16(x):
+    return x.type(torch.float16)
+
 def non_resized_transform(base_size):
-    return ImTransform(visual_xforms=[trim_edge(base_size//2), lambda image: image.convert("RGB")],
+    return ImTransform(visual_xforms=[torgb],
                        tensor_xforms=[T.ToTensor(),
                                       T.Normalize((0.48145466, 0.4578275, 0.40821073), 
                                                 (0.26862954, 0.26130258, 0.27577711)),
-                                        lambda x : x.type(torch.float16)])
+                                                tofloat16])
+
+
+class PyramidTx:
+    def __init__(self, tx, factor, min_size):
+        self.tx = tx
+        self.factor = factor
+        self.min_size = min_size
+
+    def __call__(self, im):
+        ims,sfs= pyramid(im, factor=self.factor, abs_min=self.min_size)
+        ppims = []
+        for im in ims:
+            ppims.append(self.tx(im))
+
+        return ppims, sfs
 
 def pyramid_tx(tx):
     def fn(im):
@@ -179,6 +241,7 @@ def get_boxes(vec_meta):
     x2 = x1 + 224
     factor = vec_meta.zoom_factor
     boxes = vec_meta.assign(**{'x1':x1*factor, 'x2':x2*factor, 'y1':y1*factor, 'y2':y2*factor})[['x1','y1','x2','y2']]
+    boxes = boxes.astype('float32') ## multiplication makes this type double but this is too much.
     return boxes
 
 def makedb(evs, dataset, category):
