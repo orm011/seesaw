@@ -223,7 +223,6 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
         index_path = None
         hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
             embedded_dataset=vecs, vector_meta=vec_meta, index_path=index_path)
-
     elif granularity == 'coarse':
         dbidxs = np.arange(len(ev)).astype('int')
         vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
@@ -267,7 +266,7 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
                     ])
 
     for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
-        idxbatch = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
+        idxbatch, _ = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
         acc_indices.append(idxbatch.copy()) # trying to figure out leak
         acc_results.append(gt[idxbatch])
 

@@ -99,10 +99,7 @@ class EmbeddingDB(object):
         assert ret.shape[0] == topk  # return quantity asked, in theory could be less
         assert sret.intersection_cardinality(exclude) == 0  # honor exclude request
 
-        if return_scores:
-            return ret, scores
-        else:
-            return ret
+        return ret, scores
 
 import  sklearn.metrics.pairwise
 

@@ -383,7 +383,7 @@ def make_clip_transform(n_px, square_crop=False):
 
 
 class CLIPWrapper(XEmbedding):
-    def __init__(self, device, jit):
+    def __init__(self, device, jit=False):
 
         tx = make_clip_transform(n_px=224, square_crop=False)
         variant = "ViT-B/32"
