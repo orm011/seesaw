@@ -1,4 +1,10 @@
 
+import importlib
+from . import dataset_manager
+from . import vls_benchmark_tools
+importlib.reload(dataset_manager)
+importlib.reload(vls_benchmark_tools)
+
 from .vloop_dataset_loaders import *
 from .vls_benchmark_tools import *
 from .dataset_tools import *

@@ -9,6 +9,8 @@ from operator import itemgetter
 
 from .multigrain import * #SlidingWindow,PyramidTx,non_resized_transform
 from .embeddings import * 
+from .vloop_dataset_loaders import EvDataset
+
 import glob
 import pandas as pd
 from tqdm.auto import tqdm
@@ -143,56 +145,6 @@ def worker_function(wid, dataset,slice_size,indices, cpus_per_proc, vector_root)
                     batch_size=3,device=device)
     print(f'Worker {wid} finished.')
 
-class SeesawDatasetManager:
-    def __init__(self, root, dataset_name):
-        ''' Assumes layout created by create_dataset
-        '''
-        self.dataset_name = dataset_name
-        self.dataset_root = f'{root}/{dataset_name}'
-        file_meta = pd.read_parquet(f'{self.dataset_root}/file_meta.parquet')
-        self.file_meta = file_meta
-        self.paths = file_meta['file_path'].values
-        self.image_root = f'{self.dataset_root}/images'
-        
-        
-    def get_pytorch_dataset(self):
-        return ExplicitPathDataset(root_dir=self.image_root, relative_path_list=self.paths)
-        
-    def preprocess(self, num_subproc=-1):
-        ''' Will run a preprocess pipeline and store the output
-            -1: use all gpus
-            0: use one gpu process and preprocessing all in the local process 
-        '''
-        dataset = self.get_pytorch_dataset()
-
-        vector_root= self.vector_path()
-        os.makedirs(vector_root, exist_ok=True)
-
-        if num_subproc == -1:
-            num_subproc = torch.cuda.device_count()
-            
-        jobs = []
-        if num_subproc == 0:
-            worker_function(0, dataset, slice_size=len(dataset), 
-                indices=np.arange(len(dataset)), cpus_per_proc=0, vector_root=vector_root)
-        else:
-            indices = np.random.permutation(len(dataset))
-            slice_size = int(math.ceil(indices.shape[0]/num_subproc))
-            cpus_per_proc = os.cpu_count()//num_subproc if num_subproc > 0 else 0
-
-            for i in range(num_subproc):
-                p = mp.Process(target=worker_function, args=(i,dataset, slice_size, indices, cpus_per_proc, vector_root))
-                jobs.append(p)
-                p.start()
-
-            for p in jobs:
-                p.join()
-
-    def vector_path(self):
-        meta_root = f'{self.dataset_root}/meta'
-        vector_root = f'{meta_root}/vectors'
-        return vector_root
-
 
 """
 Expected data layout for a seesaw root with a few datasets:
@@ -277,3 +229,112 @@ def preprocess_dataset(*, image_src, seesaw_root, dataset_name):
     gdm.create_dataset(image_src=image_src, dataset_name=dataset_name)
     mc = gdm.get_dataset(dataset_name)
     mc.preprocess()
+
+
+import pyarrow
+from pyarrow import parquet as pq
+
+class SeesawDatasetManager:
+    def __init__(self, root, dataset_name):
+        ''' Assumes layout created by create_dataset
+        '''
+        self.dataset_name = dataset_name
+        self.dataset_root = f'{root}/{dataset_name}'
+        file_meta = pd.read_parquet(f'{self.dataset_root}/file_meta.parquet')
+        self.file_meta = file_meta
+        self.paths = file_meta['file_path'].values
+        self.image_root = f'{self.dataset_root}/images'
+
+    def get_pytorch_dataset(self):
+        return ExplicitPathDataset(root_dir=self.image_root, relative_path_list=self.paths)
+        
+    def preprocess(self, num_subproc=-1):
+        ''' Will run a preprocess pipeline and store the output
+            -1: use all gpus
+            0: use one gpu process and preprocessing all in the local process 
+        '''
+        dataset = self.get_pytorch_dataset()
+
+        vector_root= self.vector_path()
+        os.makedirs(vector_root, exist_ok=True)
+
+        if num_subproc == -1:
+            num_subproc = torch.cuda.device_count()
+            
+        jobs = []
+        if num_subproc == 0:
+            worker_function(0, dataset, slice_size=len(dataset), 
+                indices=np.arange(len(dataset)), cpus_per_proc=0, vector_root=vector_root)
+        else:
+            indices = np.random.permutation(len(dataset))
+            slice_size = int(math.ceil(indices.shape[0]/num_subproc))
+            cpus_per_proc = os.cpu_count()//num_subproc if num_subproc > 0 else 0
+
+            for i in range(num_subproc):
+                p = mp.Process(target=worker_function, args=(i,dataset, slice_size, indices, cpus_per_proc, vector_root))
+                jobs.append(p)
+                p.start()
+
+            for p in jobs:
+                p.join()
+
+    def save_ground_truth(self, box_data, qgt=None):
+        """ 
+            Will add qgt and box information. or overwrite it.
+        """
+        if qgt is None:
+            qgt = infer_qgt_from_boxes(box_data, num_files=self.paths.shape[0])
+
+        assert qgt.shape[0] == self.paths.shape[0]
+        gt_root = f'{self.dataset_root}/ground_truth/'
+        os.makedirs(gt_root, exist_ok=True)
+        box_data.to_parquet(f'{gt_root}/boxes.parquet')
+        qgt.to_parquet(f'{gt_root}/qgt.parquet')
+
+
+
+
+    def print_tree(self):
+        pass
+
+    def vector_path(self):
+        return f'{self.dataset_root}/meta/vectors'
+
+    def load_evdataset(self) -> EvDataset:
+        tab = pq.read_table(self.vector_path(), use_pandas_metadata=False, memory_map=True,
+                  columns=['dbidx', 'zoom_factor', 'zoom_level', 'x1', 'y1', 'x2', 'y2',
+                             'vectors',
+                            #'file_path'
+                  ])
+
+        df = tab.to_pandas(deduplicate_objects=False, ignore_metadata=True)
+
+        fine_grained_meta = df[['dbidx', 'zoom_factor', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
+        fine_grained_embedding = df['vectors'].values.to_numpy()
+        qgt = pd.read_parquet(f'{self.dataset_root}/ground_truth/qgt.parquet')
+        box_data = pd.read_parquet(f'{self.dataset_root}/ground_truth/boxes.parquet')
+
+        return EvDataset(root=self.image_root, paths=self.paths, 
+            embedded_dataset=None, 
+            query_ground_truth=qgt, 
+            box_data=box_data, 
+            embedding=None,#model used for embedding 
+            fine_grained_embedding=fine_grained_embedding, fine_grained_meta=fine_grained_meta)
+
+## a lot of evaluation code and server code is currently written against vloop_dataset_laoaders.EvDataset
+## would be good to have something that takes a dataset manager and produces an ev dataset.
+## main thing is how to get the ground truth.
+def convert_dbidx(ev, ds):
+    new_path_df = ds.file_meta.assign(dbidx=np.arange(ds.file_meta.shape[0]))
+    old_path_df = pd.DataFrame({'file_path':ev.paths, 'dbidx':np.arange(len(ev.paths))})
+    ttab = pd.merge(new_path_df, old_path_df, left_on='file_path', right_on='file_path', suffixes=['_new', '_old'], how='outer')
+    assert ttab[ttab.dbidx_new.isna()].shape[0] == 0
+    tmp = pd.merge(ev.box_data, ttab[['dbidx_new', 'dbidx_old']], left_on='dbidx', right_on='dbidx_old', how='left')
+    tmp = tmp.assign(dbidx=tmp.dbidx_new)
+    new_box_data = tmp[[c for c in tmp if c not in ['dbidx_new', 'dbidx_old']]]
+    return new_box_data
+
+def infer_qgt_from_boxes(box_data, num_files):
+    qgt = box_data.groupby(['dbidx', 'category']).size().unstack(level=1).fillna(0)
+    qgt = qgt.reindex(np.arange(num_files)).fillna(0)
+    return qgt.clip(0,1)
