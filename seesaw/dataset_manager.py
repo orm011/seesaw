@@ -20,6 +20,8 @@ import torch.nn as nn
 import pyroaring as pr
 from torch.utils.data import Subset
 
+import shutil
+
 class ExplicitPathDataset(object):
     def __init__(self, root_dir, relative_path_list):
         '''
@@ -46,9 +48,10 @@ def list_image_paths(basedir, extensions=['jpg', 'jpeg', 'png']):
     relative_paths = [ f[len(basedir):].lstrip('./') for f in acc]
     return relative_paths
 
+import math
 
 def preprocess(tup):
-    ptx = PyramidTx(tx=non_resized_transform(224), factor=.5, min_size=224)
+    ptx = PyramidTx(tx=non_resized_transform(224), factor=math.sqrt(.5), min_size=224)
     ims, sfs = ptx(tup['image'])
     acc = []
     for zoom_level,(im,sf) in enumerate(zip(ims,sfs), start=1):
@@ -147,63 +150,6 @@ def worker_function(wid, dataset,slice_size,indices, cpus_per_proc, vector_root)
     print(f'Worker {wid} finished.')
 
 
-"""
-Expected data layout for a seesaw root with a few datasets:
-/workdir/seesaw_data
-├── coco  ### not yet preproceseed, just added
-│   ├── file_meta.parquet
-│   ├── images -> /workdir/datasets/coco
-├── coco5 ### preprocessed
-│   ├── file_meta.parquet
-│   ├── images -> /workdir/datasets/coco
-│   └── meta
-│       └── vectors
-│           ├── part_000.parquet
-│           └── part_001.parquet
-├── mini_coco
-│   ├── file_meta.parquet
-│   ├── images -> /workdir/datasets/mini_coco/images
-│   └── meta
-│       └── vectors
-│           ├── part_000.parquet
-│           └── part_001.parquet
-"""
-
-class GlobalDataManager:
-    def __init__(self, root):
-        if not os.path.exists(root):
-            print('creating new data folder')
-            os.makedirs(root)
-        else:
-            assert os.path.isdir(root)
-            
-        self.root = root
-        
-    def list_datasets(self):
-        return os.listdir(self.root)
-    
-    def create_dataset(self, image_src, dataset_name, paths=[]):
-        '''
-            if not given explicit paths, it assumes every jpg, jpeg and png is wanted
-        '''
-        assert os.path.isdir(image_src)
-        dspath = f'{self.root}/{dataset_name}'
-        assert not os.path.exists(dspath), 'name already used'
-        os.mkdir(dspath)
-        image_path = f'{dspath}/images'
-        os.symlink(os.path.abspath(image_src), image_path)
-        if len(paths) == 0:
-            paths = list_image_paths(image_src)
-            
-        df = pd.DataFrame({'file_path':paths})
-        df.to_parquet(f'{dspath}/file_meta.parquet')
-            
-    def get_dataset(self, dataset_name):
-        assert dataset_name in self.list_datasets(), 'must create it first'
-        ## TODO: cache this representation
-        return SeesawDatasetManager(self.root, dataset_name)
-
-
 def iden(x):
     return x
 
@@ -224,15 +170,16 @@ def extract_seesaw_meta(dataset, output_dir, output_name, num_workers, batch_siz
     merged_res = pd.concat(res, ignore_index=True)
     merged_res.to_parquet(f'{output_dir}/{output_name}.parquet')
 
-def preprocess_dataset(*, image_src, seesaw_root, dataset_name):
-    mp.set_start_method('spawn')
-    gdm = GlobalDataManager(seesaw_root)
-    gdm.create_dataset(image_src=image_src, dataset_name=dataset_name)
-    mc = gdm.get_dataset(dataset_name)
-    mc.preprocess()
+# def preprocess_dataset(*, image_src, seesaw_root, dataset_name):
+#     mp.set_start_method('spawn')
+#     gdm = GlobalDataManager(seesaw_root)
+#     gdm.create_dataset(image_src=image_src, dataset_name=dataset_name)
+#     mc = gdm.get_dataset(dataset_name)
+#     mc.preprocess()
 
 import pyarrow
 from pyarrow import parquet as pq
+import shutil
 
 class SeesawDatasetManager:
     def __init__(self, root, dataset_name):
@@ -247,20 +194,34 @@ class SeesawDatasetManager:
 
     def get_pytorch_dataset(self):
         return ExplicitPathDataset(root_dir=self.image_root, relative_path_list=self.paths)
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({self.dataset_name})'
         
-    def preprocess(self, num_subproc=-1):
+    def preprocess(self, num_subproc=-1, force=False):
         ''' Will run a preprocess pipeline and store the output
             -1: use all gpus
             0: use one gpu process and preprocessing all in the local process 
         '''
         dataset = self.get_pytorch_dataset()
 
-        vector_root= self.vector_path()
-        os.makedirs(vector_root, exist_ok=True)
+        vector_root = self.vector_path()
+        if os.path.exists(vector_root):
+            i = 0
+            while True:
+                i+=1
+                backup_name = f'{vector_root}.bak.{i:03d}'
+                if os.path.exists(backup_name):
+                    continue
+                else:
+                    os.rename(vector_root, backup_name)
+                    break
+        
+        os.makedirs(vector_root, exist_ok=False)
 
         if num_subproc == -1:
             num_subproc = torch.cuda.device_count()
-            
+        
         jobs = []
         if num_subproc == 0:
             worker_function(0, dataset, slice_size=len(dataset), 
@@ -312,7 +273,8 @@ class SeesawDatasetManager:
         else:
             assert False
 
-        tab = pq.read_table(self.vector_path(), use_pandas_metadata=False, memory_map=True, columns=columns)
+        tab = pq.read_table(self.vector_path(), use_pandas_metadata=False, 
+            memory_map=True, columns=columns)
         df = tab.to_pandas(deduplicate_objects=False, ignore_metadata=True)
         return df
     
@@ -333,6 +295,8 @@ class SeesawDatasetManager:
             embedding=None,#model used for embedding 
             fine_grained_embedding=fine_grained_embedding,
             fine_grained_meta=fine_grained_meta)
+
+
 
 def convert_dbidx(ev : EvDataset, ds : SeesawDatasetManager, prepend_ev :str = ''):
     new_path_df = ds.file_meta.assign(dbidx=np.arange(ds.file_meta.shape[0]))
@@ -357,48 +321,132 @@ def infer_coarse_embedding(pdtab):
     normres = res/np.maximum(np.linalg.norm(res, axis=1,keepdims=True), 1e-6)
     return normres
 
-def materialize_subset(self : GlobalDataManager, subset_name : str, 
-                    dataset : SeesawDatasetManager, 
-                    file_names=None, file_indices=None):
 
-    # 1: names -> indices
-    image_src = os.path.realpath(dataset.image_root)
-    assert subset_name not in self.list_datasets(), 'dataset already exists'
-
-    if file_names is not None:
-        paths= dataset.file_meta.file_path.values
-        dbidx = range(len(paths))
-        lookup = dict(zip(paths,dbidx))
-        file_indices = np.array([lookup[fn] for fn in file_names])
-    elif file_indices is not None:
-        file_indices = np.array(file_indices)
-        file_names = dataset.file_meta.file_path.values[file_indices]
-    else:
-        assert False, 'need one of file_names or file_indices'
-    
-    self.create_dataset(image_src=image_src, dataset_name=subset_name, paths=file_names)
-    subds = self.get_dataset(subset_name)
-
-    id_set = pr.BitMap(file_indices)
-    old_ids = file_indices
-    new_ids = np.arange(len(file_indices))
-    id_map = dict(zip(old_ids,new_ids))
-
-    ## TODO: handle cases where no vecs/gt exist
-    if os.path.exists(dataset.vector_path()):
-        vt = dataset.load_vec_table()
-        vt = vt[vt.dbidx.isin(id_set)]
-        ## remap ids:
-        vt = vt.assign(dbidx=vt.dbidx.map(lambda old_id : id_map[old_id]))
-        subds.save_vectors(vt)
-
-    if os.path.exists(dataset.ground_truth_path()):
-        boxes = pd.read_parquet(f'{dataset.ground_truth_path()}/boxes.parquet')
-        boxes = boxes[boxes.dbidx.isin(id_set)]
-        boxes = boxes.assign(dbidx=boxes.dbidx.map(lambda old_id : id_map[old_id]))
+"""
+Expected data layout for a seesaw root with a few datasets:
+/workdir/seesaw_data
+├── coco  ### not yet preproceseed, just added
+│   ├── file_meta.parquet
+│   ├── images -> /workdir/datasets/coco
+├── coco5 ### preprocessed
+│   ├── file_meta.parquet
+│   ├── images -> /workdir/datasets/coco
+│   └── meta
+│       └── vectors
+│           ├── part_000.parquet
+│           └── part_001.parquet
+├── mini_coco
+│   ├── file_meta.parquet
+│   ├── images -> /workdir/datasets/mini_coco/images
+│   └── meta
+│       └── vectors
+│           ├── part_000.parquet
+│           └── part_001.parquet
+"""
+class GlobalDataManager:
+    def __init__(self, root):
+        if not os.path.exists(root):
+            print('creating new data folder')
+            os.makedirs(root)
+        else:
+            assert os.path.isdir(root)
+            
+        self.root = root
         
-        qgt = pd.read_parquet(f'{dataset.ground_truth_path()}/qgt.parquet')
-        qgt = qgt.iloc[file_indices]
-        qgt = qgt.reset_index(drop=True)
+    def list_datasets(self):
+        return os.listdir(self.root)
+    
+    def create_dataset(self, image_src, dataset_name, paths=[]) -> SeesawDatasetManager:
+        '''
+            if not given explicit paths, it assumes every jpg, jpeg and png is wanted
+        '''
+        assert os.path.isdir(image_src)
+        dspath = f'{self.root}/{dataset_name}'
+        assert not os.path.exists(dspath), 'name already used'
+        os.mkdir(dspath)
+        image_path = f'{dspath}/images'
+        os.symlink(os.path.abspath(image_src), image_path)
+        if len(paths) == 0:
+            paths = list_image_paths(image_src)
+            
+        df = pd.DataFrame({'file_path':paths})
+        df.to_parquet(f'{dspath}/file_meta.parquet')
+        return self.get_dataset(dataset_name)
+            
+    def get_dataset(self, dataset_name) -> SeesawDatasetManager:
+        assert dataset_name in self.list_datasets(), 'must create it first'
+        ## TODO: cache this representation
+        return SeesawDatasetManager(self.root, dataset_name)
 
-        subds.save_ground_truth(box_data=boxes, qgt=qgt)
+    def clone(self, ds = None, ds_name = None, clone_name : str = None) -> SeesawDatasetManager:
+        assert ds is not None or ds_name is not None
+        if ds is None:
+            ds = self.get_dataset(ds_name)
+
+        if clone_name is None:
+            dss = self.list_datasets()
+            for i in range(len(dss)):
+                new_name = f'{ds.dataset_name}_clone_{i:03d}'
+                if new_name not in dss:
+                    clone_name = new_name
+                    break
+
+        assert clone_name is not None
+        shutil.copytree(src=ds.dataset_root, dst=f'{self.root}/{clone_name}', symlinks=True)
+        return self.get_dataset(clone_name)
+
+    def clone_subset(self, ds=None, ds_name=None, 
+                subset_name : str = None, file_names=None, file_indices=None) -> SeesawDatasetManager:
+
+        assert ds is not None or ds_name is not None
+        if ds is None:
+            ds = self.get_dataset(ds_name)
+
+        dataset = ds
+        # 1: names -> indices
+        image_src = os.path.realpath(dataset.image_root)
+        assert subset_name not in self.list_datasets(), 'dataset already exists'
+
+        if file_names is not None:
+            paths= dataset.file_meta.file_path.values
+            dbidx = range(len(paths))
+            lookup = dict(zip(paths,dbidx))
+            file_indices = np.array([lookup[fn] for fn in file_names])
+        elif file_indices is not None:
+            file_indices = np.array(file_indices)
+            file_names = dataset.file_meta.file_path.values[file_indices]
+        else:
+            assert False, 'need one of file_names or file_indices'
+        
+        self.create_dataset(image_src=image_src, dataset_name=subset_name, paths=file_names)
+        subds = self.get_dataset(subset_name)
+
+        id_set = pr.BitMap(file_indices)
+        old_ids = file_indices
+        new_ids = np.arange(len(file_indices))
+        id_map = dict(zip(old_ids,new_ids))
+
+        ## TODO: handle cases where no vecs/gt exist
+        if os.path.exists(dataset.vector_path()):
+            vt = dataset.load_vec_table()
+            vt = vt[vt.dbidx.isin(id_set)]
+            ## remap ids:
+            vt = vt.assign(dbidx=vt.dbidx.map(lambda old_id : id_map[old_id]))
+            subds.save_vectors(vt)
+
+        if os.path.exists(dataset.ground_truth_path()):
+            boxes = pd.read_parquet(f'{dataset.ground_truth_path()}/boxes.parquet')
+            boxes = boxes[boxes.dbidx.isin(id_set)]
+            boxes = boxes.assign(dbidx=boxes.dbidx.map(lambda old_id : id_map[old_id]))
+            
+            qgt = pd.read_parquet(f'{dataset.ground_truth_path()}/qgt.parquet')
+            qgt = qgt.iloc[file_indices]
+            qgt = qgt.reset_index(drop=True)
+
+            subds.save_ground_truth(box_data=boxes, qgt=qgt)
+
+        return self.get_dataset(subset_name)
+    
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({self.root})'

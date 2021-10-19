@@ -104,32 +104,38 @@ def zoom_out(im : PIL.Image, factor=.5, abs_min=224):
     assert min(im1.size) >= abs_min
     return im1, target_factor
 
-def pyramid(im, factor, abs_min=224):
+
+def rescale(im, scale, min_size):
+    (w,h) = im.size
+    target_w = max(math.floor(w*scale),min_size)
+    target_h = max(math.floor(h*scale),min_size)
+    return im.resize(size=(target_w, target_h), resample=PIL.Image.BILINEAR)
+
+def pyramid(im, factor=.71, abs_min=224):
     ## if im size is less tha the minimum, expand image to fit minimum
+    ## try following: orig size and abs min size give you bounds
+    assert factor < 1.
+    factor = 1./factor
+    size = min(im.size)
+    end_size = abs_min
+    start_size = max(size, abs_min)
+
+    start_scale = start_size/size
+    end_scale = end_size/size
+
+    ## adjust start scale
+    ntimes = math.ceil(math.log(start_scale/end_scale)/math.log(factor))
+    start_size = math.ceil(math.exp(ntimes*math.log(factor) + math.log(abs_min)))
+    start_scale = start_size/size
+    factors = np.geomspace(start=start_scale, stop=end_scale, num=ntimes+1, endpoint=True).tolist()
     ims = []
-    factors = []
+    for sf in factors:
+        imout = rescale(im, scale=sf, min_size=abs_min)
+        ims.append(imout)
 
-    if min(im.size) < abs_min:
-        sf = abs_min/min(im.size)
-        w,h=im.size
-        target_w = max(math.floor(w*sf),224)
-        target_h = max(math.floor(h*sf),224)
-        im0 = im.resize((target_w, target_h))
-        ims.append(im0)
-        factors.append(sf)
-    else:
-        ims.append(im)
-        factors.append(1.)
-
+    assert len(ims) > 0
     assert min(ims[0].size) >= abs_min
-    while True:
-        im, sf = zoom_out(im)
-        if min(im.size) <= abs_min:
-            break
-
-        ims.append(im)
-        factors.append(sf*factors[-1])
-            
+    assert min(ims[-1].size) == abs_min
     return ims, factors
 
 def trim_edge(target_divisor=112):
