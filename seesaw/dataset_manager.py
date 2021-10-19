@@ -17,6 +17,7 @@ from tqdm.auto import tqdm
  
 import torch
 import torch.nn as nn
+import pyroaring as pr
 from torch.utils.data import Subset
 
 class ExplicitPathDataset(object):
@@ -230,7 +231,6 @@ def preprocess_dataset(*, image_src, seesaw_root, dataset_name):
     mc = gdm.get_dataset(dataset_name)
     mc.preprocess()
 
-
 import pyarrow
 from pyarrow import parquet as pq
 
@@ -278,6 +278,12 @@ class SeesawDatasetManager:
             for p in jobs:
                 p.join()
 
+    def save_vectors(self, vector_data):
+        assert (np.sort(vector_data.dbidx.unique()) == np.arange(self.paths.shape[0])).all()
+        vector_root = self.vector_path()
+        os.makedirs(vector_root, exist_ok=False)
+        vector_data.to_parquet(f'{vector_root}/manually_saved_vectors.parquet')
+
     def save_ground_truth(self, box_data, qgt=None):
         """ 
             Will add qgt and box information. or overwrite it.
@@ -286,55 +292,113 @@ class SeesawDatasetManager:
             qgt = infer_qgt_from_boxes(box_data, num_files=self.paths.shape[0])
 
         assert qgt.shape[0] == self.paths.shape[0]
-        gt_root = f'{self.dataset_root}/ground_truth/'
+        gt_root = self.ground_truth_path()
         os.makedirs(gt_root, exist_ok=True)
         box_data.to_parquet(f'{gt_root}/boxes.parquet')
         qgt.to_parquet(f'{gt_root}/qgt.parquet')
 
-
-
-
-    def print_tree(self):
-        pass
-
     def vector_path(self):
         return f'{self.dataset_root}/meta/vectors'
 
-    def load_evdataset(self) -> EvDataset:
-        tab = pq.read_table(self.vector_path(), use_pandas_metadata=False, memory_map=True,
-                  columns=['dbidx', 'zoom_factor', 'zoom_level', 'x1', 'y1', 'x2', 'y2',
-                             'vectors',
-                            #'file_path'
-                  ])
+    def ground_truth_path(self):
+        gt_root = f'{self.dataset_root}/ground_truth/'
+        return gt_root
 
+    def load_vec_table(self, columns='default'):
+        if columns == 'default':
+            columns = ['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors']
+        elif columns is None:
+            pass
+        else:
+            assert False
+
+        tab = pq.read_table(self.vector_path(), use_pandas_metadata=False, memory_map=True, columns=columns)
         df = tab.to_pandas(deduplicate_objects=False, ignore_metadata=True)
-
-        fine_grained_meta = df[['dbidx', 'zoom_factor', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
+        return df
+    
+    def load_evdataset(self) -> EvDataset:
+        df = self.load_vec_table(columns='default')
+        fine_grained_meta = df[['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
         fine_grained_embedding = df['vectors'].values.to_numpy()
         qgt = pd.read_parquet(f'{self.dataset_root}/ground_truth/qgt.parquet')
         box_data = pd.read_parquet(f'{self.dataset_root}/ground_truth/boxes.parquet')
 
+        coarse_vecs = fine_grained_meta[fine_grained_meta.zoom_level == 1]
+        embedded_dataset=infer_coarse_embedding(df[['dbidx', 'zoom_level', 'vectors']])
+
         return EvDataset(root=self.image_root, paths=self.paths, 
-            embedded_dataset=None, 
+            embedded_dataset=embedded_dataset, 
             query_ground_truth=qgt, 
             box_data=box_data, 
             embedding=None,#model used for embedding 
-            fine_grained_embedding=fine_grained_embedding, fine_grained_meta=fine_grained_meta)
+            fine_grained_embedding=fine_grained_embedding,
+            fine_grained_meta=fine_grained_meta)
 
-## a lot of evaluation code and server code is currently written against vloop_dataset_laoaders.EvDataset
-## would be good to have something that takes a dataset manager and produces an ev dataset.
-## main thing is how to get the ground truth.
-def convert_dbidx(ev, ds):
+def convert_dbidx(ev : EvDataset, ds : SeesawDatasetManager, prepend_ev :str = ''):
     new_path_df = ds.file_meta.assign(dbidx=np.arange(ds.file_meta.shape[0]))
-    old_path_df = pd.DataFrame({'file_path':ev.paths, 'dbidx':np.arange(len(ev.paths))})
+    old_path_df = pd.DataFrame({'file_path':prepend_ev + ev.paths , 'dbidx':np.arange(len(ev.paths))})
     ttab = pd.merge(new_path_df, old_path_df, left_on='file_path', right_on='file_path', suffixes=['_new', '_old'], how='outer')
     assert ttab[ttab.dbidx_new.isna()].shape[0] == 0
     tmp = pd.merge(ev.box_data, ttab[['dbidx_new', 'dbidx_old']], left_on='dbidx', right_on='dbidx_old', how='left')
     tmp = tmp.assign(dbidx=tmp.dbidx_new)
     new_box_data = tmp[[c for c in tmp if c not in ['dbidx_new', 'dbidx_old']]]
-    return new_box_data
+    ds.save_ground_truth(new_box_data)
 
 def infer_qgt_from_boxes(box_data, num_files):
     qgt = box_data.groupby(['dbidx', 'category']).size().unstack(level=1).fillna(0)
     qgt = qgt.reindex(np.arange(num_files)).fillna(0)
     return qgt.clip(0,1)
+
+def infer_coarse_embedding(pdtab):
+    max_zoom_out = pdtab.groupby('dbidx').zoom_level.max().rename('max_zoom_level')
+    wmax = pd.merge(pdtab, max_zoom_out, left_on='dbidx', right_index=True)
+    lev1 = wmax[wmax.zoom_level == wmax.max_zoom_level]
+    res = lev1.groupby('dbidx').vectors.mean().values.to_numpy()
+    normres = res/np.maximum(np.linalg.norm(res, axis=1,keepdims=True), 1e-6)
+    return normres
+
+def materialize_subset(self : GlobalDataManager, subset_name : str, 
+                    dataset : SeesawDatasetManager, 
+                    file_names=None, file_indices=None):
+
+    # 1: names -> indices
+    image_src = os.path.realpath(dataset.image_root)
+    assert subset_name not in self.list_datasets(), 'dataset already exists'
+
+    if file_names is not None:
+        paths= dataset.file_meta.file_path.values
+        dbidx = range(len(paths))
+        lookup = dict(zip(paths,dbidx))
+        file_indices = np.array([lookup[fn] for fn in file_names])
+    elif file_indices is not None:
+        file_indices = np.array(file_indices)
+        file_names = dataset.file_meta.file_path.values[file_indices]
+    else:
+        assert False, 'need one of file_names or file_indices'
+    
+    self.create_dataset(image_src=image_src, dataset_name=subset_name, paths=file_names)
+    subds = self.get_dataset(subset_name)
+
+    id_set = pr.BitMap(file_indices)
+    old_ids = file_indices
+    new_ids = np.arange(len(file_indices))
+    id_map = dict(zip(old_ids,new_ids))
+
+    ## TODO: handle cases where no vecs/gt exist
+    if os.path.exists(dataset.vector_path()):
+        vt = dataset.load_vec_table()
+        vt = vt[vt.dbidx.isin(id_set)]
+        ## remap ids:
+        vt = vt.assign(dbidx=vt.dbidx.map(lambda old_id : id_map[old_id]))
+        subds.save_vectors(vt)
+
+    if os.path.exists(dataset.ground_truth_path()):
+        boxes = pd.read_parquet(f'{dataset.ground_truth_path()}/boxes.parquet')
+        boxes = boxes[boxes.dbidx.isin(id_set)]
+        boxes = boxes.assign(dbidx=boxes.dbidx.map(lambda old_id : id_map[old_id]))
+        
+        qgt = pd.read_parquet(f'{dataset.ground_truth_path()}/qgt.parquet')
+        qgt = qgt.iloc[file_indices]
+        qgt = qgt.reset_index(drop=True)
+
+        subds.save_ground_truth(box_data=boxes, qgt=qgt)

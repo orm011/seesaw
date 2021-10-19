@@ -12,7 +12,7 @@ class ExplicitPathDataset(object):
         '''
         Reads images in a directory according to an explicit list.
         '''
-        self.root = root_dir.lstrip('./')
+        self.root = root_dir
         self.paths = relative_path_list
         self.formatter = 'http://localhost:9000/{root}/{path}'.format
 

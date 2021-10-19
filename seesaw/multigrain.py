@@ -235,6 +235,9 @@ def augment_score2(db,tup,qvec,vec_meta,vecs, rw_coarse=1.):
     return fsc
 
 def get_boxes(vec_meta):
+    if 'x1' in vec_meta.columns:
+        return vec_meta[['x1', 'x2', 'y1', 'y2']]
+    
     y1 = vec_meta.iis*112
     y2 = y1 + 224
     x1 = vec_meta.jjs*112
