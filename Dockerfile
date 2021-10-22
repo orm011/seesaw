@@ -51,8 +51,7 @@ EXPOSE 5000 8265 8888
 RUN pip install jupyter_contrib_nbextensions 
 RUN jupyter contrib nbextension install --system --symlink
 RUN jupyter nbextension enable execute_time/ExecuteTime
-RUN apt-get install tree
-
+RUN apt-get install -y tree rsync
 
 
 ##################

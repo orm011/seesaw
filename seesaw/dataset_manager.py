@@ -19,8 +19,9 @@ import torch
 import torch.nn as nn
 import pyroaring as pr
 from torch.utils.data import Subset
-
+import ray
 import shutil
+
 
 class ExplicitPathDataset(object):
     def __init__(self, root_dir, relative_path_list):
@@ -50,7 +51,10 @@ def list_image_paths(basedir, extensions=['jpg', 'jpeg', 'png']):
 
 import math
 
+
 def preprocess(tup):
+    """ meant to preprocess dict with {path, dbidx,image}
+    """
     ptx = PyramidTx(tx=non_resized_transform(224), factor=math.sqrt(.5), min_size=224)
     ims, sfs = ptx(tup['image'])
     acc = []
@@ -60,27 +64,48 @@ def preprocess(tup):
         
     return acc
 
-class L2Normalize(nn.Module):
-    def __init__(self, dim):
+class NormalizedEmbedding(nn.Module):
+    def __init__(self, emb_mod):
         super().__init__()
-        self.dim = dim
+        self.mod = emb_mod
 
     def forward(self, X):
+        tmp = self.mod(X)
         with torch.cuda.amp.autocast():
-            return F.normalize(X, dim=self.dim)
+            return F.normalize(tmp, dim=1).type(tmp.dtype)
+
+
+def trace_emb_jit(output_path):
+    device = torch.device('cuda:0')
+    model, _ = clip.load("ViT-B/32", device=device, jit=False)
+    ker = NormalizedEmbedding(model.visual)
+    ker = ker.eval()
+
+    example = torch.randn((10,3,224,224), dtype=torch.half, device=torch.device('cuda:0'))
+    with torch.no_grad():
+        jitmod = torch.jit.trace(ker, example)
+
+    out = ker(example)
+    print(out.dtype)
+    jitmod.save(output_path)
 
 class ImageEmbedding(nn.Module):
-    def __init__(self, device, jit):
+    def __init__(self, device, jit_path=None):
         super().__init__()
         self.device = device            
-        model, _ = clip.load("ViT-B/32", device=device,  jit=jit)
-        kernel_size = 224 # changes with variant
+
+        if jit_path == None:
+            model, _ = clip.load("ViT-B/32", device=device, jit=False)
+            ker = NormalizedEmbedding(model.visual)
+        else:
+            ker = torch.jit.load(jit_path, map_location=device)
+
         
-        ker = nn.Sequential(model.visual, L2Normalize(dim=1))
+        kernel_size = 224 # changes with variant        
         self.model = SlidingWindow(ker, kernel_size=kernel_size, stride=kernel_size//2,center=True)
 
     def forward(self, *, preprocessed_image):
-        return self.model(preprocessed_image)    
+        return self.model(preprocessed_image)
     
 def postprocess_results(acc):
     flat_acc = {'iis':[], 'jjs':[], 'dbidx':[], 'vecs':[], 'zoom_factor':[], 'zoom_level':[],
@@ -139,22 +164,75 @@ class BatchInferModel:
                 res.append(tup)
         return postprocess_results(res)
 
-
 #mcc = mini_coco(None)
-def worker_function(wid, dataset,slice_size,indices, cpus_per_proc, vector_root):
+def worker_function(wid, dataset,slice_size,indices, cpus_per_proc, vector_root, jit_path):
     wslice = indices[wid*slice_size:(wid+1)*slice_size]
     dataset = Subset(dataset, indices=wslice)
     device = f'cuda:{wid}'
     extract_seesaw_meta(dataset, output_dir=vector_root, output_name=f'part_{wid:03d}', num_workers=cpus_per_proc, 
-                    batch_size=3,device=device)
+                    batch_size=3,device=device, jit_path=jit_path)
     print(f'Worker {wid} finished.')
 
 
 def iden(x):
     return x
 
-def extract_seesaw_meta(dataset, output_dir, output_name, num_workers, batch_size, device):
-    emb = ImageEmbedding(device=device, jit=False)    
+
+class Preprocessor:
+    def __init__(self, jit_path, output_dir, meta_dict):
+        emb = ImageEmbedding(device='cuda:0', jit_path=jit_path)
+        self.bim = BatchInferModel(emb, 'cuda:0')
+        self.output_dir = output_dir
+        self.num_cpus = int(os.environ.get('OMP_NUM_THREADS'))
+        self.meta_dict = meta_dict
+
+    #def extract_meta(self, dataset, indices):
+    def extract_meta(self, ray_dataset):
+        # dataset = Subset(dataset, indices=indices)
+        # txds = TxDataset(dataset, tx=preprocess)
+
+        meta_dict = self.meta_dict
+
+        def fix_meta(ray_tup):
+            fullpath,binary = ray_tup
+            p = os.path.realpath(fullpath)
+            file_path,dbidx = meta_dict[p]
+            return {'file_path':file_path, 'dbidx':dbidx, 'binary':binary}
+
+        def full_preproc(tup):
+            ray_tup = fix_meta(tup)
+            image = PIL.Image.open(io.BytesIO(ray_tup['binary']))
+            ray_tup['image'] = image
+            del ray_tup['binary']
+            return preprocess(ray_tup)
+
+        def preproc_batch(b):
+            return [full_preproc(tup) for tup in b]
+
+        dl = ray_dataset.pipeline(parallelism=20).map_batches(preproc_batch, batch_size=20)
+        res = []
+        for batch in dl.iter_rows():
+            batch_res = self.bim(batch)
+            res.append(batch_res)
+        # dl = DataLoader(txds, num_workers=1, shuffle=False,
+        #                 batch_size=1, collate_fn=iden)
+        # res = []
+        # for batch in dl:
+        #     flat_batch = sum(batch,[])
+        #     batch_res = self.bim(flat_batch)
+        #     res.append(batch_res)
+
+        merged_res = pd.concat(res, ignore_index=True)
+        ofile = f'{self.output_dir}/task_{ray.get_runtime_context().task_id}.parquet'
+
+        ### TMP: parquet does not allow half prec.
+        x = merged_res
+        x = x.assign(vectors=TensorArray(x['vectors'].to_numpy().astype('single')))
+        x.to_parquet(ofile)
+        return ofile
+
+def extract_seesaw_meta(dataset, output_dir, output_name, num_workers, batch_size, device, jit_path):
+    emb = ImageEmbedding(device=device,jit_path=jit_path)
     bim = BatchInferModel(emb, device) 
     assert os.path.isdir(output_dir)
     
@@ -181,6 +259,8 @@ import pyarrow
 from pyarrow import parquet as pq
 import shutil
 
+import io
+
 class SeesawDatasetManager:
     def __init__(self, root, dataset_name):
         ''' Assumes layout created by create_dataset
@@ -198,13 +278,13 @@ class SeesawDatasetManager:
     def __repr__(self):
         return f'{self.__class__.__name__}({self.dataset_name})'
         
-    def preprocess(self, num_subproc=-1, force=False):
+    def preprocess(self, model_path,num_subproc=-1, force=False):
         ''' Will run a preprocess pipeline and store the output
             -1: use all gpus
             0: use one gpu process and preprocessing all in the local process 
         '''
         dataset = self.get_pytorch_dataset()
-
+        jit_path=model_path
         vector_root = self.vector_path()
         if os.path.exists(vector_root):
             i = 0
@@ -225,19 +305,68 @@ class SeesawDatasetManager:
         jobs = []
         if num_subproc == 0:
             worker_function(0, dataset, slice_size=len(dataset), 
-                indices=np.arange(len(dataset)), cpus_per_proc=0, vector_root=vector_root)
+                indices=np.arange(len(dataset)), cpus_per_proc=0, vector_root=vector_root, jit_path=jit_path)
         else:
             indices = np.random.permutation(len(dataset))
             slice_size = int(math.ceil(indices.shape[0]/num_subproc))
-            cpus_per_proc = os.cpu_count()//num_subproc if num_subproc > 0 else 0
+            cpus_per_proc = min(os.cpu_count()//num_subproc,4) if num_subproc > 0 else 0
 
             for i in range(num_subproc):
-                p = mp.Process(target=worker_function, args=(i,dataset, slice_size, indices, cpus_per_proc, vector_root))
+                p = mp.Process(target=worker_function, args=(i,dataset, slice_size, indices, cpus_per_proc, vector_root, jit_path))
                 jobs.append(p)
                 p.start()
 
             for p in jobs:
                 p.join()
+
+    def preprocess2(self, model_path):
+        dataset = self.get_pytorch_dataset()
+        jit_path=model_path
+        vector_root = self.vector_path()
+        if os.path.exists(vector_root):
+            i = 0
+            while True:
+                i+=1
+                backup_name = f'{vector_root}.bak.{i:03d}'
+                if os.path.exists(backup_name):
+                    continue
+                else:
+                    os.rename(vector_root, backup_name)
+                    break
+        
+        os.makedirs(vector_root, exist_ok=False)
+
+        sds = self
+        paths = ((sds.image_root + '/' + sds.paths)).tolist()
+        paths = [os.path.realpath(p) for p in paths]
+        meta_dict = dict(zip(paths,zip(sds.paths,np.arange(len(sds.paths)))))
+
+        ngpus = round(ray.available_resources()['GPU'])
+        actors = [ray.remote(Preprocessor).options(num_cpus=5, num_gpus=1).remote(jit_path=jit_path, 
+        output_dir=vector_root, meta_dict=meta_dict) for i in range(ngpus)]
+        #pool = ray.util.ActorPool(actors)
+
+        rds = (ray.data
+                    .read_binary_files(paths=paths, include_paths=True, parallelism=400)
+                    .split(ngpus,locality_hints=actors)
+        )
+
+        # indices = np.random.permutation(len(dataset))
+        # slice_size =  2000
+        res_iter = []
+        for (actor,shard) in zip(actors,rds):
+            of = actor.extract_meta.remote(shard)
+            res_iter.append(of)
+        # res_iter = pool.map_unordered(
+        #     lambda a, idxs: a.extract_meta.remote(dataset, idxs),
+        #     [indices[start_range:start_range+slice_size] for start_range in range(0,len(indices),slice_size)]
+        # )
+        ray.get(res_iter)
+        # ofiles = []
+        # for o in tqdm(res_iter):
+        #     assert o not in ofiles
+        #     ofiles.append(o)
+        
 
     def save_vectors(self, vector_data):
         assert (np.sort(vector_data.dbidx.unique()) == np.arange(self.paths.shape[0])).all()
@@ -273,10 +402,13 @@ class SeesawDatasetManager:
         else:
             assert False
 
-        tab = pq.read_table(self.vector_path(), use_pandas_metadata=False, 
-            memory_map=True, columns=columns)
+        tab = pq.read_table(self.vector_path(),use_pandas_metadata=False, 
+            memory_map=True, )
         df = tab.to_pandas(deduplicate_objects=False, ignore_metadata=True)
-        return df
+
+        x = df
+        # x = x.assign(vectors=TensorArray(x['vectors'].to_numpy().astype('half')))
+        return x
     
     def load_evdataset(self) -> EvDataset:
         df = self.load_vec_table(columns='default')
@@ -354,18 +486,23 @@ class GlobalDataManager:
         self.root = root
         
     def list_datasets(self):
-        return os.listdir(self.root)
+        return [f for f in os.listdir(self.root) if not f.startswith('_')]
     
     def create_dataset(self, image_src, dataset_name, paths=[]) -> SeesawDatasetManager:
         '''
             if not given explicit paths, it assumes every jpg, jpeg and png is wanted
         '''
+        assert ' ' not in dataset_name
+        assert '/' not in dataset_name
+        assert not dataset_name.startswith('_')
+        assert dataset_name not in self.list_datasets(), 'dataset with same name already exists'
+        image_src = os.path.realpath(image_src)
         assert os.path.isdir(image_src)
         dspath = f'{self.root}/{dataset_name}'
         assert not os.path.exists(dspath), 'name already used'
         os.mkdir(dspath)
         image_path = f'{dspath}/images'
-        os.symlink(os.path.abspath(image_src), image_path)
+        os.symlink(image_src, image_path)
         if len(paths) == 0:
             paths = list_image_paths(image_src)
             
@@ -450,3 +587,23 @@ class GlobalDataManager:
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.root})'
+
+
+def prep_ground_truth(paths, box_data, qgt):
+    """adds dbidx column to box data, sets dbidx in qgt and sorts qgt by dbidx
+    """
+    orig_box_data = box_data
+    orig_qgt = qgt
+    
+    path2idx = dict(zip(paths, range(len(paths))))
+    mapfun = lambda x : path2idx.get(x,-1)
+    box_data = box_data.assign(dbidx=box_data.file_path.map(mapfun))
+    box_data = box_data[box_data.dbidx >= 0]
+    
+    new_ids = qgt.index.map(mapfun)
+    qgt = qgt[new_ids >= 0]
+    qgt = qgt.set_index(new_ids[new_ids >= 0])
+    qgt = qgt.sort_index()
+    
+    assert len(paths) == qgt.shape[0], 'every path should be in the ground truth'
+    return box_data, qgt

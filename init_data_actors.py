@@ -259,10 +259,10 @@ def update_vector(Xt, yt, init_vec, minibatch_size):
     return tvec
 
 
-lvishot = functools.partial(lvis_category, category='hot-air balloon')
+#lvishot = functools.partial(lvis_category, category='hot-air balloon')
 
 default_actors = {
-    'lvis':lambda m,ng: ray.remote(DB).options(name='lvis_db', lifetime="detached", num_gpus=ng, num_cpus=2).remote(dataset_loader=lvishot,
+    'lvis':lambda m,ng: ray.remote(DB).options(name='lvis_db', lifetime="detached", num_gpus=ng, num_cpus=2).remote(dataset_loader=lvis_full,
                                 model_handle=m,  
                                 dbsample = None,
                                 #dbsample=np.sort(np.load('./data/coco_30k_idxs.npy')[:10000]),

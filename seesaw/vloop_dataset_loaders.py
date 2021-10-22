@@ -209,7 +209,7 @@ def objectnet_cropped(embedding : XEmbedding) -> EvDataset:
     tmp = np.load('./data/objnet_vectors_cropped.npz', allow_pickle=True)
     paths = tmp['paths']
     root = './data/objectnet/images/'## lost cropped copy with drive
-    dir2cat = json.load(open('./data/objectnet/mappings/folder_to_objectnet_label.json'))
+    dir2cat = json.load(open('./data/folder_to_objectnet_label.json'))
     categories = list(map(lambda x : dir2cat[x.split('/')[0]].lower(), paths))
 
     df = pd.DataFrame({'idx':np.arange(len(categories)), 'path':paths,'category':categories})
@@ -372,7 +372,7 @@ def coco_split(coco_full : EvDataset, split : str) -> EvDataset:
     train_set_dbidx = np.where(np.array(list(map(lambda x : x.startswith('train'), paths))))[0]
 
     idxs = { 'val':val_set_dbidx, 'train':train_set_dbidx }
-    return extract_subset(coco_full, idxs[split])
+    return extract_subset(coco_full, idxsample=idxs[split])
 
 
 def mini_coco(embedding : XEmbedding) -> EvDataset:
