@@ -21,6 +21,14 @@ import pyroaring as pr
 from torch.utils.data import Subset
 import ray
 import shutil
+import math
+
+
+import pyarrow
+from pyarrow import parquet as pq
+import shutil
+
+import io
 
 
 class ExplicitPathDataset(object):
@@ -39,23 +47,24 @@ class ExplicitPathDataset(object):
         image = PIL.Image.open('{}/{}'.format(self.root, relpath))
         return {'file_path':relpath, 'dbidx':idx, 'image':image}
 
-
-def list_image_paths(basedir, extensions=['jpg', 'jpeg', 'png']):
+def list_image_paths(basedir, prefixes=[''], extensions=['jpg', 'jpeg', 'png']):
     acc = []
-    for ext in extensions:
-        imgs = glob.glob(f'{basedir}/**/*.{ext}', recursive=True)
-        acc.extend(imgs)
+    for prefix in prefixes:
+        for ext in extensions:
+            pattern = f'{basedir}/{prefix}/**/*.{ext}'
+            imgs = glob.glob(pattern, recursive=True)
+            acc.extend(imgs)
+            print(f'found {len(imgs)} files with pattern {pattern}...')
         
     relative_paths = [ f[len(basedir):].lstrip('./') for f in acc]
-    return relative_paths
-
-import math
+    return list(set(relative_paths))
 
 
-def preprocess(tup):
+
+def preprocess(tup, factor):
     """ meant to preprocess dict with {path, dbidx,image}
     """
-    ptx = PyramidTx(tx=non_resized_transform(224), factor=math.sqrt(.5), min_size=224)
+    ptx = PyramidTx(tx=non_resized_transform(224), factor=factor, min_size=224)
     ims, sfs = ptx(tup['image'])
     acc = []
     for zoom_level,(im,sf) in enumerate(zip(ims,sfs), start=1):
@@ -102,7 +111,7 @@ class ImageEmbedding(nn.Module):
 
         
         kernel_size = 224 # changes with variant        
-        self.model = SlidingWindow(ker, kernel_size=kernel_size, stride=kernel_size//2,center=True)
+        self.model = SlidingWindow(ker, kernel_size=kernel_size, stride=kernel_size//2,center=True).to(self.device)
 
     def forward(self, *, preprocessed_image):
         return self.model(preprocessed_image)
@@ -180,6 +189,7 @@ def iden(x):
 
 class Preprocessor:
     def __init__(self, jit_path, output_dir, meta_dict):
+        print(f'Init preproc. Avail gpus: {ray.get_gpu_ids()}. cuda avail: {torch.cuda.is_available()}')
         emb = ImageEmbedding(device='cuda:0', jit_path=jit_path)
         self.bim = BatchInferModel(emb, 'cuda:0')
         self.output_dir = output_dir
@@ -187,7 +197,7 @@ class Preprocessor:
         self.meta_dict = meta_dict
 
     #def extract_meta(self, dataset, indices):
-    def extract_meta(self, ray_dataset):
+    def extract_meta(self, ray_dataset, pyramid_factor, part_id):
         # dataset = Subset(dataset, indices=indices)
         # txds = TxDataset(dataset, tx=preprocess)
 
@@ -204,7 +214,7 @@ class Preprocessor:
             image = PIL.Image.open(io.BytesIO(ray_tup['binary']))
             ray_tup['image'] = image
             del ray_tup['binary']
-            return preprocess(ray_tup)
+            return preprocess(ray_tup, factor=pyramid_factor)
 
         def preproc_batch(b):
             return [full_preproc(tup) for tup in b]
@@ -223,7 +233,7 @@ class Preprocessor:
         #     res.append(batch_res)
 
         merged_res = pd.concat(res, ignore_index=True)
-        ofile = f'{self.output_dir}/task_{ray.get_runtime_context().task_id}.parquet'
+        ofile = f'{self.output_dir}/part_{part_id:04d}.parquet'
 
         ### TMP: parquet does not allow half prec.
         x = merged_res
@@ -254,12 +264,6 @@ def extract_seesaw_meta(dataset, output_dir, output_name, num_workers, batch_siz
 #     gdm.create_dataset(image_src=image_src, dataset_name=dataset_name)
 #     mc = gdm.get_dataset(dataset_name)
 #     mc.preprocess()
-
-import pyarrow
-from pyarrow import parquet as pq
-import shutil
-
-import io
 
 class SeesawDatasetManager:
     def __init__(self, root, dataset_name):
@@ -319,7 +323,7 @@ class SeesawDatasetManager:
             for p in jobs:
                 p.join()
 
-    def preprocess2(self, model_path):
+    def preprocess2(self, model_path, archive_path=None, archive_prefix='', pyramid_factor=.5):
         dataset = self.get_pytorch_dataset()
         jit_path=model_path
         vector_root = self.vector_path()
@@ -335,38 +339,48 @@ class SeesawDatasetManager:
                     break
         
         os.makedirs(vector_root, exist_ok=False)
-
         sds = self
-        paths = ((sds.image_root + '/' + sds.paths)).tolist()
-        paths = [os.path.realpath(p) for p in paths]
-        meta_dict = dict(zip(paths,zip(sds.paths,np.arange(len(sds.paths)))))
 
-        ngpus = round(ray.available_resources()['GPU'])
-        actors = [ray.remote(Preprocessor).options(num_cpus=5, num_gpus=1).remote(jit_path=jit_path, 
-        output_dir=vector_root, meta_dict=meta_dict) for i in range(ngpus)]
-        #pool = ray.util.ActorPool(actors)
 
-        rds = (ray.data
-                    .read_binary_files(paths=paths, include_paths=True, parallelism=400)
-                    .split(ngpus,locality_hints=actors)
-        )
+        if archive_path is not None:
+            assert archive_path.endswith('.tar')
+            file_system = fsspec.get_filesystem_class('tar')(archive_path)
+            read_paths = (file_system.root_marker + archive_prefix + '/' + sds.paths).tolist()
+        else:
+            real_prefix=f'{os.path.realpath(sds.image_root)}/'
+            file_system = fsspec.get_filesystem_class('file')
+            read_paths = ((real_prefix + sds.paths)).tolist()
+            
+        read_paths = [os.path.normpath(p) for p in read_paths]
 
-        # indices = np.random.permutation(len(dataset))
-        # slice_size =  2000
-        res_iter = []
-        for (actor,shard) in zip(actors,rds):
-            of = actor.extract_meta.remote(shard)
-            res_iter.append(of)
-        # res_iter = pool.map_unordered(
-        #     lambda a, idxs: a.extract_meta.remote(dataset, idxs),
-        #     [indices[start_range:start_range+slice_size] for start_range in range(0,len(indices),slice_size)]
-        # )
-        ray.get(res_iter)
-        # ofiles = []
-        # for o in tqdm(res_iter):
-        #     assert o not in ofiles
-        #     ofiles.append(o)
-        
+        #paths = [p.replace('//','/') for p in paths]
+        meta_dict = dict(zip(read_paths,zip(sds.paths,np.arange(len(sds.paths)))))
+        print(list(meta_dict.keys())[0])
+
+        # ngpus = len(self.actors) #
+        # actors = self.actors
+        actors = []
+        try: 
+            print('starting actors...')
+            ngpus = round(ray.available_resources()['GPU'])
+            actors = [ray.remote(Preprocessor).options(num_cpus=5, num_gpus=1).remote(jit_path=jit_path, 
+            output_dir=vector_root, meta_dict=meta_dict) for i in range(ngpus)]
+
+            rds = (ray.data
+                        .read_binary_files(paths=read_paths, include_paths=True, parallelism=400)
+                        .split(ngpus,locality_hints=actors)
+            )
+
+            res_iter = []
+            for part_id, (actor,shard) in enumerate(zip(actors,rds)):
+                of = actor.extract_meta.remote(shard, pyramid_factor, part_id)
+                res_iter.append(of)
+            ray.get(res_iter)
+            return self
+        finally:
+            print('shutting down actors...')
+            for a in actors:
+                ray.kill(a) 
 
     def save_vectors(self, vector_data):
         assert (np.sort(vector_data.dbidx.unique()) == np.arange(self.paths.shape[0])).all()
@@ -394,31 +408,47 @@ class SeesawDatasetManager:
         gt_root = f'{self.dataset_root}/ground_truth/'
         return gt_root
 
-    def load_vec_table(self, columns='default'):
-        if columns == 'default':
-            columns = ['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors']
-        elif columns is None:
-            pass
-        else:
-            assert False
+    def load_vec_table(self):
+        ds = ray.data.read_parquet(self.vector_path())
+        return ds
 
-        tab = pq.read_table(self.vector_path(),use_pandas_metadata=False, 
-            memory_map=True, )
-        df = tab.to_pandas(deduplicate_objects=False, ignore_metadata=True)
+    def load_ground_truth(self):
+        assert os.path.exists(f'{self.dataset_root}/ground_truth')
+        qgt = pd.read_parquet(f'{self.dataset_root}/ground_truth/qgt.parquet')
+        box_data = pd.read_parquet(f'{self.dataset_root}/ground_truth/box_data.parquet')
+        box_data, qgt = prep_ground_truth(self.paths, box_data, qgt)
+        return box_data, qgt
 
-        x = df
-        # x = x.assign(vectors=TensorArray(x['vectors'].to_numpy().astype('half')))
-        return x
+    def index_path(self):
+        return  f'{self.dataset_root}/meta/vectors.annoy'
     
     def load_evdataset(self) -> EvDataset:
-        df = self.load_vec_table(columns='default')
+        idmap = dict(zip(self.paths,range(len(self.paths))))
+        ds = ray.data.read_parquet(self.vector_path(), columns = ['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
+
+        def assign_ids(df):
+            return df.assign(dbidx=df.file_path.map(lambda path : idmap[path]))
+
+        # ds = ds.map_batches(lambda tab : assign_ids(tab.to_pandas()))
+        coarse_emb = ds.map_batches(lambda x : infer_coarse_embedding(x.to_pandas()))
+        fb = pd.concat(ray.get(coarse_emb.to_pandas()), ignore_index=True)
+        fb = assign_ids(fb).sort_values('dbidx')
+        embedded_dataset = fb['vectors'].values.to_numpy()
+
+        df = pd.concat(ray.get(ds.to_pandas()), axis=0, ignore_index=True)
+        df = assign_ids(df).sort_values(['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2']).reset_index(drop=True)
         fine_grained_meta = df[['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
         fine_grained_embedding = df['vectors'].values.to_numpy()
-        qgt = pd.read_parquet(f'{self.dataset_root}/ground_truth/qgt.parquet')
-        box_data = pd.read_parquet(f'{self.dataset_root}/ground_truth/boxes.parquet')
 
-        coarse_vecs = fine_grained_meta[fine_grained_meta.zoom_level == 1]
-        embedded_dataset=infer_coarse_embedding(df[['dbidx', 'zoom_level', 'vectors']])
+        box_data, qgt = self.load_ground_truth()
+ 
+        if os.path.exists(self.index_path()):
+            vec_index = ray.remote(VectorIndex).options(num_cpus=96//4).remote(load_path=self.index_path(), prefault=False)
+            # assert vec_index.get_n_items() == df.shape[0], 'index items should be the same as fine grained vectors'
+        else:
+            vec_index = None
+
+        #assert vec_index._raw_data.shape == fine_grained_embedding.shape, 'vectors and index should match shape'
 
         return EvDataset(root=self.image_root, paths=self.paths, 
             embedded_dataset=embedded_dataset, 
@@ -426,9 +456,11 @@ class SeesawDatasetManager:
             box_data=box_data, 
             embedding=None,#model used for embedding 
             fine_grained_embedding=fine_grained_embedding,
-            fine_grained_meta=fine_grained_meta)
+            fine_grained_meta=fine_grained_meta, 
+            vec_index=vec_index)
 
 
+import pickle
 
 def convert_dbidx(ev : EvDataset, ds : SeesawDatasetManager, prepend_ev :str = ''):
     new_path_df = ds.file_meta.assign(dbidx=np.arange(ds.file_meta.shape[0]))
@@ -446,13 +478,13 @@ def infer_qgt_from_boxes(box_data, num_files):
     return qgt.clip(0,1)
 
 def infer_coarse_embedding(pdtab):
-    max_zoom_out = pdtab.groupby('dbidx').zoom_level.max().rename('max_zoom_level')
-    wmax = pd.merge(pdtab, max_zoom_out, left_on='dbidx', right_index=True)
+    max_zoom_out = pdtab.groupby('file_path').zoom_level.max().rename('max_zoom_level')
+    wmax = pd.merge(pdtab, max_zoom_out, left_on='file_path', right_index=True)
     lev1 = wmax[wmax.zoom_level == wmax.max_zoom_level]
-    res = lev1.groupby('dbidx').vectors.mean().values.to_numpy()
+    ser = lev1.groupby('file_path').vectors.mean().reset_index()
+    res = ser['vectors'].values.to_numpy()
     normres = res/np.maximum(np.linalg.norm(res, axis=1,keepdims=True), 1e-6)
-    return normres
-
+    return ser.assign(vectors=TensorArray(normres))
 
 """
 Expected data layout for a seesaw root with a few datasets:
@@ -492,6 +524,7 @@ class GlobalDataManager:
         '''
             if not given explicit paths, it assumes every jpg, jpeg and png is wanted
         '''
+        assert dataset_name is not None
         assert ' ' not in dataset_name
         assert '/' not in dataset_name
         assert not dataset_name.startswith('_')
@@ -513,7 +546,8 @@ class GlobalDataManager:
     def get_dataset(self, dataset_name) -> SeesawDatasetManager:
         assert dataset_name in self.list_datasets(), 'must create it first'
         ## TODO: cache this representation
-        return SeesawDatasetManager(self.root, dataset_name)
+        return SeesawDatasetManager(self.root, dataset_name)                
+        
 
     def clone(self, ds = None, ds_name = None, clone_name : str = None) -> SeesawDatasetManager:
         assert ds is not None or ds_name is not None
@@ -533,7 +567,7 @@ class GlobalDataManager:
         return self.get_dataset(clone_name)
 
     def clone_subset(self, ds=None, ds_name=None, 
-                subset_name : str = None, file_names=None, file_indices=None) -> SeesawDatasetManager:
+                subset_name : str = None, file_names=None) -> SeesawDatasetManager:
 
         assert ds is not None or ds_name is not None
         if ds is None:
@@ -544,43 +578,20 @@ class GlobalDataManager:
         image_src = os.path.realpath(dataset.image_root)
         assert subset_name not in self.list_datasets(), 'dataset already exists'
 
-        if file_names is not None:
-            paths= dataset.file_meta.file_path.values
-            dbidx = range(len(paths))
-            lookup = dict(zip(paths,dbidx))
-            file_indices = np.array([lookup[fn] for fn in file_names])
-        elif file_indices is not None:
-            file_indices = np.array(file_indices)
-            file_names = dataset.file_meta.file_path.values[file_indices]
-        else:
-            assert False, 'need one of file_names or file_indices'
-        
+        file_set = set(file_names)        
         self.create_dataset(image_src=image_src, dataset_name=subset_name, paths=file_names)
         subds = self.get_dataset(subset_name)
 
-        id_set = pr.BitMap(file_indices)
-        old_ids = file_indices
-        new_ids = np.arange(len(file_indices))
-        id_map = dict(zip(old_ids,new_ids))
+        def vector_subset(tab):
+            vt = tab.to_pandas()
+            vt = vt[vt.file_path.isin(file_set)]
+            return vt
 
-        ## TODO: handle cases where no vecs/gt exist
         if os.path.exists(dataset.vector_path()):
-            vt = dataset.load_vec_table()
-            vt = vt[vt.dbidx.isin(id_set)]
-            ## remap ids:
-            vt = vt.assign(dbidx=vt.dbidx.map(lambda old_id : id_map[old_id]))
-            subds.save_vectors(vt)
+            dataset.load_vec_table().map_batches(vector_subset).write_parquet(subds.vector_path())
 
         if os.path.exists(dataset.ground_truth_path()):
-            boxes = pd.read_parquet(f'{dataset.ground_truth_path()}/boxes.parquet')
-            boxes = boxes[boxes.dbidx.isin(id_set)]
-            boxes = boxes.assign(dbidx=boxes.dbidx.map(lambda old_id : id_map[old_id]))
-            
-            qgt = pd.read_parquet(f'{dataset.ground_truth_path()}/qgt.parquet')
-            qgt = qgt.iloc[file_indices]
-            qgt = qgt.reset_index(drop=True)
-
-            subds.save_ground_truth(box_data=boxes, qgt=qgt)
+            os.symlink(os.path.realpath(dataset.ground_truth_path()),subds.ground_truth_path().rstrip('/'))
 
         return self.get_dataset(subset_name)
     
@@ -597,13 +608,62 @@ def prep_ground_truth(paths, box_data, qgt):
     
     path2idx = dict(zip(paths, range(len(paths))))
     mapfun = lambda x : path2idx.get(x,-1)
-    box_data = box_data.assign(dbidx=box_data.file_path.map(mapfun))
-    box_data = box_data[box_data.dbidx >= 0]
+    box_data = box_data.assign(dbidx=box_data.file_path.map(mapfun).astype('int'))
+    box_data = box_data[box_data.dbidx >= 0].reset_index(drop=True)
     
     new_ids = qgt.index.map(mapfun)
     qgt = qgt[new_ids >= 0]
     qgt = qgt.set_index(new_ids[new_ids >= 0])
     qgt = qgt.sort_index()
+
+    ## Add entries for files with no labels...
+    qgt = qgt.reindex(np.arange(len(paths))) # na values will be ignored...
     
     assert len(paths) == qgt.shape[0], 'every path should be in the ground truth'
     return box_data, qgt
+
+import annoy
+import random
+import os
+import sys
+import time
+import pynndescent
+
+def build_annoy_idx(*, vecs, output_path, n_trees):
+    start = time.time()
+    t = annoy.AnnoyIndex(512, 'dot')  # Length of item vector that will be indexed
+    for i in range(len(vecs)):
+        t.add_item(i, vecs[i])
+    print(f'done adding items...{time.time() - start} sec.')
+    t.build(n_trees=n_trees) # 10 trees
+    delta = time.time() - start
+    print(f'done building...{delta} sec.' )
+    t.save(output_path)
+    return delta
+
+
+def build_nndescent_idx(vecs, output_path, n_trees):
+    start = time.time()
+    ret = pynndescent.NNDescent(vecs.copy(), metric='dot', n_neighbors=100, n_trees=n_trees,
+                                diversify_prob=.5, pruning_degree_multiplier=2., low_memory=False)
+    print('first phase done...')
+    ret.prepare()
+    print('prepare done... writing output...', output_path)
+    end = time.time()
+    difftime = end - start
+    pickle.dump(ret, file=open(output_path, 'wb'))
+    return difftime
+
+import annoy
+class VectorIndex:
+    def __init__(self, load_path, prefault=False):
+        t = annoy.AnnoyIndex(512, 'dot')
+        self.vec_index = t
+        print('prefaulting vector store...')
+        t.load(load_path, prefault=prefault)
+        print('done loading')
+        
+    def query(self, vector, top_k):
+        assert vector.shape == (1,512) or vector.shape == (512,) 
+        idxs, scores = self.vec_index.get_nns_by_vector(vector.reshape(-1), n=top_k, include_distances=True)
+        return np.array(idxs), np.array(scores)
