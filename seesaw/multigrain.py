@@ -256,7 +256,7 @@ def get_boxes(vec_meta):
 def makedb(evs, dataset, category):
         ev,_ = get_class_ev(evs[dataset], category=category)
         return ev, AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, embedded_dataset=ev.fine_grained_embedding,
-               vector_meta=ev.fine_grained_meta)
+               vector_meta=ev.fine_grained_meta, vec_index=ev.vec_index)
 
 def try_augment(localxclip, evs, dataset, category, cutoff=40, rel_weight_coarse=1.):
     ev,db = makedb(evs, dataset, category)
@@ -303,6 +303,8 @@ from annoy import AnnoyIndex
 import random
 import os
 
+import ray
+
 def build_index(vecs, file_name):
     t = AnnoyIndex(512, 'dot') 
     for i in range(len(vecs)):
@@ -317,22 +319,16 @@ def build_index(vecs, file_name):
 class AugmentedDB(object):
     """implements a two stage lookup
     """
-    def __init__(self, raw_dataset : torch.utils.data.Dataset,
+    def __init__(self, *, raw_dataset : torch.utils.data.Dataset,
                  embedding : XEmbedding,
                  embedded_dataset : np.ndarray,
-                 vector_meta : pd.DataFrame, 
-                 index_path : str = None):
+                 vector_meta : pd.DataFrame,
+                 vec_index =  None):
         self.raw = raw_dataset
         self.embedding = embedding
         self.embedded = embedded_dataset
         self.vector_meta = vector_meta
-
-        if index_path is not None:
-            self.vec_index = AnnoyIndex(512, 'dot')
-            self.vec_index.load(index_path)
-            assert self.vec_index.n_items() == len(self.embedded)
-        else:
-            self.vec_index = None
+        self.vec_index = vec_index
 
         all_indices = pr.BitMap()
         assert len(self.raw) == vector_meta.dbidx.unique().shape[0]
@@ -352,7 +348,8 @@ class AugmentedDB(object):
         vec_meta = self.vector_meta
         
         if len(included_dbidx) == 0:
-            return np.array([])
+            print('no dbidx included')
+            return [], [],[]
 
         if len(included_dbidx) <= topk:
             topk = len(included_dbidx)
@@ -361,19 +358,47 @@ class AugmentedDB(object):
         ## but library does not allow this...
         ## guess how much we need... and check
         
-        def get_nns_by_vector_approx():
+        def get_nns_with_pynn_index():
             i = 0
-            try_n = (len(exclude) + topk)*10
+            try_n = (len(exclude) + topk)*10 # guess of how many to use
             while True:
                 if i > 1:
                     print('warning, we are looping too much. adjust initial params?')
 
-                search_k = int(np.clip(try_n * 100, 50000, 500000)) 
+                idxs, scores = self.vec_index.query(vector.reshape(1,-1), k=try_n, epsilon=.2)
+                idxs = np.array(idxs).astype('int').reshape(-1)
+                scores = np.array(scores).reshape(-1) 
+                # search_k = int(np.clip(try_n * 100, 50000, 500000)) 
+                # search_k is a very important param for accuracy do not reduce below 30k unless you have a 
+                # really good reason. the upper limit is 
+                # idxs, scores = self.vec_index.get_nns_by_vector(vector.reshape(-1), n=try_n, 
+                #                                                 search_k=search_k,
+                #                                                 include_distances=True)
+                #breakpoint()
+                found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
+                if len(found_idxs.difference(exclude)) >= topk:
+                    break
+                
+                try_n = try_n*2 # double guess
+                i+=1
+
+            return idxs, scores
+
+
+        def get_nns_by_vector_approx():
+            i = 0
+            try_n = (len(exclude) + topk)*3
+            while True:
+                if i > 1:
+                    print('warning, we are looping too much. adjust initial params?')
+
+                #search_k = int(np.clip(try_n * 100, 50000, 500000)) 
                 # search_k is a very important param for accuracy do not reduce below 30k unless you have a 
                 # really good reason. the upper limit is 
                 idxs, scores = self.vec_index.get_nns_by_vector(vector.reshape(-1), n=try_n, 
-                                                                search_k=search_k,
+                 #                                               search_k=search_k,
                                                                 include_distances=True)
+
 
                 found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
                 if len(found_idxs.difference(exclude)) >= topk:
@@ -384,13 +409,34 @@ class AugmentedDB(object):
 
             return np.array(idxs).astype('int'), np.array(scores)
 
+
+        def get_nns():
+            i = 0
+            try_n = (len(exclude) + topk)*3
+            while True:
+                if i > 1:
+                    print('warning, we are looping too much. adjust initial params?')
+
+                handle = self.vec_index.query.remote(vector, top_k=try_n)
+                idxs, scores = ray.get(handle)
+
+                found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
+                if len(found_idxs.difference(exclude)) >= topk:
+                    break
+                
+                try_n = try_n*2
+                i+=1
+
+            return np.array(idxs).astype('int'), np.array(scores)
+
+
         def get_nns_by_vector_exact():
             scores = self.embedded @ vector.reshape(-1)
             scorepos = np.argsort(-scores)
             return scorepos, scores[scorepos]
 
         if self.vec_index is not None:
-            idxs, scores = get_nns_by_vector_approx()
+            idxs, scores = get_nns()
         else:
             idxs, scores = get_nns_by_vector_exact()
 

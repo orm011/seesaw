@@ -93,6 +93,7 @@ def make_evdataset(*, root, paths, embedded_dataset, query_ground_truth, box_dat
 
 ## make a very cheap ev dataset that can be sliced cheaply
 
+
 class EvDataset(object):
     query_ground_truth : pd.DataFrame
     box_data : pd.DataFrame
@@ -101,9 +102,8 @@ class EvDataset(object):
     fine_grained_embedding : np.ndarray
     fine_grained_meta : pd.DataFrame
     imge_dataset : ExplicitPathDataset
-
     def __init__(self, *, root, paths, embedded_dataset, query_ground_truth, box_data, embedding, 
-                fine_grained_embedding=None, fine_grained_meta=None):
+                fine_grained_embedding=None, fine_grained_meta=None, vec_index=None):
         """
         meant to be cheap to run, we use it to make subsets.
             do any global changes outside, eg in make_evdataset.
@@ -113,6 +113,7 @@ class EvDataset(object):
         kwargs = {k:v for (k,v) in values.items() if k in args}
         self.__dict__.update(kwargs)
         self.image_dataset = ExplicitPathDataset(root_dir=root, relative_path_list=paths)
+        self.vec_index = vec_index
         
     def __len__(self):
         return len(self.image_dataset)
@@ -141,11 +142,14 @@ def extract_subset(ev : EvDataset, *, idxsample=None, categories=None, boxes=Tru
     qgt = ev.query_ground_truth[categories]
     embedded_dataset = ev.embedded_dataset
     paths = ev.paths
+    vec_index = ev.vec_index
 
     if not (idxset == pr.BitMap(range(len(ev)))): # special case where everything is copied
+        print('warning: subset operation forces foregoing pre-built vector index.')
         qgt = qgt.iloc[idxsample].reset_index(drop=True)
         embedded_dataset = embedded_dataset[idxsample]
         paths = ev.paths[idxsample]
+        vec_index = None
 
     if boxes:
         good_boxes = ev.box_data.dbidx.isin(idxset) & ev.box_data.category.isin(categories)
@@ -172,7 +176,7 @@ def extract_subset(ev : EvDataset, *, idxsample=None, categories=None, boxes=Tru
                     box_data=sample_box_data,
                     embedding=ev.embedding,
                     fine_grained_embedding=vec,
-                    fine_grained_meta=meta)
+                    fine_grained_meta=meta, vec_index=vec_index)
 
 def bdd_full(embedding : XEmbedding):
     image_root = './data/bdd_root/images/100k/'
