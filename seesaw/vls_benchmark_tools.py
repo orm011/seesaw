@@ -182,7 +182,7 @@ def process_crops(crs, tx, embedding):
     return embs
 
 
-def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
+def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
               tqdm_disabled:bool, granularity:str,
                positive_vector_type, n_augment,
@@ -199,7 +199,14 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
     ev0 = ev
     frame = inspect.currentframe()
     args, _, _, values = inspect.getargvalues(frame)
-    allargs = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'gvec', 'gvec_meta']}        
+    allargs = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'gvec', 'gvec_meta']} 
+    rtup = {**allargs, **kwargs}       
+
+    catgt = ev0.query_ground_truth[category]
+    class_idxs = catgt[~catgt.isna()].index.values
+    if class_idxs.shape[0] == 0:
+        print(f'No labelled frames for class "{category}" found ')
+        return (rtup, None)
 
     ev, class_idxs = get_class_ev(ev0, category, boxes=True)
     dfds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
@@ -219,10 +226,8 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
     elif granularity == 'multi':
         vec_meta = ev.fine_grained_meta
         vecs = ev.fine_grained_embedding
-        #index_path = './data/bdd_10k_allgrains_index.ann'
-        index_path = None
         hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-            embedded_dataset=vecs, vector_meta=vec_meta, index_path=index_path)
+            embedded_dataset=vecs, vector_meta=vec_meta, vec_index=ev.vec_index)
     elif granularity == 'coarse':
         dbidxs = np.arange(len(ev)).astype('int')
         vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
@@ -233,7 +238,7 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
 
     bfq = BoxFeedbackQuery(hdb, batch_size=batch_size, auto_fill_df=None)
     rarr = ev.query_ground_truth[category]
-    print(allargs, kwargs)        
+    print(allargs, kwargs)
             
     if qstr == 'nolang':
         init_vec=None
@@ -267,6 +272,8 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
 
     for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
         idxbatch, _ = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
+        if idxbatch.shape[0] == 0:
+            break
         acc_indices.append(idxbatch.copy()) # trying to figure out leak
         acc_results.append(gt[idxbatch])
 
@@ -370,6 +377,7 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
     res['indices'] = [class_idxs[r] for r in res['indices']]
     tup = {**allargs, **kwargs}
     return (tup, res)
+
 
 
 def ndcg_rank_score(ytrue, ordered_idxs):
@@ -486,6 +494,8 @@ def process_tups(evs, benchresults, keys, at_N):
         ev = evs[k]
     #     qgt = benchgt[k]
         for tup,exp in val:
+            if exp is None:
+                continue
             hits = np.concatenate(exp['results'])
             indices = np.concatenate(exp['indices'])
             index_set = pr.BitMap(indices)
@@ -541,11 +551,48 @@ def better_same_worse(stats, variant, baseline_variant='plain', metric='ndcg_sco
         return sbs
 
 
+class BenchRunner(object):
+    def __init__(self, ev):
+        self.ev = ev
+        vls_init_logger()
+        print('loaded benchrunner state...')
+    
+    def run_loop(self, tup):
+        return run_loop(ev=self.ev, **tup)
+    
+def run_on_actor(br, tup):
+    return br.run_loop.remote(tup)
+
+from .progress_bar import tqdm_map
+
+def parallel_run(ev, tups, out : list, num_workers : int, resources=dict(num_cpus=4, memory=15*(2**30))):
+    if num_workers > 0:
+        def closure(tups):
+            evref = ray.put(ev)
+            actors = []
+            try:
+                for i in range(num_workers):
+                    actors.append(ray.remote(BenchRunner).options(name=f'bench_{i}', **resources).remote(evref))
+
+                out.clear()
+                tqdm_map(actors, run_on_actor, tups, out)
+            finally:
+                for a in actors:
+                    ray.kill(a)
+
+        closure(tups)
+    else:    
+        out.clear()
+        for tup in tqdm(tups):
+            pexp = BenchRunner(ev).run_loop(tup)
+            out.append(pexp)
+
 import datetime
 import pickle
 def dump_results(benchresults):
-    now = datetime.datetime.now()
-    nowstr = now.strftime("%Y-%m-%d_%H:%M:%S")
-    fname = './data/vls_bench_{}.pkl'.format(nowstr)
-    pickle.dump(benchresults, open(fname,'wb'))
-    print(fname)
+    pass
+#     now = datetime.datetime.now()
+#     nowstr = now.strftime("%Y-%m-%d_%H:%M:%S")
+#     fname = './data/vls_bench_{}.pkl'.format(nowstr)
+#     pickle.dump(benchresults, open(fname,'wb'))
+#     print(fname)
