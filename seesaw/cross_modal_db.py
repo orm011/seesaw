@@ -59,10 +59,7 @@ class EmbeddingDB(object):
             exclude = pr.BitMap([])        
         included = pr.BitMap(self.all_indices).difference(exclude)
         if len(included) == 0:
-            if return_scores:
-                return np.array([]),np.array([])
-            else:
-                return np.array([])
+            return np.array([]),np.array([])
 
         if len(included) <= topk:
             topk = len(included)
