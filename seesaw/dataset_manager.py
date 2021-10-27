@@ -443,7 +443,7 @@ class SeesawDatasetManager:
         box_data, qgt = self.load_ground_truth()
  
         if os.path.exists(self.index_path()):
-            vec_index = ray.remote(VectorIndex).options(num_cpus=96//4).remote(load_path=self.index_path(), prefault=False)
+            vec_index = self.index_path() # start actor elsewhere
             # assert vec_index.get_n_items() == df.shape[0], 'index items should be the same as fine grained vectors'
         else:
             vec_index = None
@@ -656,11 +656,27 @@ def build_nndescent_idx(vecs, output_path, n_trees):
 
 import annoy
 class VectorIndex:
-    def __init__(self, load_path, prefault=False):
+    def __init__(self, *, load_path, copy_to_tmpdir=False, prefault=False):
         t = annoy.AnnoyIndex(512, 'dot')
         self.vec_index = t
-        print('prefaulting vector store...')
-        t.load(load_path, prefault=prefault)
+        if copy_to_tmpdir:
+            tmpdir = os.environ.get('TMPDIR')
+            assert tmpdir is not None, 'need a tmpdir for copying'
+            fname = load_path.replace('/', '_')
+            tmp_load_path = f'{tmpdir}/{fname}'
+            print('copying file to tmp storage for faster mmap...{tmp_load_path}')
+            shutil.copy2(load_path, tmp_load_path)
+            print('done copying...')
+            actual_load_path = tmp_load_path
+        else:
+            print('loading directly')
+            actual_load_path = load_path
+
+        if prefault:
+            print('prefaulting vector store...')
+        else:
+            print('not prefaulting ')
+        t.load(actual_load_path, prefault=prefault)
         print('done loading')
         
     def query(self, vector, top_k):

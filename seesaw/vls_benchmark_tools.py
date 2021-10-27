@@ -313,7 +313,7 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
 
                                 for cr in pcrs:
                                     crs.append(cr)
-                
+                                                  
                     tmp = process_crops(crs, clip_tx, ev.embedding)
                     acc_vecs.append(tmp)
                     impos = np.concatenate(acc_vecs)
@@ -533,7 +533,7 @@ def side_by_side_comparison(stats, baseline_variant, metric):
     v2['base'] = v2[metric]
     v2 = v2.rename(mapper=rename_dict, axis=1)
     
-    sbs = v1.merge(v2, right_on=['dataset', 'category'], left_on=['dataset', 'category'])
+    sbs = v1.merge(v2, right_on=['dataset', 'category'], left_on=['dataset', 'category'], how='outer')
     sbs = sbs.assign(ratio=sbs[metric]/sbs['base'])
     sbs = sbs.assign(delta=sbs[metric] - sbs['base'])
     return sbs
@@ -574,7 +574,6 @@ def parallel_run(ev, tups, out : list, num_workers : int, resources=dict(num_cpu
                 for i in range(num_workers):
                     actors.append(ray.remote(BenchRunner).options(name=f'bench_{i}', **resources).remote(evref))
 
-                out.clear()
                 tqdm_map(actors, run_on_actor, tups, out)
             finally:
                 for a in actors:
@@ -582,7 +581,6 @@ def parallel_run(ev, tups, out : list, num_workers : int, resources=dict(num_cpu
 
         closure(tups)
     else:    
-        out.clear()
         for tup in tqdm(tups):
             pexp = BenchRunner(ev).run_loop(tup)
             out.append(pexp)

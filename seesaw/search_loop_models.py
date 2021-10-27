@@ -265,7 +265,7 @@ def make_tuple_ds(X, y, max_size):
         train_ds = Subset(train_ds, randsel)
     return train_ds
 
-def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logger=None,  max_epochs=4, gpus=0, precision=32):
+def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logger=None, margin=.0, max_epochs=4, gpus=0, precision=32):
     if not torch.is_tensor(X):
         X = torch.from_numpy(X)
     
@@ -273,8 +273,12 @@ def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logg
     assert (y <= 1).all()
 
     #train_ds = make_hard_neg_ds(X, y, max_size=max_examples, curr_vec=mod.vec.detach())
-    ridx,iis,jjs = hard_neg_tuples(mod.vec.detach().numpy(), X.numpy(), y, max_tups=max_examples)
-    train_ds = TensorDataset(X[ridx][iis],X[ridx][jjs], torch.ones(X[ridx][iis].shape[0]))
+    # ridx,iis,jjs = hard_neg_tuples(mod.vec.detach().numpy(), X.numpy(), y, max_tups=max_examples)
+    # train_ds = TensorDataset(X[ridx][iis],X[ridx][jjs], torch.ones(X[ridx][iis].shape[0]))
+    train_ds = hard_neg_tuples_faster(mod.vec.detach().numpy(), X.numpy(), y, max_tups=max_examples, margin=margin)
+
+    ## want a tensor with pos, neg, 1. ideally the highest scored negatives and lowest scored positives.
+
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
     if valX is not None:
@@ -286,6 +290,7 @@ def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logg
     else:
         val_loader = None
         es = []
+
 
     trainer = pl.Trainer(logger=None,
                          gpus=gpus, precision=precision, max_epochs=max_epochs,
@@ -303,12 +308,90 @@ def adjust_vec(vec, Xt, yt, learning_rate, loss_margin, max_examples, minibatch_
     vec = torch.from_numpy(vec).type(torch.float32)
     mod = LookupVec(Xt.shape[1], margin=loss_margin, optimizer=torch.optim.SGD, learning_rate=learning_rate, init_vec=vec)
     fit_rank2(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), 
-            max_examples=max_examples, batch_size=minibatch_size,max_epochs=1)
+            max_examples=max_examples, batch_size=minibatch_size,max_epochs=1, margin=loss_margin)
     newvec = mod.vec.detach().numpy().reshape(1,-1)
     return newvec 
 
-
+import pandas as pd
 import numpy as np
+
+def _positive_inversions(labs):
+    return np.cumsum(~labs)*labs
+
+def _negative_inversions(labs):
+    labs = ~labs[::-1]
+    return _positive_inversions(labs)[::-1]
+
+def compute_inversions(labs, scores):
+    assert labs.shape == scores.shape
+    assert len(labs.shape) == 1
+    labs = labs.astype('bool')
+    scores = scores.copy()
+    descending_order = np.argsort(-scores)
+    labs = labs[descending_order]
+    total_invs = _positive_inversions(labs) + _negative_inversions(labs)
+    inv_order = np.argsort(descending_order)
+    return total_invs[inv_order]
+
+
+def max_inversions_given_max_tups(labs, inversions, max_tups):
+    orig_df = pd.DataFrame({'labs':labs, 'inversions':inversions})
+    ddf = orig_df.sort_values('inversions', ascending=False)
+
+    pdf = ddf[ddf.labs]
+    ndf = ddf[~ddf.labs]
+
+    ncutoff = pdf.shape[0]
+    pcutoff = ndf.shape[0]
+
+    def total_inversions(ncutoff,pcutoff):
+        if ncutoff <= pcutoff:
+            tot = np.minimum(ndf.inversions.values[:ncutoff], pcutoff).sum()
+        else:
+            tot = np.minimum(pdf.inversions.values[:pcutoff], ncutoff).sum()
+
+        return tot
+
+    curr_inv = total_inversions(ncutoff,pcutoff)
+
+    while (ncutoff*pcutoff > max_tups) and (ncutoff > 1 or pcutoff > 1):
+        tot1 = total_inversions(max(1,ncutoff-1), pcutoff)
+        tot2 = total_inversions(ncutoff, max(1,pcutoff-1))
+        if tot2 >= tot1:
+            pcutoff-=1
+        else:
+            ncutoff-=1
+
+    ncutoff = max(1,ncutoff)
+    pcutoff = max(1,pcutoff)
+
+    tot_inv = total_inversions(ncutoff, pcutoff)
+    tot_tup = ncutoff*pcutoff
+
+    pidx = pdf.index.values[:pcutoff]
+    nidx = ndf.index.values[:ncutoff]
+    return pidx, nidx, tot_inv, tot_tup
+
+def hard_neg_tuples_faster(v, Xt, yt, max_tups, margin):
+    """returns indices for the 'hardest' ntups
+    """
+    ### compute reversals for each vector
+    ### keep reversals about equal?
+    labs = (yt == 1.) # make boolean
+    scores = (Xt @ v.reshape(-1,1)).reshape(-1)
+    scores[labs] -= margin 
+    inversions = compute_inversions(labs, scores)
+    pidx, nidx, _, _ = max_inversions_given_max_tups(labs, inversions, max_tups)
+    pidx, nidx = np.meshgrid(pidx, nidx)
+    pidx = pidx.reshape(-1)
+    nidx = nidx.reshape(-1)
+    assert labs[pidx].all()
+    assert ~labs[nidx].any()
+    
+    dummy = torch.ones(size=(pidx.shape[0],1))
+    return TensorDataset(torch.from_numpy(Xt[pidx]), torch.from_numpy(Xt[nidx]), dummy)
+
+
 def hard_neg_tuples(v, Xt, yt, max_tups):
     """returns indices for the 'hardest' ntups
     """
