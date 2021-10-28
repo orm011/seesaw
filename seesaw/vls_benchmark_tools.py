@@ -181,6 +181,7 @@ def process_crops(crs, tx, embedding):
     embs = np.concatenate(emvecs)
     return embs
 
+import time
 
 def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
@@ -270,16 +271,32 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
                     lambda x : x.type(torch.float16)
                     ])
 
+    latency_profile = []
     for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
+        lp = {'batch_no':i, 'n_images':None, 'n_posvecs':None, 'n_negvecs':None,
+                                    'lookup':None, 'label':None, 'refine':None, }    
+        latency_profile.append(lp)
+
+        start_lookup = time.time()
         idxbatch, _ = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
-        if idxbatch.shape[0] == 0:
+        lp['n_images'] = idxbatch.shape[0]
+
+        start_label = time.time()
+        lp['lookup'] = start_label - start_lookup
+
+
+        if idxbatch.shape[0] > 0: 
+            acc_indices.append(idxbatch.copy()) # trying to figure out leak
+            acc_results.append(gt[idxbatch].copy())
+
+        if idxbatch.shape[0] == 0 or i == (n_batches - 1):
             break
-        acc_indices.append(idxbatch.copy()) # trying to figure out leak
-        acc_results.append(gt[idxbatch])
 
         if interactive != 'plain':
             if granularity in ['fine', 'multi']:
                 batchpos, batchneg = get_pos_negs_all_v2(idxbatch, ds, vec_meta)
+                lp['n_posvecs'] = len(batchpos)#.shape[0]
+                lp['n_negvecs'] = len(batchneg)#.shape[0]
                 ## we are currently ignoring these positives
                 acc_pos.append(batchpos)
                 acc_neg.append(batchneg)
@@ -334,6 +351,12 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
             else:
                 Xt = vecs[idxbatch]
                 yt = gt[idxbatch]
+                lp['n_posvecs'] = (yt == 1).sum()#.shape[0]
+                lp['n_negvecs'] = (yt != 1).sum()
+
+
+            start_refine = time.time()
+            lp['label'] = start_refine - start_label
 
             if (yt.shape[0] > 0) and (yt.max() > yt.min()):
                 tmode = 'dot'
@@ -370,12 +393,14 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
 
                 else:
                     assert False
+                lp['refine'] = time.time() - start_refine
             else:
                 # print('missing positives or negatives to do any training', yt.shape, yt.max(), yt.min())
                 pass
-            
+
     res['indices'] = [class_idxs[r] for r in res['indices']]
     tup = {**allargs, **kwargs}
+    tup['latency_profile'] = latency_profile
     return (tup, res)
 
 
@@ -502,14 +527,19 @@ def process_tups(evs, benchresults, keys, at_N):
             assert len(index_set) == indices.shape[0], 'check no repeated indices'
             #ranks = np.concatenate(exp['ranks'])
             #non_nan = ~np.isnan(ranks)
-            gtfull = ev.query_ground_truth[tup['category']].clip(0,1)
-            gt = gtfull[~gtfull.isna()]
-            idx_map = dict(zip(gt.index,np.arange(gt.shape[0]).astype('int')))
-            local_idx = np.array([idx_map[idx] for idx in indices])
-            metrics = compute_metrics(hits[:at_N], local_idx[:at_N], gt)
-    #         if tup['category'] == 'snowy weather':
-    #             break
+            gtfull = ev.query_ground_truth[tup['category']]
 
+            isna = gtfull.isna()
+            if isna.any():
+                gt = gtfull[~isna]
+                idx_d = dict(zip(gt.index,np.arange(gt.shape[0]).astype('int')))
+                idx_map = lambda x : idx_d[x]
+            else:
+                gt = gtfull
+                idx_map = lambda x : x
+
+            local_idx = np.array([idx_map(idx) for idx in indices])
+            metrics = compute_metrics(hits[:at_N], local_idx[:at_N], gt)
             output_tup = {**tup, **metrics}
             #output_tup['unique_ranks'] = np.unique(ranks[non_nan]).shape[0]
             output_tup['dataset'] = k
@@ -550,40 +580,59 @@ def better_same_worse(stats, variant, baseline_variant='plain', metric='ndcg_sco
     else:
         return sbs
 
-
-class BenchRunner(object):
-    def __init__(self, ev):
-        self.ev = ev
-        vls_init_logger()
-        print('loaded benchrunner state...')
-    
-    def run_loop(self, tup):
-        return run_loop(ev=self.ev, **tup)
-    
 def run_on_actor(br, tup):
     return br.run_loop.remote(tup)
 
 from .progress_bar import tqdm_map
 
-def parallel_run(ev, tups, out : list, num_workers : int, resources=dict(num_cpus=4, memory=15*(2**30))):
-    if num_workers > 0:
-        def closure(tups):
-            evref = ray.put(ev)
-            actors = []
-            try:
-                for i in range(num_workers):
-                    actors.append(ray.remote(BenchRunner).options(name=f'bench_{i}', **resources).remote(evref))
+#from .dataset_manager import RemoteVectorIndex
 
-                tqdm_map(actors, run_on_actor, tups, out)
-            finally:
-                for a in actors:
-                    ray.kill(a)
+class BenchRunner(object):
+    def __init__(self, evs):
+        print('initing benchrunner env...')
+        print(evs)
+        revs = {}
+        for (k,evref) in evs.items():
+            ev = ray.get(evref)
+            revs[k] = ev
+        self.evs = revs
+        vls_init_logger()
+        print('loaded all evs...')
+    
+    def run_loop(self, tup):
+        start = time.time()
+        print(f'getting ev for {tup["dataset"]}...')
+        ev = ray.get(self.evs[tup['dataset']])
+        print(f'got ev {ev} after {time.time() - start}')
+        res = run_loop(ev=ev, **tup)
+        print(f'Finished running after {time.time() - start}')
+        return res
 
-        closure(tups)
+RemoteBenchRunner = ray.remote(BenchRunner)
+
+def make_bench_actors(evs, num_actors, resources=dict(num_cpus=4, memory=15*(2**30))):
+    evref = ray.put(evs)
+    actors = []
+    try:
+        for i in range(num_actors):
+            a = RemoteBenchRunner.options(**resources).remote(evs=evref)
+            actors.append(a)
+    except Exception as e:
+        for a in actors:
+            ray.kill(a)
+        raise e
+
+    return actors
+
+
+def parallel_run(*, evs, actors, tups, benchresults, local=False):
+    if not local:
+        tqdm_map(actors, run_on_actor, tups, benchresults)
     else:    
         for tup in tqdm(tups):
-            pexp = BenchRunner(ev).run_loop(tup)
-            out.append(pexp)
+            pexp = BenchRunner(evs).run_loop(tup)
+            benchresults.append(pexp)
+
 
 import datetime
 import pickle
