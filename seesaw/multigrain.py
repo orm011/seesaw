@@ -417,9 +417,7 @@ class AugmentedDB(object):
                 if i > 1:
                     print('warning, we are looping too much. adjust initial params?')
 
-                handle = self.vec_index.query.remote(vector, top_k=try_n)
-                idxs, scores = ray.get(handle)
-
+                idxs,scores = self.vec_index.query(vector, top_k=try_n)
                 found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
                 if len(found_idxs.difference(exclude)) >= topk:
                     break
