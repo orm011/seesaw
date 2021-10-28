@@ -422,24 +422,60 @@ class SeesawDatasetManager:
     def index_path(self):
         return  f'{self.dataset_root}/meta/vectors.annoy'
     
-    def load_evdataset(self) -> EvDataset:
-        idmap = dict(zip(self.paths,range(len(self.paths))))
-        ds = ray.data.read_parquet(self.vector_path(), columns = ['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
+    def load_evdataset(self, force_recompute=False) -> EvDataset:
+        cached_meta_path= f'{self.dataset_root}/meta/vectors.sorted.cached'
+#        cached_coarse_path= f'{self.dataset_root}/meta/coarse.sorted.cached'
 
-        def assign_ids(df):
-            return df.assign(dbidx=df.file_path.map(lambda path : idmap[path]))
+        if not os.path.exists(cached_meta_path) or force_recompute:
+            if os.path.exists(cached_meta_path):
+                shutil.rmtree(cached_meta_path)
+                
+            print('computing sorted version of metadata...')
+            idmap = dict(zip(self.paths,range(len(self.paths))))
+            def assign_ids(df):
+                return df.assign(dbidx=df.file_path.map(lambda path : idmap[path]))
 
-        # ds = ds.map_batches(lambda tab : assign_ids(tab.to_pandas()))
-        coarse_emb = ds.map_batches(lambda x : infer_coarse_embedding(x.to_pandas()))
-        fb = pd.concat(ray.get(coarse_emb.to_pandas()), ignore_index=True)
-        fb = assign_ids(fb).sort_values('dbidx')
-        embedded_dataset = fb['vectors'].values.to_numpy()
+            ds = ray.data.read_parquet(self.vector_path(), columns=['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
+            df = pd.concat(ray.get(ds.to_pandas()), axis=0, ignore_index=True)
+            df = assign_ids(df)
+            #df = df.assign(orig_index=df.index.values)
+            df = df.sort_values(['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2']).reset_index(drop=True)
+            df = df.assign(order_col=df.index.values)
+            max_zoom_out = df.groupby('dbidx').zoom_level.max().rename('max_zoom_level')
+            df = pd.merge(df, max_zoom_out, left_on='dbidx', right_index=True)
+            splits = split_df(df, n_splits=32)
+            ray.data.from_pandas(splits).write_parquet(cached_meta_path)
+            #parts = ray.data.from_pandas([df]).split(32)
+            #ray.data.(parts).write_parquet(cached_meta_path)
+            print('done....')
+        else:
+            print('using cached metadata...')
 
-        df = pd.concat(ray.get(ds.to_pandas()), axis=0, ignore_index=True)
-        df = assign_ids(df).sort_values(['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2']).reset_index(drop=True)
-        fine_grained_meta = df[['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
+        print('loading fine embedding...')
+        assert os.path.exists(cached_meta_path)
+        ds = ray.data.read_parquet(cached_meta_path, columns=['dbidx', 'zoom_level', 'max_zoom_level', 'order_col','x1', 'y1', 'x2', 'y2','vectors'])
+        df = pd.concat(ray.get(ds.to_pandas()),ignore_index=True)
+        assert df.order_col.is_monotonic_increasing, 'sanity check'
+        fine_grained_meta = df[['dbidx', 'order_col', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
         fine_grained_embedding = df['vectors'].values.to_numpy()
 
+
+        print('computing coarse embedding...')
+        coarse_emb = infer_coarse_embedding(df)
+        assert coarse_emb.dbidx.is_monotonic_increasing
+        embedded_dataset = coarse_emb['vectors'].values.to_numpy()
+
+        # ds = ray.data.read_parquet(self.vector_path(), columns = ['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
+
+        # ds = ds.map_batches(lambda tab : assign_ids(tab.to_pandas()))
+        # if not os.path.exists(cached_vecs_path):
+        #     print('caching coarse grained embedding...')
+        #     ds.map_batches(lambda x : infer_coarse_embedding(x.to_pandas())).write_parquet(cached_vecs_path)
+        # assert os.path.exists(cached_vecs_path)
+        # coarse_emb = ray.data.read_parquet(cached_vecs_path)
+        # fb = pd.concat(ray.get(coarse_emb.to_pandas()), ignore_index=True)
+        # fb = assign_ids(fb).sort_values('dbidx')
+        print('loading ground truth...')
         box_data, qgt = self.load_ground_truth()
  
         if os.path.exists(self.index_path()):
@@ -460,6 +496,29 @@ class SeesawDatasetManager:
             vec_index=vec_index)
 
 
+
+def split_df(df, n_splits):
+    lendf = df.shape[0]
+    base_lens = [lendf//n_splits]*n_splits
+    for i in range(lendf%n_splits):
+        base_lens[i] +=1
+        
+    assert sum(base_lens) == lendf
+    assert len(base_lens) == n_splits
+    
+    indices = np.cumsum([0] + base_lens)
+    
+    start_index = indices[:-1]
+    end_index = indices[1:]
+    cutoffs= zip(start_index, end_index)
+    splits = []
+    for (a,b) in cutoffs:
+        splits.append(df.iloc[a:b])
+        
+    tot = sum(map(lambda df : df.shape[0], splits))
+    assert df.shape[0] == tot
+    return splits
+
 import pickle
 
 def convert_dbidx(ev : EvDataset, ds : SeesawDatasetManager, prepend_ev :str = ''):
@@ -478,10 +537,11 @@ def infer_qgt_from_boxes(box_data, num_files):
     return qgt.clip(0,1)
 
 def infer_coarse_embedding(pdtab):
-    max_zoom_out = pdtab.groupby('file_path').zoom_level.max().rename('max_zoom_level')
-    wmax = pd.merge(pdtab, max_zoom_out, left_on='file_path', right_index=True)
+    # max_zoom_out = pdtab.groupby('file_path').zoom_level.max().rename('max_zoom_level')
+    # wmax = pd.merge(pdtab, max_zoom_out, left_on='file_path', right_index=True)
+    wmax = pdtab
     lev1 = wmax[wmax.zoom_level == wmax.max_zoom_level]
-    ser = lev1.groupby('file_path').vectors.mean().reset_index()
+    ser = lev1.groupby('dbidx').vectors.mean().reset_index()
     res = ser['vectors'].values.to_numpy()
     normres = res/np.maximum(np.linalg.norm(res, axis=1,keepdims=True), 1e-6)
     return ser.assign(vectors=TensorArray(normres))
@@ -664,7 +724,7 @@ class VectorIndex:
             assert tmpdir is not None, 'need a tmpdir for copying'
             fname = load_path.replace('/', '_')
             tmp_load_path = f'{tmpdir}/{fname}'
-            print('copying file to tmp storage for faster mmap...{tmp_load_path}')
+            print(f'copying file {load_path} to {tmp_load_path} for faster mmap...')
             shutil.copy2(load_path, tmp_load_path)
             print('done copying...')
             actual_load_path = tmp_load_path
@@ -683,3 +743,13 @@ class VectorIndex:
         assert vector.shape == (1,512) or vector.shape == (512,) 
         idxs, scores = self.vec_index.get_nns_by_vector(vector.reshape(-1), n=top_k, include_distances=True)
         return np.array(idxs), np.array(scores)
+
+RemoteVectorIndex = ray.remote(VectorIndex)
+
+class IndexWrapper:
+    def __init__(self, index_actor : RemoteVectorIndex):
+        self.index_actor = index_actor
+        
+    def query(self, vector, top_k):
+        h = self.index_actor.query.remote(vector, top_k)
+        return ray.get(h)
