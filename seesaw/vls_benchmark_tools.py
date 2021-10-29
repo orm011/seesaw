@@ -632,14 +632,3 @@ def parallel_run(*, evs, actors, tups, benchresults, local=False):
         for tup in tqdm(tups):
             pexp = BenchRunner(evs).run_loop(tup)
             benchresults.append(pexp)
-
-
-import datetime
-import pickle
-def dump_results(benchresults):
-    pass
-#     now = datetime.datetime.now()
-#     nowstr = now.strftime("%Y-%m-%d_%H:%M:%S")
-#     fname = './data/vls_bench_{}.pkl'.format(nowstr)
-#     pickle.dump(benchresults, open(fname,'wb'))
-#     print(fname)
