@@ -422,9 +422,8 @@ class SeesawDatasetManager:
     def index_path(self):
         return  f'{self.dataset_root}/meta/vectors.annoy'
     
-    def load_evdataset(self, force_recompute=False) -> EvDataset:
+    def load_evdataset(self, *, force_recompute=False, load_coarse=True, load_ground_truth=True) -> EvDataset:
         cached_meta_path= f'{self.dataset_root}/meta/vectors.sorted.cached'
-#        cached_coarse_path= f'{self.dataset_root}/meta/coarse.sorted.cached'
 
         if not os.path.exists(cached_meta_path) or force_recompute:
             if os.path.exists(cached_meta_path):
@@ -438,15 +437,12 @@ class SeesawDatasetManager:
             ds = ray.data.read_parquet(self.vector_path(), columns=['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
             df = pd.concat(ray.get(ds.to_pandas()), axis=0, ignore_index=True)
             df = assign_ids(df)
-            #df = df.assign(orig_index=df.index.values)
             df = df.sort_values(['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2']).reset_index(drop=True)
             df = df.assign(order_col=df.index.values)
             max_zoom_out = df.groupby('dbidx').zoom_level.max().rename('max_zoom_level')
             df = pd.merge(df, max_zoom_out, left_on='dbidx', right_index=True)
             splits = split_df(df, n_splits=32)
             ray.data.from_pandas(splits).write_parquet(cached_meta_path)
-            #parts = ray.data.from_pandas([df]).split(32)
-            #ray.data.(parts).write_parquet(cached_meta_path)
             print('done....')
         else:
             print('using cached metadata...')
@@ -459,32 +455,27 @@ class SeesawDatasetManager:
         fine_grained_meta = df[['dbidx', 'order_col', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
         fine_grained_embedding = df['vectors'].values.to_numpy()
 
+        if load_coarse:
+            print('computing coarse embedding...')
+            coarse_emb = infer_coarse_embedding(df)
+            assert coarse_emb.dbidx.is_monotonic_increasing
+            embedded_dataset = coarse_emb['vectors'].values.to_numpy()
+            assert embedded_dataset.shape[0] == self.paths.shape[0]
+        else:
+            embedded_dataset = None
 
-        print('computing coarse embedding...')
-        coarse_emb = infer_coarse_embedding(df)
-        assert coarse_emb.dbidx.is_monotonic_increasing
-        embedded_dataset = coarse_emb['vectors'].values.to_numpy()
-
-        # ds = ray.data.read_parquet(self.vector_path(), columns = ['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
-
-        # ds = ds.map_batches(lambda tab : assign_ids(tab.to_pandas()))
-        # if not os.path.exists(cached_vecs_path):
-        #     print('caching coarse grained embedding...')
-        #     ds.map_batches(lambda x : infer_coarse_embedding(x.to_pandas())).write_parquet(cached_vecs_path)
-        # assert os.path.exists(cached_vecs_path)
-        # coarse_emb = ray.data.read_parquet(cached_vecs_path)
-        # fb = pd.concat(ray.get(coarse_emb.to_pandas()), ignore_index=True)
-        # fb = assign_ids(fb).sort_values('dbidx')
-        print('loading ground truth...')
-        box_data, qgt = self.load_ground_truth()
+        if load_ground_truth:
+            print('loading ground truth...')
+            box_data, qgt = self.load_ground_truth()
+        else:
+            box_data = None
+            qgt = None
  
         if os.path.exists(self.index_path()):
             vec_index = self.index_path() # start actor elsewhere
-            # assert vec_index.get_n_items() == df.shape[0], 'index items should be the same as fine grained vectors'
         else:
             vec_index = None
 
-        #assert vec_index._raw_data.shape == fine_grained_embedding.shape, 'vectors and index should match shape'
 
         return EvDataset(root=self.image_root, paths=self.paths, 
             embedded_dataset=embedded_dataset, 
@@ -738,6 +729,9 @@ class VectorIndex:
             print('not prefaulting ')
         t.load(actual_load_path, prefault=prefault)
         print('done loading')
+
+    def ready(self):
+        return True
         
     def query(self, vector, top_k):
         assert vector.shape == (1,512) or vector.shape == (512,) 
@@ -753,3 +747,17 @@ class IndexWrapper:
     def query(self, vector, top_k):
         h = self.index_actor.query.remote(vector, top_k)
         return ray.get(h)
+
+
+def load_ev(*, gdm, dsname, xclip, load_ground_truth=True, load_coarse=True):
+    ds = gdm.get_dataset(dsname)  
+    evref = ray.remote(lambda : ds.load_evdataset(load_ground_truth=load_ground_truth, 
+                load_coarse=load_coarse)).options(num_cpus=48).remote()
+
+    mem_needed = os.stat(ds.index_path()).st_size
+    vi = (RemoteVectorIndex.options(num_cpus=8, memory=mem_needed).remote(load_path=ds.index_path(), copy_to_tmpdir=True, prefault=True))
+    readyref = vi.ready.remote()
+    (ev, _) = ray.get([evref, readyref])
+    ev.embedding = xclip
+    ev.vec_index = IndexWrapper(vi)
+    return ev
