@@ -406,6 +406,9 @@ class CLIPWrapper(XEmbedding):
                      center=True)
         self.pooled_model = nn.Sequential(self.visual_model,nn.AdaptiveAvgPool2d(1))
 
+    def ready(self):
+        return True
+
     def from_string(self, *, string=None, str_vec=None, numpy=True):
         if str_vec is not None:
             return str_vec
