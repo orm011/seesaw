@@ -32,7 +32,6 @@ class DB(object):
     def get_ev(self):
         return self.ev_ref
 
-
 RemoteDB = ray.remote(DB)
 
 import argparse
