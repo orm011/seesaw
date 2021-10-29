@@ -76,20 +76,20 @@ def get_panel_data_remote(q, ev, label_db, next_idxs):
     }
     return pdata
 
-def make_image_panel_remote(bfq, idxbatch):
-    dat = get_panel_data_remote(bfq, bfq.label_db, idxbatch)
+# def make_image_panel_remote(bfq, idxbatch):
+#     dat = get_panel_data_remote(bfq, bfq.label_db, idxbatch)
 
-    ldata = dat['ldata']
-    if bfq.auto_fill_df is not None:
-        gt_ldata = auto_fill_boxes(bfq.auto_fill_df, ldata)
-        ## only use boxes for things we have not added ourselves...
-        ## (ie don't overwrite db)
-        for rdb, rref in zip(ldata, gt_ldata):
-            if rdb['dbidx'] not in bfq.label_db:
-                rdb['boxes'] = rref['boxes']
+#     ldata = dat['ldata']
+#     if bfq.auto_fill_df is not None:
+#         gt_ldata = auto_fill_boxes(bfq.auto_fill_df, ldata)
+#         ## only use boxes for things we have not added ourselves...
+#         ## (ie don't overwrite db)
+#         for rdb, rref in zip(ldata, gt_ldata):
+#             if rdb['dbidx'] not in bfq.label_db:
+#                 rdb['boxes'] = rref['boxes']
 
-    pn = widgets.MImageGallery(**dat)
-    return pn
+#     pn = widgets.MImageGallery(**dat)
+#     return pn
 
 def fit(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=6, gpus=0, precision=32):
     class CustomInterrupt(pl.callbacks.Callback):
