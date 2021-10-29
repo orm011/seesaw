@@ -8,8 +8,6 @@ ray.init('auto', namespace='seesaw')
 
 import seesaw
 from seesaw import *
-from init_data_actors import DB, RemoteDB, ModelService
-
 
 gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
 
@@ -17,59 +15,13 @@ datasets = ['objectnet']#,[ 'dota', 'lvis','coco', 'bdd']
 default_dataset = datasets[0]
 dbactors = dict([(name,ray.get_actor(name)) for name in datasets])
 
-class InteractiveQueryRemote(object):
-    def __init__(self, dbactor, batch_size: int):
-        self.dbactor = dbactor
-        self.seen = pr.BitMap()
-        self.query_history = []
-        self.acc_idxs = []
-        self.batch_size = batch_size
-
-    def query_stateful(self, *args, **kwargs):
-        '''
-        :param kwargs: forwards arguments to db query method but
-         also keeping track of already seen results. also
-         keeps track of query history.
-        :return:
-        '''
-        batch_size = kwargs.get('batch_size',self.batch_size)
-        if 'batch_size' in kwargs:
-            del kwargs['batch_size']
-            
-        idxref = self.dbactor.query.remote(*args, topk=batch_size, **kwargs, exclude=self.seen)
-        idxs, _ = ray.get(idxref)
-        self.query_history.append((args, kwargs))
-        self.seen.update(idxs)
-        self.acc_idxs.append(idxs)
-        return idxs
-    
-    def repeat_last(self):
-        '''
-        :return: continues the search from last query, effectively paging through results
-        '''
-        assert self.query_history != []
-        args, kwargs = self.query_history[-1]
-        return self.query_stateful(*args, **kwargs)
-    
-class BoxFeedbackQueryRemote(InteractiveQueryRemote):
-    def __init__(self, dbactor, batch_size, auto_fill_df=None):
-        super().__init__(dbactor, batch_size)
-        self.label_db = {}
-        # self.rois = [[]]
-        # self.augmented_rois = [[]]
-        # self.roi_vecs = [np.zeros((0, dbactor..embedded.shape[1]))]
-        self.auto_fill_df = auto_fill_df
-
-
-
-def get_panel_data_remote(q, ev, label_db, next_idxs):
+def get_panel_data(q, ev, label_db, next_idxs):
     reslabs = []
     for (i,dbidx) in enumerate(next_idxs):
         boxes = copy.deepcopy(label_db.get(dbidx, None))
         reslabs.append({'value': -1 if boxes is None else 1 if len(boxes) > 0 else 0, 
                         'id': i, 'dbidx': int(dbidx), 'boxes': boxes})
     urls = get_image_paths(ev, next_idxs)
-    # q.db.get_image_paths(next_idxs)
     pdata = {
         'image_urls': urls,
         'ldata': reslabs,
@@ -77,7 +29,7 @@ def get_panel_data_remote(q, ev, label_db, next_idxs):
     return pdata
 
 # def make_image_panel_remote(bfq, idxbatch):
-#     dat = get_panel_data_remote(bfq, bfq.label_db, idxbatch)
+#     dat = get_panel_data(bfq, bfq.label_db, idxbatch)
 
 #     ldata = dat['ldata']
 #     if bfq.auto_fill_df is not None:
@@ -193,13 +145,13 @@ class SessionState(object):
         self.acc_indices = np.array([])
 
     def get_state(self):
-        dat = get_panel_data_remote(self.bfq, self.ev,  self.bfq.label_db, self.acc_indices)
+        dat = get_panel_data(self.bfq, self.ev,  self.bfq.label_db, self.acc_indices)
         dat['datasets'] = datasets
         dat['current_dataset'] = self.current_dataset
         return dat
 
     def get_latest(self):
-        dat = get_panel_data_remote(self.bfq,  self.ev, self.bfq.label_db, self.bfq.acc_idxs[-1])
+        dat = get_panel_data(self.bfq,  self.ev, self.bfq.label_db, self.bfq.acc_idxs[-1])
         return dat
 
 
