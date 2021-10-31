@@ -37,28 +37,33 @@ RemoteDB = ray.remote(DB)
 import argparse
 
 if __name__ == '__main__':    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--load_ground_truth", action='store_true')
+    parser.add_argument("--load_coarse_embedding", action='store_true')
+    parser.add_argument("--datasets", action="extend", nargs="+", type=str, default=[])
+    args = parser.parse_args()
+
     ray.init('auto', namespace='seesaw')
 
     model_actor = ray.get_actor('clip')
+    #['objectnet', 'bdd', 'coco', 'dota', 'lvis']
     xclip = ModelService(model_actor)
 
     gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
-    ds_names = ['objectnet']#, 'bdd', 'coco', 'dota', 'lvis']
+    ds_names = args.datasets
 
     dbs = []
     handles = []
     for k in ds_names:
         def loader():
-            return load_ev(gdm=gdm, dsname=k, xclip=xclip, load_ground_truth=False, load_coarse=True)
+            return load_ev(gdm=gdm, dsname=k, xclip=xclip, 
+                    load_ground_truth=args.load_ground_truth, 
+                    load_coarse=args.load_coarse_embedding)
 
-        dbactor = RemoteDB.options(name=k).remote(dataset_loader=loader)
+        dbactor = RemoteDB.options(name=k, lifetime='detached').remote(dataset_loader=loader)
         dbs.append(dbactor)
         handles.append(dbactor.ready.remote())
 
     handles.append(model_actor.ready.remote())
     ray.get(handles)
-    print('db loaded and model ready')
-
-    while input() != 'exit':
-        pass
-    print('exiting...')
+    print('db loaded and model ready...')
