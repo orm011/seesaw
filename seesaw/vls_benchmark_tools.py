@@ -14,6 +14,8 @@ import sklearn.metrics
 import math
 from .util import *
 
+import importlib
+
 # ignore this comment
 
 def vls_init_logger():
@@ -21,36 +23,6 @@ def vls_init_logger():
     logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
     logging.captureWarnings(True)
 
-def brief_formatter(num_sd):
-    assert num_sd > 0
-    def formatter(ftpt):
-        if math.isclose(ftpt, 0.):
-            return '0'
-        
-        if math.isclose(ftpt,1.):
-            return '1'
-
-        if ftpt < 1.:
-            exp = -math.floor(math.log10(abs(ftpt)))
-            fmt_string = '{:.0%df}' % (exp + num_sd - 1)
-            dec = fmt_string.format(ftpt)    
-        else:
-            fmt_string = '{:.02f}'
-            dec = fmt_string.format(ftpt)
-            
-        zstripped = dec.lstrip('0').rstrip('0')
-        return zstripped.rstrip('.')
-    return formatter
-
-brief_format = brief_formatter(1)
-
-def times_format(ftpt):
-    return brief_format(ftpt) + 'x'
-
-def make_labeler(fmt_func):
-    def fun(arrlike):
-        return list(map(fmt_func, arrlike))
-    return fun
 
 import numpy as np
 
@@ -183,24 +155,27 @@ def process_crops(crs, tx, embedding):
 
 import time
 
+_clip_tx = T.Compose([
+                    T.ToTensor(), 
+                    T.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+                    lambda x : x.type(torch.float16)
+                    ])
+
+
 def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
               tqdm_disabled:bool, granularity:str,
-               positive_vector_type, n_augment,
+               positive_vector_type, n_augment, min_box_size=10,
                model_type='logistic', solver_opts={}, 
                **kwargs):         
     assert 'fine_grained' not in kwargs
     assert isinstance(granularity, str)
     assert positive_vector_type in ['image_only', 'image_and_vec', 'vec_only', None]
-    # gvec = ev.fine_grained_embedding
-    # gvec_meta = ev.fine_grained_meta
-    # min_box_size = 60 # in pixels. fov is 224 min. TODO: ground truth should ignore these.
-    min_box_size = 10
-    augment_n = n_augment # number of random augments 
     ev0 = ev
     frame = inspect.currentframe()
     args, _, _, values = inspect.getargvalues(frame)
     allargs = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'gvec', 'gvec_meta']} 
+    print(allargs, kwargs)
     rtup = {**allargs, **kwargs}       
 
     catgt = ev0.query_ground_truth[category]
@@ -211,10 +186,14 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
 
     ev, class_idxs = get_class_ev(ev0, category, boxes=True)
     dfds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
-    
-    rsz = resize_to_grid(224)
-    ds = TxDataset(dfds, tx=lambda tup : rsz(im=None, boxes=tup)[1])
-    imds = TxDataset(ev.image_dataset, tx = lambda im : rsz(im=im, boxes=None)[0])
+    gt = ev.query_ground_truth[category].values
+
+    #rsz = resize_to_grid(224)
+    # ds = TxDataset(dfds, tx=lambda tup : rsz(im=None, boxes=tup)[1])
+    # imds = TxDataset(ev.image_dataset, tx = lambda im : rsz(im=im, boxes=None)[0])
+
+    ds = dfds
+    imds = ev.image_dataset
 
     if granularity == 'fine':
         vec_meta = ev.fine_grained_meta
@@ -238,9 +217,7 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
         assert False
 
     bfq = BoxFeedbackQuery(hdb, batch_size=batch_size, auto_fill_df=None)
-    rarr = ev.query_ground_truth[category]
-    print(allargs, kwargs)
-            
+
     if qstr == 'nolang':
         init_vec=None
         init_mode = 'random'
@@ -252,11 +229,8 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
     acc_neg = []
     acc_indices = []
     acc_results = []
-    acc_ranks = []
-    total = 0
     acc_vecs = [np.zeros((0,512))]
             
-    gt = ev.query_ground_truth[category].values
     res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
     if init_vec is not None:
         init_vec = init_vec/np.linalg.norm(init_vec)
@@ -265,11 +239,7 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
         tvec = None
 
     tmode = init_mode
-    clip_tx = T.Compose([
-                    T.ToTensor(), 
-                    T.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-                    lambda x : x.type(torch.float16)
-                    ])
+
 
     latency_profile = []
     for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
@@ -292,9 +262,13 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
         if idxbatch.shape[0] == 0 or i == (n_batches - 1):
             break
 
+        box_dict = {}
+        for idx in idxbatch:
+            box_dict[idx] = ds[idx]
+
         if interactive != 'plain':
             if granularity in ['fine', 'multi']:
-                batchpos, batchneg = get_pos_negs_all_v2(idxbatch, ds, vec_meta)
+                batchpos, batchneg = get_pos_negs_all_v2(idxbatch, box_dict, vec_meta)
                 lp['n_posvecs'] = len(batchpos)#.shape[0]
                 lp['n_negvecs'] = len(batchneg)#.shape[0]
                 ## we are currently ignoring these positives
@@ -318,9 +292,9 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
                         im = imds[idx]
 
                         for b in boxes.itertuples():
-                            if augment_n > 1:
+                            if n_augment > 1:
                                 pcrs = randomly_extended_crop(im, b, scale_range=3., aspect_ratio_range=1., off_center_range=1., 
-                                        clearance=1.3, n=augment_n)
+                                        clearance=1.3, n=n_augment)
                                 for cr in pcrs:
                                     cr = T.RandomHorizontalFlip()(cr)
                                     crs.append(cr)
@@ -331,7 +305,7 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
                                 for cr in pcrs:
                                     crs.append(cr)
                                                   
-                    tmp = process_crops(crs, clip_tx, ev.embedding)
+                    tmp = process_crops(crs, _clip_tx, ev.embedding)
                     acc_vecs.append(tmp)
                     impos = np.concatenate(acc_vecs)
 
@@ -387,7 +361,7 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
                                                 minibatch_size=minibatch_size,
                                                 loss_margin=loss_margin)
                     elif model_type == 'solver':
-                        tvec = adjust_vec2(tvec, Xt, yt, **solver_opts)
+                        tvec = adjust_vec2(tvec, Xt, yt, max_examples=p.max_examples, loss_margin=p.loss_margin, **solver_opts)
                     else:
                         assert False, 'model type'
 
@@ -400,185 +374,309 @@ def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batche
 
     res['indices'] = [class_idxs[r] for r in res['indices']]
     tup = {**allargs, **kwargs}
-    tup['latency_profile'] = latency_profile
+    res['latency_profile'] = latency_profile
     return (tup, res)
 
 
+from dataclasses import dataclass,field
+## used only to make life easier
+@dataclass(frozen=True)
+class LoopParams:
+    interactive : str
+    warm_start : str
+    batch_size : int
+    minibatch_size : int
+    learning_rate : float
+    max_examples : int
+    loss_margin : float
+    tqdm_disabled : bool
+    granularity : str
+    positive_vector_type : str
+    num_epochs : int
+    n_augment : int
+    min_box_size : int = 10
+    model_type : int = 'logistic'
+    solver_opts : dict = None
 
-def ndcg_rank_score(ytrue, ordered_idxs):
-    '''
-        wraps sklearn.metrics.ndcg_score to grade a ranking given as an ordered array of k indices,
-        rather than as a score over the full dataset.
-    '''
-    ytrue = ytrue.astype('float')
-    # create a score that is consistent with the ranking.
-    ypred = np.zeros_like(ytrue)
-    fake_scores = np.arange(ordered_idxs.shape[0],0,-1)/ordered_idxs.shape[0]
-    assert (fake_scores > 0).all()
-    ypred[ordered_idxs] = fake_scores
-    return sklearn.metrics.ndcg_score(ytrue.reshape(1,-1), y_score=ypred.reshape(1,-1), k=ordered_idxs.shape[0])
+@dataclass
+class LoopState:
+    tvec : np.ndarray = None
+    tmod : str = None
+    acc_vecs : list = field(default_factory=list) #[np.zeros((0,512))]
+    latency_profile : list = field(default_factory=list)
+    acc_pos : list = field(default_factory=list)
+    acc_neg : list = field(default_factory=list)
 
-def test_score_sanity():
-    ytrue = np.zeros(10000)
-    randorder = np.random.permutation(10000)
-    
-    numpos = 100
-    posidxs = randorder[:numpos]
-    negidxs = randorder[numpos:]
-    numneg = negidxs.shape[0]
+class SeesawLoop:
+    bfq : BoxFeedbackQuery
+    params : LoopParams
+    state : LoopState
+    vecs : np.ndarray
+    vec_meta : pd.DataFrame
 
-    ytrue[posidxs] = 1.
-    perfect_rank = np.argsort(-ytrue)
-    bad_rank = np.argsort(ytrue)
+    def __init__(self, ev : EvDataset, params : LoopParams):
+        self.ev = ev
+        self.params = params
+        self.state = LoopState()
 
-    ## check score for a perfect result set is  1
-    ## regardless of whether the rank is computed when k < numpos or k >> numpos
-    assert np.isclose(ndcg_rank_score(ytrue,perfect_rank[:numpos//2]),1.)
-    assert np.isclose(ndcg_rank_score(ytrue,perfect_rank[:numpos]),1.)
-    assert np.isclose(ndcg_rank_score(ytrue,perfect_rank[:numpos*2]),1.)    
-    
-        ## check score for no results is 0    
-    assert np.isclose(ndcg_rank_score(ytrue,bad_rank[:-numpos]),0.)
+    def initialize(self, qstr : str):
+        """
+        sets up initial state. must be called ahead of everything else
+        """
+        ev = self.ev
+        p = self.params
+        s = self.state
 
-  
-    ## check score for same amount of results worsens if they are shifted    
-    gr = perfect_rank[:numpos//2]
-    br = bad_rank[:numpos//2]
-    rank1 = np.concatenate([gr,br])
-    rank2 = np.concatenate([br,gr])
-    assert ndcg_rank_score(ytrue, rank1) > .5, 'half of entries being relevant, but first half'
-    assert ndcg_rank_score(ytrue, rank2) < .5
-
-def test_score_rare():
-    n = 10000 # num items
-    randorder = np.random.permutation(n)
-
-    ## check in a case with only few positives
-    for numpos in [0,1,2]:
-        ytrue = np.zeros_like(randorder)
-        posidxs = randorder[:numpos]
-        negidxs = randorder[numpos:]
-        numneg = negidxs.shape[0]
-    
-        ytrue[posidxs] = 1.
-        perfect_rank = np.argsort(-ytrue)
-        bad_rank = np.argsort(ytrue)
-    
-        scores = []
-        k = 200
-        for i in range(k):
-            test_rank = bad_rank[:k].copy()
-            if len(posidxs) > 0:
-                test_rank[i] = posidxs[0]
-            sc = ndcg_rank_score(ytrue,test_rank)
-            scores.append(sc)
-        scores = np.array(scores)
-        if numpos == 0:
-            assert np.isclose(scores ,0).all()
+        if p.granularity == 'fine':
+            vec_meta = ev.fine_grained_meta
+            vecs = ev.fine_grained_embedding
+            vec_meta = vec_meta[vec_meta.zoom_level == 0]
+            vecs = vecs[vec_meta.index.values]
+            vec_meta.reset_index(drop=True)
+            hdb = FineEmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
+                embedded_dataset=vecs, vector_meta=vec_meta)
+        elif p.granularity == 'multi':
+            vec_meta = ev.fine_grained_meta
+            vecs = ev.fine_grained_embedding
+            hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
+                embedded_dataset=vecs, vector_meta=vec_meta, vec_index=ev.vec_index)
+        elif p.granularity == 'coarse':
+            dbidxs = np.arange(len(ev)).astype('int')
+            vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
+            vecs = ev.embedded_dataset
+            hdb = EmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding,embedded_dataset=vecs)
         else:
-            assert (scores > 0 ).all()
+            assert False
 
-test_score_sanity()
-test_score_rare()
+        bfq = BoxFeedbackQuery(hdb, batch_size=p.batch_size, auto_fill_df=None)
+        self.vec_meta = vec_meta
+        self.vecs = vecs
+        self.hdb = hdb
+        self.bfq = bfq
 
-
-def compute_metrics(results, indices, gt):
-    hits = results
-    assert ~gt.isna().any()
-    ndcg_score = ndcg_rank_score(gt.values, indices)    
-    assert (gt.iloc[indices].values.astype('float') == hits.astype('float')).all()
-    
-    hpos= np.where(hits > 0)[0] # > 0 bc. nan.
-    if hpos.shape[0] > 0:
-        nfirst = hpos.min() + 1
-        rr = 1./nfirst
-    else:
-        nfirst = np.inf
-        rr = 1/nfirst
+        if qstr == 'nolang':
+            s.tvec = None
+            s.tmode = 'random'
+        else:
+            init_vec = ev.embedding.from_string(string=qstr)
+            init_vec = init_vec/np.linalg.norm(init_vec)
+            s.tvec = init_vec
+            s.tmode = 'dot'
         
-    nfound = (hits > 0).cumsum()
-    ntotal = (gt > 0).sum()
-    nframes = np.arange(hits.shape[0]) + 1
-    precision = nfound/nframes
-    recall = nfound/ntotal
-    total_prec = (precision*hits).cumsum() # see Evaluation of ranked retrieval results page 158
-    average_precision = total_prec/ntotal
-    
-    return dict(ndcg_score=ndcg_score, ntotal=ntotal, nfound=nfound[-1], 
-                ndatabase=gt.shape[0], abundance=(gt > 0).sum()/gt.shape[0], nframes=hits.shape[0],
-                nfirst = nfirst, reciprocal_rank=rr,
-               precision=precision[-1], recall=recall[-1], average_precision=average_precision[-1])
+        #res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
+
+    def next_batch(self):
+        """
+        gets next batch of image indices based on current vector
+        """
+        start_lookup = time.time()
+
+        s = self.state
+        p = self.params
+        lp = {'n_images':None, 'n_posvecs':None, 'n_negvecs':None,
+                                    'lookup':None, 'label':None, 'refine':None, }    
+        s.latency_profile.append(lp)
+
+        idxbatch, _ = self.bfq.query_stateful(mode=s.tmode, vector=s.tvec, batch_size=p.batch_size)
+        lp['n_images'] = idxbatch.shape[0]
+        lp['lookup'] = time.time() - start_lookup
+        return idxbatch
+
+    def refine(self, idxbatch : np.array, box_dict : dict):
+        """
+        update based on vector. box dict will have every index from idx batch, including empty dfs.
+        """
+        assert idxbatch.shape[0] == len(box_dict)
+
+        start_refine = time.time()
+
+        p = self.params
+        s = self.state
+        lp = s.latency_profile[-1]
+        
+        lp['label'] = start_refine - lp['lookup']
+
+        if p.interactive != 'plain':
+            if p.granularity in ['fine', 'multi']:
+                batchpos, batchneg = get_pos_negs_all_v2(idxbatch, box_dict, self.vec_meta)
+                lp['n_posvecs'] = len(batchpos)#.shape[0]
+                lp['n_negvecs'] = len(batchneg)#.shape[0]
+                ## we are currently ignoring these positives
+                s.acc_pos.append(batchpos)
+                s.acc_neg.append(batchneg)
+
+                pos = pr.BitMap.union(*s.acc_pos)
+                neg = pr.BitMap.union(*s.acc_neg)
 
 
+                if p.positive_vector_type == 'vec_only':
+                    allpos = self.vecs[pos]
+                elif p.positive_vector_type in ['image_only', 'image_and_vec']:
+                    crs = []
+                    for idx in idxbatch:
+                        boxes = box_dict[idx]
+                        widths = (boxes.x2 - boxes.x1)
+                        heights = (boxes.y2 - boxes.y1)
+                        boxes = boxes[(widths >= p.min_box_size) & (heights >= p.min_box_size)]
 
-def process_tups(evs, benchresults, keys, at_N):
-    tups = []
-    ## lvis: qgt has 0,1 and nan. 0 are confirmed negative. 1 are confirmed positive.
-    for k in keys:#['lvis','dota','objectnet', 'coco', 'bdd' ]:#,'bdd','ava', 'coco']:
-        val = benchresults[k]
-        ev = evs[k]
-    #     qgt = benchgt[k]
-        for tup,exp in val:
-            if exp is None:
-                continue
-            hits = np.concatenate(exp['results'])
-            indices = np.concatenate(exp['indices'])
-            index_set = pr.BitMap(indices)
-            assert len(index_set) == indices.shape[0], 'check no repeated indices'
-            #ranks = np.concatenate(exp['ranks'])
-            #non_nan = ~np.isnan(ranks)
-            gtfull = ev.query_ground_truth[tup['category']]
+                        if boxes.shape[0] == 0:
+                            continue
 
-            isna = gtfull.isna()
-            if isna.any():
-                gt = gtfull[~isna]
-                idx_d = dict(zip(gt.index,np.arange(gt.shape[0]).astype('int')))
-                idx_map = lambda x : idx_d[x]
+                        # only read image if there was something
+                        im = self.ev.image_dataset[idx]
+
+                        for b in boxes.itertuples():
+                            if p.n_augment > 1:
+                                pcrs = randomly_extended_crop(im, b, scale_range=3., aspect_ratio_range=1., off_center_range=1., 
+                                        clearance=1.3, n=p.n_augment)
+                                for cr in pcrs:
+                                    cr = T.RandomHorizontalFlip()(cr)
+                                    crs.append(cr)
+                            else:
+                                pcrs = randomly_extended_crop(im, b, scale_range=1., aspect_ratio_range=1., off_center_range=0., 
+                                        clearance=1.5, n=1)
+
+                                for cr in pcrs:
+                                    crs.append(cr)
+                                                  
+                    tmp = process_crops(crs, _clip_tx, self.vecs)
+                    s.acc_vecs.append(tmp)
+                    impos = np.concatenate(s.acc_vecs)
+
+                    if p.positive_vector_type == 'image_only':
+                        allpos = impos  
+                    elif p.positive_vector_type == 'image_and_vec':
+                        allpos = np.concatenate([impos, self.vecs[pos]])
+                    else:
+                        assert False
+                else:
+                    assert False
+
+                Xt = np.concatenate([allpos, self.vecs[neg]])
+                yt = np.concatenate([np.ones(len(allpos)), np.zeros(len(neg))])
+                # not really valid. some boxes are area 0. they should be ignored.but they affect qgt
+                # if np.concatenate(acc_results).sum() > 0:
+                #    assert len(pos) > 0
             else:
-                gt = gtfull
-                idx_map = lambda x : x
+                Xt = self.vecs[idxbatch]
+                yt = np.array([box_dict[idx].shape[0] > 0 for idx in idxbatch])
+                # yt = gt[idxbatch]
+                lp['n_posvecs'] = (yt == 1).sum()#.shape[0]
+                lp['n_negvecs'] = (yt != 1).sum()
 
-            local_idx = np.array([idx_map(idx) for idx in indices])
-            metrics = compute_metrics(hits[:at_N], local_idx[:at_N], gt)
-            output_tup = {**tup, **metrics}
-            #output_tup['unique_ranks'] = np.unique(ranks[non_nan]).shape[0]
-            output_tup['dataset'] = k
-            tups.append(output_tup)
-            
-    return pd.DataFrame(tups)
+            if (yt.shape[0] > 0) and (yt.max() > yt.min()):
+                s.tmode = 'dot'
+                if p.interactive == 'sklearn':
+                    lr = sklearn.linear_model.LogisticRegression(class_weight='balanced')
+                    lr.fit(Xt, yt)
+                    s.tvec = lr.coef_.reshape(1,-1)        
+                elif p.interactive == 'pytorch':
+                    prob = yt.sum()/yt.shape[0]
+                    w = np.clip((1-prob)/prob, .1, 10.)
 
-def side_by_side_comparison(stats, baseline_variant, metric):
-    v1 = stats
-    metrics = list(set(['nfound', 'nfirst'] + [metric]))
+                    if p.model_type == 'logistic':
+                        mod = PTLogisiticRegression(Xt.shape[1], learning_ratep=p.learning_rate, C=0, 
+                                                    positive_weight=w)
+                        if p.warm_start == 'warm':
+                            iv = torch.from_numpy(s.tvec)
+                            iv = iv / iv.norm()
+                            mod.linear.weight.data = iv.type(mod.linear.weight.dtype)
+                        elif p.warm_start == 'default':
+                            pass
 
-    v1 = v1[['dataset', 'category', 'variant', 'ntotal', 'abundance'] + metrics]
-    v2 = stats[stats.variant == baseline_variant]
-    rename_dict = {}
-    for m in metrics:
-        rename_dict[metric] = f'base_{metric}'
+                        fit_reg(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=p.minibatch_size)
+                        s.tvec = mod.linear.weight.detach().numpy().reshape(1,-1)
+                    elif p.model_type in ['cosine', 'multirank']:
+                        for i in range(p.num_epochs):
+                            s.tvec = adjust_vec(s.tvec, Xt, yt, learning_rate=p.learning_rate, 
+                                                max_examples=p.max_examples, 
+                                                minibatch_size=p.minibatch_size,
+                                                loss_margin=p.loss_margin)
+                    elif p.model_type == 'solver':
+                        s.tvec = adjust_vec2(s.tvec, Xt, yt, **p.solver_opts)
+                    else:
+                        assert False, 'model type'
+                else:
+                    assert False
+            else:
+                # print('missing positives or negatives to do any training', yt.shape, yt.max(), yt.min())
+                pass
+
+            lp['refine'] = time.time() - start_refine
+
+
+def run_loop2(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qstr,
+                interactive, warm_start, batch_size, minibatch_size, 
+              learning_rate, max_examples, num_epochs, loss_margin, 
+               granularity:str, positive_vector_type, n_augment,min_box_size=10,
+               model_type='logistic', solver_opts={}, **kwargs):     
+    assert positive_vector_type in ['image_only', 'image_and_vec', 'vec_only', None]
+    ev0 = ev
+    frame = inspect.currentframe()
+    args, _, _, values = inspect.getargvalues(frame)
+    params = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'category', 'qstr', 'n_batches']} 
+    rtup = {**{'category':category, 'qstr':qstr}, **params, **kwargs}       
+    print('run loop 2', rtup)
+
+    catgt = ev0.query_ground_truth[category]
+    class_idxs = catgt[~catgt.isna()].index.values
+    if class_idxs.shape[0] == 0:
+        print(f'No labelled frames for class "{category}" found ')
+        return (rtup, None)
+
+    ev, class_idxs = get_class_ev(ev0, category, boxes=True)
+    ds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
+    gt = ev.query_ground_truth[category].values
+
+
+    params = LoopParams(**params)
+
+    max_results = gt.sum()
+    assert max_results > 0
+    
+    acc_indices = []
+    acc_results = []
+
+    total_results = 0
+    loop = SeesawLoop(ev, params)
+    loop.initialize(qstr)
+    for i in tqdm(range(n_batches),leave=False, disable=tqdm_disabled):
+        idxbatch = loop.next_batch()
         
-    rename_dict['base_variant'] = baseline_variant
-    
-    v2 = v2[['dataset', 'category'] + metrics]
-    v2['base'] = v2[metric]
-    v2 = v2.rename(mapper=rename_dict, axis=1)
-    
-    sbs = v1.merge(v2, right_on=['dataset', 'category'], left_on=['dataset', 'category'], how='outer')
-    sbs = sbs.assign(ratio=sbs[metric]/sbs['base'])
-    sbs = sbs.assign(delta=sbs[metric] - sbs['base'])
-    return sbs
+        # ran out of batches
+        if idxbatch.shape[0] == 0:
+            break
 
-def better_same_worse(stats, variant, baseline_variant='plain', metric='ndcg_score', reltol=1.1,
-                     summary=True):
-    sbs = side_by_side_comparison(stats, baseline_variant='plain', metric='ndcg_score')
-    invtol = 1/reltol
-    sbs = sbs.assign(better=sbs.ndcg_score > reltol*sbs.base, worse=sbs.ndcg_score < invtol*sbs.base,
-                    same=sbs.ndcg_score.between(invtol*sbs.base, reltol*sbs.base))
-    bsw = sbs[sbs.variant == variant].groupby('dataset')[['better', 'same', 'worse']].sum()
-    if summary:
-        return bsw
-    else:
-        return sbs
+        acc_indices.append(idxbatch)
+        acc_results.append(gt[idxbatch])
+        total_results += gt[idxbatch].sum()
+
+        if total_results == max_results:
+            print(f'Found all {total_results} possible results for {category} after {i} batches. stopping...')
+            break
+
+        if i + 1 == n_batches:
+            print(f'n batches. ending...')
+            break 
+        
+        box_dict = {}
+        for idx in idxbatch:
+            box_dict[idx] = ds[idx]
+
+        gt2 = np.array([box_dict[idx].shape[0] > 0 for idx in idxbatch]).astype('float')
+        if (gt2 != gt[idxbatch]).all():
+            print('Warning: gt data and box data seem to disagree. ')
+
+        loop.refine(idxbatch=idxbatch, box_dict=box_dict)
+
+
+
+    res = {}
+    res['indices'] = [class_idxs[r].copy() for r in acc_indices]
+    res['results'] = [acc.copy() for acc in acc_results]
+    res['latency_profile'] = loop.state.latency_profile
+    return (rtup, res)
+
 
 def run_on_actor(br, tup):
     return br.run_loop.remote(tup)
@@ -593,8 +691,11 @@ class BenchRunner(object):
         print(evs)
         revs = {}
         for (k,evref) in evs.items():
-            ev = ray.get(evref)
-            revs[k] = ev
+            if isinstance(evref, ray.ObjectRef): # remote
+                ev = ray.get(evref)
+                revs[k] = ev
+            else: # local
+                revs[k] = evref
         self.evs = revs
         vls_init_logger()
         print('loaded all evs...')
@@ -602,9 +703,11 @@ class BenchRunner(object):
     def run_loop(self, tup):
         start = time.time()
         print(f'getting ev for {tup["dataset"]}...')
-        ev = ray.get(self.evs[tup['dataset']])
+        ev = self.evs[tup['dataset']]
         print(f'got ev {ev} after {time.time() - start}')
-        res = run_loop(ev=ev, **tup)
+        ## for repeated benchmarking we want to reload without having to recreate these classes
+        importlib.reload(importlib.import_module(run_loop.__module__))
+        res = run_loop2(ev=ev, **tup)
         print(f'Finished running after {time.time() - start}')
         return res
 
@@ -624,9 +727,9 @@ def make_bench_actors(evs, num_actors, resources=dict(num_cpus=4, memory=15*(2**
 
     return actors
 
-
-def parallel_run(*, evs, actors, tups, benchresults, local=False):
-    if not local:
+def parallel_run(*, evs, actors, tups, benchresults):
+    print('new run')
+    if len(actors) > 0:
         tqdm_map(actors, run_on_actor, tups, benchresults)
     else:    
         for tup in tqdm(tups):
