@@ -1,3 +1,6 @@
+import ray
+from ray.data.extensions import TensorArray, TensorDtype
+
 import torchvision
 from torchvision import transforms as T
 
@@ -15,7 +18,6 @@ import pyroaring as pr
 from operator import itemgetter
 import PIL
 
-from ray.data.extensions import TensorArray, TensorDtype
 
 def postprocess_results(acc):
     flat_acc = {'iis':[], 'jjs':[], 'dbidx':[], 'vecs':[], 'zoom_factor':[], 'zoom_level':[]}
@@ -258,15 +260,8 @@ def makedb(evs, dataset, category):
         return ev, AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, embedded_dataset=ev.fine_grained_embedding,
                vector_meta=ev.fine_grained_meta, vec_index=ev.vec_index)
 
-def try_augment(localxclip, evs, dataset, category, cutoff=40, rel_weight_coarse=1.):
-    ev,db = makedb(evs, dataset, category)
-    qvec = localxclip.from_raw(search_terms[dataset].get(category,category))
-    qvec = qvec/np.linalg.norm(qvec)
-    idxs = db.query(vector=qvec, topk=10, shortlist_size=cutoff, rel_weight_coarse=rel_weight_coarse)
-    return db.raw.show_images(idxs, ev.query_ground_truth[category][idxs])
 
-
-def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
+def get_pos_negs_all_v2(dbidxs, box_dict, vec_meta):
     idxs = pr.BitMap(dbidxs)
     relvecs = vec_meta[vec_meta.dbidx.isin(idxs)]
     
@@ -275,7 +270,7 @@ def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
     for idx in dbidxs:
         acc_vecs = relvecs[relvecs.dbidx == idx]
         acc_boxes = get_boxes(acc_vecs)
-        label_boxes = ds[idx]
+        label_boxes = box_dict[idx]
         ious = box_iou(label_boxes, acc_boxes)
         total_iou = ious.sum(axis=0) 
         negatives = total_iou == 0
