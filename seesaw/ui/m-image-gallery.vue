@@ -1,5 +1,6 @@
 <template>
   <div>
+    <div class='row'>
     <div class="image-gallery" >
         <img v-for="(url,index) in image_urls" :key="index" :src="url" 
         draggable 
@@ -7,9 +8,13 @@
         @dragstart="$emit('itemdrag', [$event, index])" 
         :class="['unknown', 'rejected', 'accepted'][ldata.length === 0? 0 : ldata[index].value+1]" />
     </div>
-    <m-modal v-if="with_modal" ref='modal2'>
-      <img :src="this.image_urls[selection]">
-      <!-- <m-annotator :image_url="this.image_urls[selection]" :adata="{boxes:[]}" :read_only="false" /> -->
+    </div>
+    <!-- <div class='row'> -->
+            <!-- <img :src="this.image_urls[selection]">  -->
+    <!-- </div> --> 
+    <m-modal v-if="with_modal" ref='modal2' @keyup.esc='this.$refs.modal2.close()'  tabindex='0' > 
+        <m-annotator  :image_url="this.image_urls[selection]" :adata="this.ldata[selection]" :read_only="false" 
+            v-on:esc='this.$refs.modal2.close()' @keyup.esc='this.$refs.modal2.close()'   tabindex='1' />
     </m-modal>
   </div>
 </template>

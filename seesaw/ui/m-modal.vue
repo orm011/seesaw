@@ -1,10 +1,9 @@
 <template>
 <!-- mostly based on https://www.w3schools.com/howto/howto_css_modal_images.asp -->
-<div :class="`modal ${active ? 'modal-active': ''}`">
+<div :class="`modal ${active ? 'modal-active': ''}` " tabindex="0" @keyup.esc='close'>
   <span class="close" @click='close'>&times;</span>
-  <div class="modal-content">
-    <slot>
-    </slot>
+  <div class="modal-content" @keyup.esc='close' tabindex='1'>
+    <slot></slot>
  </div>
 </div>
 </template>
@@ -16,6 +15,7 @@ export default {
     },
     methods : {
         close(){
+          console.log('cosing modal...')
             this.active = false;
             // this.modal.hide()
             // this.$emit('close');

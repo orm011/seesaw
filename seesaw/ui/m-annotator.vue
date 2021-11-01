@@ -1,30 +1,32 @@
 <template>
-    <div class="annotator_div" ref="container">
-        <img class="annotator_image" :src="image_url" ref="image" @load="draw_initial_contents" />
-        <canvas class="annotator_canvas" ref="canvas" />
+    <div class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
+        <img class="annotator_image" :src="image_url" ref="image"  @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
+        <canvas class="annotator_canvas" ref="canvas" @keyup.esc="emit('esc')" tabindex='2'/>
     </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
     eg, the $refs and other vue component object attributes) -->
 </template>
 <style scoped>
 .annotator_div {
+    position:relative;
     margin:0px;
-    width:fit-content;
-    height:fit-content;
+    /* width:fit-content;
+    height:fit-content; */
+    display:inline-block
 }
 .annotator_image {
     /* max-width:100%; */
     /* max-height:100%; */
     /* display:inline; */
-    position:absolute; top:0px; left:0px;
-    object-fit:scale-down; /* never rescale up */ 
+    position:relative; top:0px; left:0px;
+    object-fit:none; /* never rescale up */ 
 }
 .annotator_canvas {
     /* border:0px solid #d3d3d3; */
     /* max-width:100%;*/
     /* max-height:100%; */
     position:absolute; top:0px; left:0px;
-    display:none; 
+    /* display:;  */
     /* for now not showing it to try to fix centering issue...*/
 }
 
@@ -68,7 +70,7 @@ export default {
         }
     },
     draw_initial_contents : function() {
-        console.log('setting up', this)
+        console.log('(draw)setting up', this)
         let paper = this.paper;
         let img = this.$refs.image; 
         let cnv = this.$refs.canvas; 
