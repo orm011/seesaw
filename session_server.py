@@ -1,4 +1,5 @@
 import ray
+
 import fastapi
 from fastapi import FastAPI
 
@@ -6,23 +7,23 @@ import typing
 import pydantic
 from typing import Optional
 from pydantic import BaseModel
-import ray.serve
-from ray import serve
+
+import numpy as np
+from seesaw import EvDataset, SeesawLoop, LoopParams, ModelService, GlobalDataManager
 
 app = FastAPI()
 
-print('init ray...')
 ray.init('auto', namespace="seesaw")
-print('inited.')
+print('connected to ray.')
 
-print('start serve...')
-ray.serve.start() ## will use localhost:8000. the documented ways of specifying this are currently failing...
-print('started.')
+ray_serve = True
 
-print('importing seesaw...')
-import numpy as np
-from seesaw import EvDataset, SeesawLoop, LoopParams, ModelService, GlobalDataManager
-print('imported.')
+if ray_serve:
+    from ray import serve
+
+    print('starting ray.serve...')
+    ray.serve.start() ## will use localhost:8000. the documented ways of specifying this are currently failing...
+    print('started.')
 
 def get_image_paths(dataset_name, ev, idxs):
     return [ f'/data/{dataset_name}/images/{ev.image_dataset.paths[int(i)]}' for i in idxs]
@@ -131,8 +132,8 @@ class WebSeesaw:
         return self.step()
 
 
-# pylint: disable=maybe-no-member
-WebSeesaw.deploy()
-
-while True:
-    input()
+if ray_serve:
+    # pylint: disable=maybe-no-member
+    WebSeesaw.deploy()
+    while True: # wait.
+        input()
