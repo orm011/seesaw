@@ -5,25 +5,23 @@ from fastapi import FastAPI
 
 import typing
 import pydantic
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 
 import numpy as np
+import pandas as pd
 from seesaw import EvDataset, SeesawLoop, LoopParams, ModelService, GlobalDataManager
 
 app = FastAPI()
 
 ray.init('auto', namespace="seesaw")
 print('connected to ray.')
+from ray import serve
 
-ray_serve = True
-
-if ray_serve:
-    from ray import serve
-
-    print('starting ray.serve...')
-    ray.serve.start() ## will use localhost:8000. the documented ways of specifying this are currently failing...
-    print('started.')
+print('starting ray.serve...')
+## can be started in detached mode beforehand to enable fast restart
+serve.start() ## will use localhost:8000. the documented ways of specifying this are currently failing...
+print('started.')
 
 def get_image_paths(dataset_name, ev, idxs):
     return [ f'/data/{dataset_name}/images/{ev.image_dataset.paths[int(i)]}' for i in idxs]
@@ -32,11 +30,12 @@ class SessionState:
     current_dataset : str
     ev : EvDataset
     loop : SeesawLoop
-    acc_indices : list = [np.zeros(0, dtype=np.int32)]
+    acc_indices : list
 
     def __init__(self, dataset_name, ev):
         self.current_dataset = dataset_name
         self.ev = ev
+        self.acc_indices = [np.zeros(0, dtype=np.int32)]
 
         self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=10, 
                 minibatch_size=10, learning_rate=0.003, max_examples=225, loss_margin=0.1,
@@ -60,15 +59,18 @@ class SessionState:
         dat = self.get_panel_data(next_idxs=self.acc_indices[-1])
         return dat
 
-    def get_panel_data(self, *, next_idxs, label_db=None):
+    def get_panel_data(self, *, next_idxs):
         reslabs = []
         print(next_idxs)
+        bx = self.ev.box_data
         for (i,dbidx) in enumerate(next_idxs):
             # boxes = copy.deepcopy(label_db.get(dbidx, None))
-            boxes = []
-            print(dbidx)
-            reslabs.append({'value': -1 if boxes is None else 1 if len(boxes) > 0 else 0, 
-                            'id': i, 'dbidx': int(dbidx), 'boxes': boxes})
+            rows = bx[bx.dbidx == dbidx]
+            rows = rows.rename(mapper={'x1': 'xmin', 'x2': 'xmax', 'y1': 'ymin', 'y2': 'ymax'}, axis=1)
+            rows = rows[['xmin', 'xmax', 'ymin', 'ymax']]
+            recs = rows.to_dict(orient='records')
+            reslabs.append({'value': -1 if rows.shape[0] == 0 else 1, 
+                            'id': i, 'dbidx': int(dbidx), 'boxes': recs})
         urls = get_image_paths(self.current_dataset, self.ev, next_idxs)
         pdata = {
             'image_urls': urls,
@@ -80,6 +82,22 @@ class SessionState:
 class ResetReq(BaseModel):
     dataset: str
 
+class Box(BaseModel):
+    xmin : float
+    ymin : float
+    xmax : float
+    ymax : float
+
+class LData(BaseModel):
+    value : int
+    id : int
+    dbidx : int
+    boxes : List[Box]
+
+class NextReq(BaseModel):
+    image_urls : List[str]
+    ldata : List[LData]
+
 @serve.deployment(name="seesaw_deployment", route_prefix='/')
 @serve.ingress(app)
 class WebSeesaw:
@@ -87,6 +105,12 @@ class WebSeesaw:
         self.gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
         self.datasets = ['objectnet', 'dota', 'lvis','coco', 'bdd']
         ## initialize to first one
+        self.evs = {}
+        print('loading data refs')
+        for dsname in self.datasets:
+            ev = self._get_ev(dsname)
+            self.evs[dsname] = ev
+        print('done loading')
         self.xclip = ModelService(ray.get_actor('clip#actor'))
         self._reset_dataset(self.datasets[0])
 
@@ -96,15 +120,17 @@ class WebSeesaw:
         return ev
 
     def _reset_dataset(self, dataset_name):
-        ev = self._get_ev(dataset_name)
+        ev = self.evs[dataset_name]
         self.state = SessionState(dataset_name, ev)
+
+    def _getstate(self):
+        s = self.state.get_state()
+        s['datasets'] = self.datasets
+        return s
 
     @app.get('/getstate')
     def getstate(self):
-        s = self.state.get_state()
-        s['datasets'] = self.datasets
-        print(s)
-        return s
+        return self._getstate()
 
     @app.get('/datasets')
     def getdatasets(self):
@@ -114,26 +140,37 @@ class WebSeesaw:
     def reset(self, r : ResetReq):
         print(f'resetting state with freshly constructed one for {r.dataset}')
         self._reset_dataset(r.dataset)
-        return self.getstate()
+        return self._getstate()
 
-    @app.post('/next')
-    def step(self):
-        if False: ## refinement code
-            pass
-            # ldata = request.json.get('ldata', [])
-            # #update_db(state.bfq.label_db, ldata)
-            # indices = np.array([litem['dbidx'] for litem in ldata])        
+    def _step(self, body: NextReq):
+        if body is not None: ## refinement code
+            box_dict = {}
+            idxbatch = []
+            for elt in body.ldata:
+                df = pd.DataFrame([b.dict() for b in elt.boxes])
+                df = df.assign(dbidx=elt.dbidx)
+                df = df.rename(mapper={'xmin':'x1', 'xmax':'x2', 'ymin':'y1', 'ymax':'y2'},axis=1)
+                box_dict[elt.dbidx] = df
+                idxbatch.append(elt.dbidx)
+
+            print('calling refine...')
+            self.state.loop.refine(idxbatch=np.array(idxbatch), box_dict=box_dict)
+            print('done refining...')
+
         self.state.step()
         return self.state.get_latest()
+
+    @app.post('/next')
+    def next(self, body : NextReq):
+        return self._step(body)
 
     @app.post('/text')
     def text(self, key : str):
         self.state.loop.initialize(qstr=key) 
-        return self.step()
+        return self._step(body=None)
 
 
-if ray_serve:
-    # pylint: disable=maybe-no-member
-    WebSeesaw.deploy()
-    while True: # wait.
-        input()
+# pylint: disable=maybe-no-member
+WebSeesaw.deploy()
+while True: # wait.
+    input()

@@ -1,5 +1,4 @@
 
-import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,6 +10,10 @@ import sys
 from torch.utils.data import TensorDataset
 from torch.utils.data import Subset
 from torch.utils.data import DataLoader
+
+import os
+import pytorch_lightning as pl
+
 
 class CustomInterrupt(pl.callbacks.Callback):
     def on_keyboard_interrupt(self, trainer, pl_module):
@@ -266,6 +269,13 @@ def make_tuple_ds(X, y, max_size):
     return train_ds
 
 def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logger=None, margin=.0, max_epochs=4, gpus=0, precision=32):
+
+    ## for running on spc. 
+    if os.environ.get("SLURM_NTASKS", '') != '':
+        del os.environ["SLURM_NTASKS"]
+    if os.environ.get("SLURM_JOB_NAME", '') != '':
+        del os.environ["SLURM_JOB_NAME"]
+
     if not torch.is_tensor(X):
         X = torch.from_numpy(X)
     
