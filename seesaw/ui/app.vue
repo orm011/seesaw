@@ -15,9 +15,9 @@
   <div class="container-fluid">
     <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
       <div class="position-sticky pt-3">
-        <div class='row'>
+        <!-- <div class='row'>
           <button class="btn btn-dark btn-block" @click="reset()"> Reset </button>
-        </div>
+        </div> -->
         <div class='row'>
         <ul class="nav flex-column">
           <li v-for="(dataset_name,idx) in datasets" :key="idx" class="nav-item">
@@ -74,7 +74,7 @@ export default {
         reset(dsname){
           console.log(this);
           console.log(dsname)
-          let reqdata = {todataset:dsname};
+          let reqdata = {dataset:dsname};
           console.log(reqdata);
 
             fetch(`/api/reset`,   

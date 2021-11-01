@@ -41,11 +41,12 @@ if __name__ == '__main__':
     parser.add_argument("--load_ground_truth", action='store_true')
     parser.add_argument("--load_coarse_embedding", action='store_true')
     parser.add_argument("--datasets", action="extend", nargs="+", type=str, default=[])
+    parser.add_argument("--namespace", type=str, default='seesaw')
     args = parser.parse_args()
 
-    ray.init('auto', namespace='seesaw')
+    ray.init('auto', namespace=args.namespace)
 
-    model_actor = ray.get_actor('clip')
+    model_actor = ray.get_actor('clip#actor')
     #['objectnet', 'bdd', 'coco', 'dota', 'lvis']
     xclip = ModelService(model_actor)
 
@@ -60,7 +61,7 @@ if __name__ == '__main__':
                     load_ground_truth=args.load_ground_truth, 
                     load_coarse=args.load_coarse_embedding)
 
-        dbactor = RemoteDB.options(name=k, lifetime='detached').remote(dataset_loader=loader)
+        dbactor = RemoteDB.options(name=f'{k}#actor', lifetime='detached').remote(dataset_loader=loader)
         dbs.append(dbactor)
         handles.append(dbactor.ready.remote())
 
