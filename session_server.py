@@ -1,249 +1,134 @@
-import os
-os.environ['OMP_NUM_THREADS'] = f'{os.cpu_count()//2}'
-
-import flask
-from flask import Flask, request
 import ray
-ray.init('auto', namespace='seesaw')
+import fastapi
+from fastapi import FastAPI
 
-import seesaw
+from typing import Optional
+from pydantic import BaseModel
+import ray.serve
+from ray import serve
+
+app = FastAPI()
+
+print('init ray...')
+ray.init('auto', namespace="seesaw")
+print('inited.')
+
+print('start serve...')
+ray.serve.start() ## will use localhost:8000. the documented ways of specifying this are currently failing...
+print('started.')
+
+print('importing seesaw...')
 from seesaw import *
+print('imported.')
 
-gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
+def get_image_paths(dataset_name, ev, idxs):
+    return [ f'/data/{dataset_name}/images/{ev.image_dataset.paths[int(i)]}' for i in idxs]
 
-datasets = ['objectnet']#,[ 'dota', 'lvis','coco', 'bdd']
-default_dataset = datasets[0]
-dbactors = dict([(name,ray.get_actor(name)) for name in datasets])
-
-def get_panel_data(q, ev, label_db, next_idxs):
-    reslabs = []
-    for (i,dbidx) in enumerate(next_idxs):
-        boxes = copy.deepcopy(label_db.get(dbidx, None))
-        reslabs.append({'value': -1 if boxes is None else 1 if len(boxes) > 0 else 0, 
-                        'id': i, 'dbidx': int(dbidx), 'boxes': boxes})
-    urls = get_image_paths(ev, next_idxs)
-    pdata = {
-        'image_urls': urls,
-        'ldata': reslabs,
-    }
-    return pdata
-
-# def make_image_panel_remote(bfq, idxbatch):
-#     dat = get_panel_data(bfq, bfq.label_db, idxbatch)
-
-#     ldata = dat['ldata']
-#     if bfq.auto_fill_df is not None:
-#         gt_ldata = auto_fill_boxes(bfq.auto_fill_df, ldata)
-#         ## only use boxes for things we have not added ourselves...
-#         ## (ie don't overwrite db)
-#         for rdb, rref in zip(ldata, gt_ldata):
-#             if rdb['dbidx'] not in bfq.label_db:
-#                 rdb['boxes'] = rref['boxes']
-
-#     pn = widgets.MImageGallery(**dat)
-#     return pn
-
-def fit(*, mod, X, y, batch_size, valX=None, valy=None, logger=None,  max_epochs=6, gpus=0, precision=32):
-    class CustomInterrupt(pl.callbacks.Callback):
-        def on_keyboard_interrupt(self, trainer, pl_module):
-            raise InterruptedError('custom')
-
-    class CustomTqdm(pl.callbacks.progress.ProgressBar):
-        def init_train_tqdm(self):
-            """ Override this to customize the tqdm bar for training. """
-            bar = tqdm(
-                desc='Training',
-                initial=self.train_batch_idx,
-                position=(2 * self.process_position),
-                disable=self.is_disabled,
-                leave=False,
-                dynamic_ncols=True,
-                file=sys.stdout,
-                smoothing=0,
-                miniters=40,
-            )
-            return bar
-    
-    if not torch.is_tensor(X):
-        X = torch.from_numpy(X)
-    
-    train_ds = TensorDataset(X,torch.from_numpy(y))
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
-
-    if valX is not None:
-        if not torch.is_tensor(valX):
-            valX = torch.from_numpy(valX)
-        val_ds = TensorDataset(valX, torch.from_numpy(valy))
-        es = [pl.callbacks.early_stopping.EarlyStopping(monitor='AP/val', mode='max', patience=3)]
-        val_loader = DataLoader(val_ds, batch_size=2000, shuffle=False, num_workers=0)
-    else:
-        val_loader = None
-        es = []
-
-    trainer = pl.Trainer(logger=None, 
-                         gpus=gpus, precision=precision, max_epochs=max_epochs,
-                         callbacks =[],
-                        #  callbacks=es + [ #CustomInterrupt(),  # CustomTqdm()
-                        #  ], 
-                         checkpoint_callback=False,
-                         progress_bar_refresh_rate=0, #=10
-                        )
-    trainer.fit(mod, train_loader, val_loader)
-
-
-def update_vector(Xt, yt, init_vec, minibatch_size):
-    p = yt.sum()/yt.shape[0]
-    w = np.clip((1-p)/p, .1, 10.)
-    lr = PTLogisiticRegression(Xt.shape[1], learning_rate=.0003, C=0, positive_weight=w)
-
-    if init_vec is not None:
-        iv = torch.from_numpy(init_vec)
-        iv = iv / iv.norm()
-        lr.linear.weight.data = iv.type(lr.linear.weight.dtype)
-
-    fit(mod=lr, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=minibatch_size)
-    tvec = lr.linear.weight.detach().numpy().reshape(1,-1)   
-    return tvec
-
-
-class SessionState(object):
+class SessionState:
+    current_dataset : str
     ev : EvDataset
-    hdb : AugmentedDB
+    loop : SeesawLoop
+    acc_indices : list = [np.zeros(0, dtype=np.int32)]
 
-    def __init__(self, dataset_name):
+    def __init__(self, dataset_name, ev):
         self.current_dataset = dataset_name
-        dbactor = dbactors[self.current_dataset]
-        evhandle = ray.get(dbactor.get_ev.remote())
-        print('getting ev state')
-        ev = ray.get(evhandle)
         self.ev = ev
-        print('done getting state')
 
-        ## using coarse right now
-        self.hdb = EmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding,embedded_dataset=ev.embedded_dataset)
+        self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=10, 
+                minibatch_size=10, learning_rate=0.003, max_examples=225, loss_margin=0.1,
+                tqdm_disabled=True, granularity='multi', positive_vector_type='vec_only', 
+                 num_epochs=2, n_augment=None, min_box_size=10, model_type='cosine', 
+                 solver_opts={'C': 0.1, 'max_examples': 225, 'loss_margin': 0.05})
+
+        self.loop = SeesawLoop(ev, params=self.params)
+
+    def next(self):
+        idxbatch = self.loop.next_batch()
+        self.acc_indices.append(idxbatch)
+        return idxbatch
         
-        # AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-        #     embedded_dataset=ev.fine_grained_embedding, vector_meta=ev.fine_grained_meta,
-        #     vec_index=ev.vec_index)
-
-        # if gt_class is not None:
-        #     self.box_data = ray.get(self.dbactor.get_boxes.remote())
-        # else:
-        #     self.box_data = None
-        self.box_data = None
-        self.bfq = BoxFeedbackQuery(self.hdb, batch_size=10, auto_fill_df=self.box_data)
-        # self.bfq = BoxFeedbackQueryRemote(self.dbactor, batch_size=10, auto_fill_df=self.box_data)
-        self.init_vec = None
-        self.acc_indices = np.array([])
-
-    def reset(self, dataset_name=None):
-        if dataset_name is not None:
-            self.current_dataset = dataset_name
-        self.dbactor = dbactors[self.current_dataset]
-        self.bfq = BoxFeedbackQuery(self.hdb, batch_size=5, auto_fill_df=self.box_data)
-        self.init_vec = None
-        self.acc_indices = np.array([])
-
     def get_state(self):
-        dat = get_panel_data(self.bfq, self.ev,  self.bfq.label_db, self.acc_indices)
-        dat['datasets'] = datasets
+        dat = self.get_panel_data(next_idxs=np.concatenate(self.acc_indices))
         dat['current_dataset'] = self.current_dataset
         return dat
 
     def get_latest(self):
-        dat = get_panel_data(self.bfq,  self.ev, self.bfq.label_db, self.bfq.acc_idxs[-1])
+        dat = self.get_panel_data(next_idxs=self.acc_indices[-1])
         return dat
 
+    def get_panel_data(self, *, next_idxs, label_db=None):
+        reslabs = []
+        print(next_idxs)
+        for (i,dbidx) in enumerate(next_idxs):
+            # boxes = copy.deepcopy(label_db.get(dbidx, None))
+            boxes = []
+            print(dbidx)
+            reslabs.append({'value': -1 if boxes is None else 1 if len(boxes) > 0 else 0, 
+                            'id': i, 'dbidx': int(dbidx), 'boxes': boxes})
+        urls = get_image_paths(self.current_dataset, self.ev, next_idxs)
+        pdata = {
+            'image_urls': urls,
+            'ldata': reslabs,
+        }
+        return pdata
 
-state : SessionState
-state = SessionState(default_dataset)
 
-def get_image_paths(ev, idxs):
-    return [ f'/data/{state.current_dataset}/images/{ev.image_dataset.paths[int(i)]}' for i in idxs]
+class ResetReq(BaseModel):
+    dataset: str
 
-print('inited state... about to create app')
-app = Flask(__name__)
+@serve.deployment(name="seesaw_deployment", route_prefix='/')
+@serve.ingress(app)
+class WebSeesaw:
+    def __init__(self):
+        self.gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
+        self.datasets = ['objectnet', 'dota', 'lvis','coco', 'bdd']
+        ## initialize to first one
+        self.xclip = ModelService(ray.get_actor('clip#actor'))
+        self._reset_dataset(self.datasets[0])
 
-@app.route('/hello', methods=['POST'])
-def hello():
-    print(request.json)
-    return 'hello back'
+    def _get_ev(self, dataset_name):
+        actor = ray.get_actor(f'{dataset_name}#actor')
+        ev = ray.get(ray.get(actor.get_ev.remote()))
+        return ev
 
-@app.route('/reset', methods=['POST'])
-def reset():
-    print(request.json)
-    ds = request.json.get('todataset', None)
-    print('reset to ', ds)
-    state.reset(ds)
-    return flask.jsonify(**state.get_state())
+    def _reset_dataset(self, dataset_name):
+        ev = self._get_ev(dataset_name)
+        self.state = SessionState(dataset_name, ev)
 
-@app.route('/getstate', methods=['GET'])
-def getstate():
-    return flask.jsonify(**state.get_state())
+    @app.get('/getstate')
+    def getstate(self):
+        s = self.state.get_state()
+        s['datasets'] = self.datasets
+        print(s)
+        return s
 
-@app.route('/text', methods=['POST'])
-def text():
-    query = request.args.get('key', '')
-    state.init_vec = state.ev.embedding.from_string(string=query)
-    return next()
+    @app.get('/datasets')
+    def getdatasets(self):
+        return self.datasets
 
-@app.route('/search_hybrid', methods=['POST'])
-def search_hybrid():
-    minus_text = request.json.get('minus_text',None)
-    plus_text = request.json.get('plus_text', None)
-    
-    normalize = lambda x : x/np.linalg.norm(x)
-    standardize = lambda x : normalize(x).reshape(-1)
+    @app.post('/reset')
+    def reset(self, r : ResetReq):
+        print(f'resetting state with freshly constructed one for {r.dataset}')
+        self._reset_dataset(r.dataset)
+        return self.getstate()
 
-    image_vec = standardize(ray.get(state.dbactor.get_vectors.remote([request.json['dbidx']])))
+    @app.post('/next')
+    def next(self):
+        if False: ## refinement code
+            pass
+            # ldata = request.json.get('ldata', [])
+            # #update_db(state.bfq.label_db, ldata)
+            # indices = np.array([litem['dbidx'] for litem in ldata])        
+        _ = self.state.next()
+        return self.state.get_latest()
 
-    if minus_text is None or minus_text == '':
-        minus_vec = np.zeros_like(image_vec)
-    else:
-        minus_vec = standardize(ray.get(state.dbactor.embed_raw.remote(minus_text)))
+    @app.post('/text')
+    def text(self, key : str):
+        self.state.loop.initialize(qstr=key) 
+        return self.next()
 
-    if plus_text is None or plus_text == '':
-        plus_vec = np.zeros_like(image_vec)
-    else:
-        plus_vec = standardize(ray.get(state.dbactor.embed_raw.remote(request.json['plus_text'])))
 
-    # coeff = image_vec@minus_vec
-    # cleaned_vec = image_vec - coeff*minus_vec
-    # # clean_plus = plus_vec - (image_vec@plus_vec)*plus_vec
-    total_vec = image_vec + plus_vec - minus_vec
+WebSeesaw.deploy()
 
-    state.init_vec = total_vec.reshape(1,-1)#norm(plus_vec) + norm(image_vec) - norm(minus_vec)
-    return next()
-
-@app.route('/next', methods=['POST'])
-def next():
-    ldata = request.json.get('ldata', [])
-    update_db(state.bfq.label_db, ldata)
-    state.acc_indices = np.array([litem['dbidx'] for litem in ldata])
-    acc_results = np.array([litem['value'] for litem in ldata])
-
-    print(state.acc_indices)
-    print(acc_results)
-    assert state.acc_indices.shape[0] == acc_results.shape[0]
-    tvec = state.init_vec
-    mask = (acc_results >= 0)
-    if mask.sum() > 0:
-        labelled_results = acc_results[mask]
-        labelled_indices = state.acc_indices[mask]
-        Xt = state.ev.embedded_dataset[labelled_indices] #ray.get(state.db.get_vectors.remote(labelled_indices))
-        yt = labelled_results.astype('float')
-
-        if (yt == 0).any() and (yt == 1).any():
-            tvec = update_vector(Xt,yt, state.init_vec, minibatch_size=1)
-
-    idxbatch,_ = state.bfq.query_stateful(mode='dot', vector=tvec, batch_size=5)
-    state.acc_indices = np.concatenate([state.acc_indices, idxbatch.reshape(-1)])
-    dat = state.get_latest()
-    # acc_results = np.array([litem['value'] for litem in dat['ldata']])
-    # print('after idx', state.acc_indices)
-    # print('after labels', acc_results)
-    return flask.jsonify(**dat)
-
-print('done')
-if __name__ == '__main__':
-    pass
+while True:
+    input()
