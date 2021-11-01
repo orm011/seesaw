@@ -2,6 +2,8 @@ import ray
 import fastapi
 from fastapi import FastAPI
 
+import typing
+import pydantic
 from typing import Optional
 from pydantic import BaseModel
 import ray.serve
@@ -18,7 +20,8 @@ ray.serve.start() ## will use localhost:8000. the documented ways of specifying 
 print('started.')
 
 print('importing seesaw...')
-from seesaw import *
+import numpy as np
+from seesaw import EvDataset, SeesawLoop, LoopParams, ModelService, GlobalDataManager
 print('imported.')
 
 def get_image_paths(dataset_name, ev, idxs):
@@ -42,7 +45,7 @@ class SessionState:
 
         self.loop = SeesawLoop(ev, params=self.params)
 
-    def next(self):
+    def step(self):
         idxbatch = self.loop.next_batch()
         self.acc_indices.append(idxbatch)
         return idxbatch
@@ -113,21 +116,22 @@ class WebSeesaw:
         return self.getstate()
 
     @app.post('/next')
-    def next(self):
+    def step(self):
         if False: ## refinement code
             pass
             # ldata = request.json.get('ldata', [])
             # #update_db(state.bfq.label_db, ldata)
             # indices = np.array([litem['dbidx'] for litem in ldata])        
-        _ = self.state.next()
+        self.state.step()
         return self.state.get_latest()
 
     @app.post('/text')
     def text(self, key : str):
         self.state.loop.initialize(qstr=key) 
-        return self.next()
+        return self.step()
 
 
+# pylint: disable=maybe-no-member
 WebSeesaw.deploy()
 
 while True:
