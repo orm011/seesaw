@@ -11,11 +11,9 @@
 export default {
     data : function(){return {active:false}},
     mounted : function () {
-            console.log('hi from modal2');
     },
     methods : {
         close(){
-          console.log('cosing modal...')
             this.active = false;
             // this.modal.hide()
             // this.$emit('close');
