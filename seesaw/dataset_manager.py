@@ -31,21 +31,7 @@ import shutil
 import io
 
 
-class ExplicitPathDataset(object):
-    def __init__(self, root_dir, relative_path_list):
-        '''
-        Reads images in a directory according to an explicit list.
-        '''
-        self.root = root_dir
-        self.paths = relative_path_list
-
-    def __len__(self):
-        return self.paths.shape[0]
-
-    def __getitem__(self, idx):
-        relpath = self.paths[idx].lstrip('./')
-        image = PIL.Image.open('{}/{}'.format(self.root, relpath))
-        return {'file_path':relpath, 'dbidx':idx, 'image':image}
+from .dataset_tools import ExplicitPathDataset
 
 def list_image_paths(basedir, prefixes=[''], extensions=['jpg', 'jpeg', 'png']):
     acc = []
