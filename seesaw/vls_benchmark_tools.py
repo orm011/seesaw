@@ -162,222 +162,6 @@ _clip_tx = T.Compose([
                     ])
 
 
-def run_loop(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
-              learning_rate, max_examples, num_epochs, loss_margin, 
-              tqdm_disabled:bool, granularity:str,
-               positive_vector_type, n_augment, min_box_size=10,
-               model_type='logistic', solver_opts={}, 
-               **kwargs):         
-    assert 'fine_grained' not in kwargs
-    assert isinstance(granularity, str)
-    assert positive_vector_type in ['image_only', 'image_and_vec', 'vec_only', None]
-    ev0 = ev
-    frame = inspect.currentframe()
-    args, _, _, values = inspect.getargvalues(frame)
-    allargs = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'gvec', 'gvec_meta']} 
-    print(allargs, kwargs)
-    rtup = {**allargs, **kwargs}       
-
-    catgt = ev0.query_ground_truth[category]
-    class_idxs = catgt[~catgt.isna()].index.values
-    if class_idxs.shape[0] == 0:
-        print(f'No labelled frames for class "{category}" found ')
-        return (rtup, None)
-
-    ev, class_idxs = get_class_ev(ev0, category, boxes=True)
-    dfds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
-    gt = ev.query_ground_truth[category].values
-
-    #rsz = resize_to_grid(224)
-    # ds = TxDataset(dfds, tx=lambda tup : rsz(im=None, boxes=tup)[1])
-    # imds = TxDataset(ev.image_dataset, tx = lambda im : rsz(im=im, boxes=None)[0])
-
-    ds = dfds
-    imds = ev.image_dataset
-
-    if granularity == 'fine':
-        vec_meta = ev.fine_grained_meta
-        vecs = ev.fine_grained_embedding
-        vec_meta = vec_meta[vec_meta.zoom_level == 0]
-        vecs = vecs[vec_meta.index.values]
-        vec_meta.reset_index(drop=True)
-        hdb = FineEmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-            embedded_dataset=vecs, vector_meta=vec_meta)
-    elif granularity == 'multi':
-        vec_meta = ev.fine_grained_meta
-        vecs = ev.fine_grained_embedding
-        hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-            embedded_dataset=vecs, vector_meta=vec_meta, vec_index=ev.vec_index)
-    elif granularity == 'coarse':
-        dbidxs = np.arange(len(ev)).astype('int')
-        vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
-        vecs = ev.embedded_dataset
-        hdb = EmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding,embedded_dataset=vecs)
-    else:
-        assert False
-
-    bfq = BoxFeedbackQuery(hdb, batch_size=batch_size, auto_fill_df=None)
-
-    if qstr == 'nolang':
-        init_vec=None
-        init_mode = 'random'
-    else:
-        init_vec = ev.embedding.from_string(string=qstr)
-        init_mode = 'dot'
-    
-    acc_pos = []
-    acc_neg = []
-    acc_indices = []
-    acc_results = []
-    acc_vecs = [np.zeros((0,512))]
-            
-    res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
-    if init_vec is not None:
-        init_vec = init_vec/np.linalg.norm(init_vec)
-        tvec = init_vec#/np.linalg.norm(init_vec)
-    else:
-        tvec = None
-
-    tmode = init_mode
-
-
-    latency_profile = []
-    for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
-        lp = {'batch_no':i, 'n_images':None, 'n_posvecs':None, 'n_negvecs':None,
-                                    'lookup':None, 'label':None, 'refine':None, }    
-        latency_profile.append(lp)
-
-        start_lookup = time.time()
-        idxbatch, _ = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
-        lp['n_images'] = idxbatch.shape[0]
-
-        start_label = time.time()
-        lp['lookup'] = start_label - start_lookup
-
-
-        if idxbatch.shape[0] > 0: 
-            acc_indices.append(idxbatch.copy()) # trying to figure out leak
-            acc_results.append(gt[idxbatch].copy())
-
-        if idxbatch.shape[0] == 0 or i == (n_batches - 1):
-            break
-
-        box_dict = {}
-        for idx in idxbatch:
-            box_dict[idx] = ds[idx]
-
-        if interactive != 'plain':
-            if granularity in ['fine', 'multi']:
-                batchpos, batchneg = get_pos_negs_all_v2(idxbatch, box_dict, vec_meta)
-                lp['n_posvecs'] = len(batchpos)#.shape[0]
-                lp['n_negvecs'] = len(batchneg)#.shape[0]
-                ## we are currently ignoring these positives
-                acc_pos.append(batchpos)
-                acc_neg.append(batchneg)
-
-                pos = pr.BitMap.union(*acc_pos)
-                neg = pr.BitMap.union(*acc_neg)
-
-                if positive_vector_type in ['image_only', 'image_and_vec']:
-                    crs = []
-                    for idx in idxbatch:
-                        boxes = ds[idx]
-                        widths = (boxes.x2 - boxes.x1)
-                        heights = (boxes.y2 - boxes.y1)
-                        boxes = boxes[(widths >= min_box_size) & (heights >= min_box_size)]
-
-                        if boxes.shape[0] == 0:
-                            continue
-                        # only read image if there is something
-                        im = imds[idx]
-
-                        for b in boxes.itertuples():
-                            if n_augment > 1:
-                                pcrs = randomly_extended_crop(im, b, scale_range=3., aspect_ratio_range=1., off_center_range=1., 
-                                        clearance=1.3, n=n_augment)
-                                for cr in pcrs:
-                                    cr = T.RandomHorizontalFlip()(cr)
-                                    crs.append(cr)
-                            else:
-                                pcrs = randomly_extended_crop(im, b, scale_range=1., aspect_ratio_range=1., off_center_range=0., 
-                                        clearance=1.5, n=1)
-
-                                for cr in pcrs:
-                                    crs.append(cr)
-                                                  
-                    tmp = process_crops(crs, _clip_tx, ev.embedding)
-                    acc_vecs.append(tmp)
-                    impos = np.concatenate(acc_vecs)
-
-                if positive_vector_type == 'image_only':
-                    allpos = impos  
-                if positive_vector_type == 'vec_only':
-                    allpos = vecs[pos]
-                elif positive_vector_type == 'image_and_vec':
-                    allpos = np.concatenate([impos, vecs[pos]])
-
-                Xt = np.concatenate([allpos, vecs[neg]])
-                yt = np.concatenate([np.ones(len(allpos)), np.zeros(len(neg))])
-
-                # not really valid. some boxes are area 0. they should be ignored.but they affect qgt
-                # if np.concatenate(acc_results).sum() > 0:
-                #    assert len(pos) > 0
-            else:
-                Xt = vecs[idxbatch]
-                yt = gt[idxbatch]
-                lp['n_posvecs'] = (yt == 1).sum()#.shape[0]
-                lp['n_negvecs'] = (yt != 1).sum()
-
-
-            start_refine = time.time()
-            lp['label'] = start_refine - start_label
-
-            if (yt.shape[0] > 0) and (yt.max() > yt.min()):
-                tmode = 'dot'
-                if interactive == 'sklearn':
-                    lr = sklearn.linear_model.LogisticRegression(class_weight='balanced')
-                    lr.fit(Xt, yt)
-                    tvec = lr.coef_.reshape(1,-1)        
-                elif interactive == 'pytorch':
-                    p = yt.sum()/yt.shape[0]
-                    w = np.clip((1-p)/p, .1, 10.)
-
-                    if model_type == 'logistic':
-                        mod = PTLogisiticRegression(Xt.shape[1], learning_rate=learning_rate, C=0, 
-                                                    positive_weight=w)
-                        if warm_start == 'warm':
-                            iv = torch.from_numpy(init_vec)
-                            iv = iv / iv.norm()
-                            mod.linear.weight.data = iv.type(mod.linear.weight.dtype)
-                        elif warm_start == 'default':
-                            pass
-
-                        fit_reg(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=minibatch_size)
-                        tvec = mod.linear.weight.detach().numpy().reshape(1,-1)
-                    elif model_type in ['cosine', 'multirank']:
-                        for i in range(num_epochs):
-                            tvec = adjust_vec(tvec, Xt, yt, learning_rate=learning_rate, 
-                                                max_examples=max_examples, 
-                                                minibatch_size=minibatch_size,
-                                                loss_margin=loss_margin)
-                    elif model_type == 'solver':
-                        tvec = adjust_vec2(tvec, Xt, yt, max_examples=p.max_examples, loss_margin=p.loss_margin, **solver_opts)
-                    else:
-                        assert False, 'model type'
-
-                else:
-                    assert False
-                lp['refine'] = time.time() - start_refine
-            else:
-                # print('missing positives or negatives to do any training', yt.shape, yt.max(), yt.min())
-                pass
-
-    res['indices'] = [class_idxs[r] for r in res['indices']]
-    tup = {**allargs, **kwargs}
-    res['latency_profile'] = latency_profile
-    return (tup, res)
-
-
 from dataclasses import dataclass,field
 ## used only to make life easier
 @dataclass(frozen=True)
@@ -605,7 +389,7 @@ class SeesawLoop:
             lp['refine'] = time.time() - start_refine
 
 
-def run_loop2(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qstr,
+def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qstr,
                 interactive, warm_start, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
                granularity:str, positive_vector_type, n_augment,min_box_size=10,
@@ -616,7 +400,7 @@ def run_loop2(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qstr,
     args, _, _, values = inspect.getargvalues(frame)
     params = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'category', 'qstr', 'n_batches']} 
     rtup = {**{'category':category, 'qstr':qstr}, **params, **kwargs}       
-    print('run loop 2', rtup)
+    print('benchmark loop', rtup)
 
     catgt = ev0.query_ground_truth[category]
     class_idxs = catgt[~catgt.isna()].index.values
@@ -669,8 +453,6 @@ def run_loop2(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qstr,
 
         loop.refine(idxbatch=idxbatch, box_dict=box_dict)
 
-
-
     res = {}
     res['indices'] = [class_idxs[r].copy() for r in acc_indices]
     res['results'] = [acc.copy() for acc in acc_results]
@@ -706,8 +488,8 @@ class BenchRunner(object):
         ev = self.evs[tup['dataset']]
         print(f'got ev {ev} after {time.time() - start}')
         ## for repeated benchmarking we want to reload without having to recreate these classes
-        importlib.reload(importlib.import_module(run_loop.__module__))
-        res = run_loop2(ev=ev, **tup)
+        importlib.reload(importlib.import_module(benchmark_loop.__module__))
+        res = benchmark_loop(ev=ev, **tup)
         print(f'Finished running after {time.time() - start}')
         return res
 
