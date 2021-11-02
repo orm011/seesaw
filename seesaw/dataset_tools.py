@@ -1,4 +1,5 @@
 import torch.utils.data
+import PIL
 
 class HCatDataset(object):
     def __init__(self, datasets, xforms=lambda x: x):

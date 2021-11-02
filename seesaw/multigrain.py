@@ -19,7 +19,7 @@ from operator import itemgetter
 import PIL
 
 
-def postprocess_results(acc):
+def _postprocess_results(acc):
     flat_acc = {'iis':[], 'jjs':[], 'dbidx':[], 'vecs':[], 'zoom_factor':[], 'zoom_level':[]}
     flat_vecs = []
 
@@ -74,7 +74,7 @@ def preprocess_ds(localxclip, ds, debug=False):
             accs= localxclip.from_image(preprocessed_image=im, pooled=False)
             acc.append((accs, sf, dbidx, zoom_level))
 
-    return postprocess_results(acc)
+    return _postprocess_results(acc)
 
 def pyramid_centered(im,i,j):
     cy=(i+1)*112.
