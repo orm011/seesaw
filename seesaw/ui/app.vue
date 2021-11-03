@@ -28,12 +28,21 @@
           </li>
         </ul>
         </div>
+        <div class='row'>
+          <label for="reference category">Choose a reference category:</label>
+          <select v-model="current_category">
+            <option v-for="(cat,idx) in ['', ...reference_categories]" :key="idx" :value="cat">{{cat}}</option>
+          </select>
+        </div>
       </div>
     </nav>
     <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
         <div class="row" v-for="(data,idx) in gdata" :key="idx">
           <div class="row">
-          <m-image-gallery v-if="data.image_urls.length > 0" :image_urls="data.image_urls" :ldata="data.ldata" 
+          <m-image-gallery v-if="data.image_urls.length > 0" 
+              :image_urls="data.image_urls" 
+              :ldata="data.ldata" 
+              :refdata="filter_category(data.refdata)"
             v-on:update:selection="onselection($event)" v-on:itemdrag='startDrag($event, idx)' :with_modal="true"/>
           </div>
           <div class="row space"/>
@@ -49,7 +58,7 @@
         </div> -->
         <div class="row">
               <button v-if="gdata.length > 0" @click="next()" class="btn btn-dark btn-block">More...</button>
-          </div>
+        </div>
           <!-- <m-annotator v-if="selection!=null" :image_url="data.image_urls[selection]" :adata="data.ldata[selection]" /> -->
     </main>
     </div> 
@@ -62,15 +71,26 @@ import MAnnotator from './m-annotator.vue';
 export default {
     components : {'m-annotator':MAnnotator, 'm-image-gallery':MImageGallery},
     // ldata : [{'value': -1, 'id': int, 'dbidx': int, 'boxes':[]}]
-    // gdata elt {image_urls:[], ldata:[]}
-    data () { return {  gdata:[], selection: null, datasets:[], current_dataset:'coco', 
-    dragged_id:null}},
+    // gdata elt {image_urls:[], ldata:[], refdata:[]}
+    props: {},
+    data () { return {  gdata:[], selection: null, datasets:[], current_dataset:'', reference_categories:[],
+      current_category:'', dragged_id:null, text_query:null}},
     mounted (){
         fetch('/api/getstate', {cache: "reload"})
             .then(response => response.json())
-            .then(data => (this.gdata.push(data), this.datasets = data.datasets))
+            .then(data => (this.gdata.push(data), this.datasets = data.datasets, this.reference_categories = data.reference_categories,
+            this.current_dataset = data.current_dataset ))
     },
     methods : {
+        filter_category(refdata_list){
+          let out = []
+          for (const ent of refdata_list){
+            let nmap = {...ent}
+            nmap.boxes = nmap.boxes.filter((b) => b.category == this.current_category);
+            out.push(nmap);
+          }
+          return out
+        },
         reset(dsname){
           console.log(this);
           console.log(dsname)
@@ -86,6 +106,9 @@ export default {
             .then(data => (this.gdata = [], this.datasets=data.datasets, 
             this.dragged_id = null, this.refine_text = '', 
             this.current_dataset=data.current_dataset, 
+            this.reference_categories = data.reference_categories,
+            this.current_category = '',
+            this.text_query = null,
             this.selection = null))
         },
         text(text_query){

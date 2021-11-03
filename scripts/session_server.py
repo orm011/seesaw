@@ -20,7 +20,7 @@ from ray import serve
 
 print('starting ray.serve...')
 ## can be started in detached mode beforehand to enable fast restart
-serve.start() ## will use localhost:8000. the documented ways of specifying this are currently failing...
+serve.start(http_options={'port':8000}) ##  the documented ways of specifying this are currently failing...
 print('started.')
 
 def get_image_paths(dataset_name, ev, idxs):
@@ -31,11 +31,13 @@ class SessionState:
     ev : EvDataset
     loop : SeesawLoop
     acc_indices : list
+    ldata_db : dict
 
     def __init__(self, dataset_name, ev):
         self.current_dataset = dataset_name
         self.ev = ev
         self.acc_indices = [np.zeros(0, dtype=np.int32)]
+        self.ldata_db = {}
 
         self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=10, 
                 minibatch_size=10, learning_rate=0.003, max_examples=225, loss_margin=0.1,
@@ -53,6 +55,7 @@ class SessionState:
     def get_state(self):
         dat = self.get_panel_data(next_idxs=np.concatenate(self.acc_indices))
         dat['current_dataset'] = self.current_dataset
+        dat['reference_categories'] = self.ev.query_ground_truth.columns.values.tolist()
         return dat
 
     def get_latest(self):
@@ -61,20 +64,35 @@ class SessionState:
 
     def get_panel_data(self, *, next_idxs):
         reslabs = []
-        print(next_idxs)
-        bx = self.ev.box_data
         for (i,dbidx) in enumerate(next_idxs):
             # boxes = copy.deepcopy(label_db.get(dbidx, None))
+            bx = self.ev.box_data
             rows = bx[bx.dbidx == dbidx]
             rows = rows.rename(mapper={'x1': 'xmin', 'x2': 'xmax', 'y1': 'ymin', 'y2': 'ymax'}, axis=1)
-            rows = rows[['xmin', 'xmax', 'ymin', 'ymax']]
+            rows = rows[['xmin', 'xmax', 'ymin', 'ymax', 'category']]
             recs = rows.to_dict(orient='records')
             reslabs.append({'value': -1 if rows.shape[0] == 0 else 1, 
                             'id': i, 'dbidx': int(dbidx), 'boxes': recs})
+
+
+        llabs = []
+        for (i,dbidx) in enumerate(next_idxs):
+            boxes = self.ldata_db.get(dbidx,[])
+            recs = []
+            if len(boxes) > 0:
+                rows = pd.DataFrame.from_records(boxes)
+                rows = rows.rename(mapper={'x1': 'xmin', 'x2': 'xmax', 'y1': 'ymin', 'y2': 'ymax'}, axis=1)
+                rows = rows[['xmin', 'xmax', 'ymin', 'ymax']]
+                recs = rows.to_dict(orient='records')
+
+            llabs.append({'value': -1 if rows.shape[0] == 0 else 1, 
+                            'id': i, 'dbidx': int(dbidx), 'boxes': recs})
+
         urls = get_image_paths(self.current_dataset, self.ev, next_idxs)
         pdata = {
             'image_urls': urls,
-            'ldata': reslabs,
+            'ldata': llabs,
+            'refdata':reslabs,
         }
         return pdata
 
@@ -97,8 +115,9 @@ class LData(BaseModel):
 class NextReq(BaseModel):
     image_urls : List[str]
     ldata : List[LData]
+    refdata : List[LData]
 
-@serve.deployment(name="seesaw_deployment", route_prefix='/')
+@serve.deployment(name="seesaw_deployment", ray_actor_options={"num_cpus": 32}, route_prefix='/')
 @serve.ingress(app)
 class WebSeesaw:
     def __init__(self):
@@ -147,11 +166,15 @@ class WebSeesaw:
             box_dict = {}
             idxbatch = []
             for elt in body.ldata:
-                df = pd.DataFrame([b.dict() for b in elt.boxes])
+
+                df = pd.DataFrame([b.dict() for b in elt.boxes], 
+                                    columns=['xmin', 'xmax', 'ymin', 'ymax']).astype('float32') # cols in case it is empty
                 df = df.assign(dbidx=elt.dbidx)
                 df = df.rename(mapper={'xmin':'x1', 'xmax':'x2', 'ymin':'y1', 'ymax':'y2'},axis=1)
                 box_dict[elt.dbidx] = df
                 idxbatch.append(elt.dbidx)
+
+            self.state.ldata_db.update(box_dict)
 
             print('calling refine...')
             self.state.loop.refine(idxbatch=np.array(idxbatch), box_dict=box_dict)

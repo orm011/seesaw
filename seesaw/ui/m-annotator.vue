@@ -63,8 +63,8 @@ export default {
           let paper_style = ['Rectangle', rdict.xmin, rdict.ymin, rdict.xmax - rdict.xmin, rdict.ymax - rdict.ymin];
           let rect = paper.Rectangle.deserialize(paper_style)
           let r = new paper.Path.Rectangle(rect);
-          r.strokeColor = 'red';
-          r.strokeWidth = 1;
+          r.strokeColor = 'green';
+          r.strokeWidth = 2;
           r.data.state = null;
           r.selected = false;
         }
