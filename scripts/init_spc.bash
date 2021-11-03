@@ -1,10 +1,13 @@
 #! /bin/bash
 set -euxo pipefail 
 
+(wget --quiet localhost:9000 && echo 'nginx already running') || (echo 'starting nginx...' && nginx -c ./conf/seesaw.spc.conf)
+
 DIR=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 cd $DIR
 
 echo 'starting head node'
+export TMPDIR="/state/partition1/slurm_tmp/`LLstat | grep Jupyter | awk '{ print $1 }'`.0.0"
 . start_worker.bash --head "--num-cpus=40 --num-gpus=2" 
 
 python init_model_actor.py --namespace seesaw &
