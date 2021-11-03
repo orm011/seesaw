@@ -176,14 +176,14 @@ class LookupVec(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         d = self._batch_step(batch, batch_idx)
         loss = d['loss']
-        self.log("loss/train", loss, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+        # self.log("loss/train", loss, prog_bar=True, logger=True, on_step=True, on_epoch=False)
         return {'loss': loss}
     
     def validation_step(self, batch, batch_idx):
         d = self._batch_step(batch, batch_idx)
         loss = d['loss']
         
-        self.log('loss/val', loss, prog_bar=True, logger=True, on_step=False, on_epoch=True)
+        # self.log('loss/val', loss, prog_bar=True, logger=True, on_step=False, on_epoch=True)
         return {'y':d['y']}
     
     def validation_epoch_end(self, validation_step_outputs):
@@ -267,6 +267,7 @@ def make_tuple_ds(X, y, max_size):
         randsel = torch.randperm(len(train_ds))[:max_size]
         train_ds = Subset(train_ds, randsel)
     return train_ds
+
 
 def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logger=None, margin=.0, max_epochs=4, gpus=0, precision=32):
 
