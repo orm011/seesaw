@@ -39,7 +39,7 @@ class SessionState:
         self.acc_indices = []
         self.ldata_db = {}
 
-        self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=10, 
+        self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=3, 
                 minibatch_size=10, learning_rate=0.003, max_examples=225, loss_margin=0.1,
                 tqdm_disabled=True, granularity='multi', positive_vector_type='vec_only', 
                  num_epochs=2, n_augment=None, min_box_size=10, model_type='multirank2', 
@@ -55,7 +55,7 @@ class SessionState:
     def get_state(self):
         gdata = []
         for indices in self.acc_indices:
-            imdata = self.get_panel_data(next_idxs=np.concatenate(self.acc_indices))
+            imdata = self.get_panel_data(idxbatch=indices)
             gdata.append(imdata)
         
         dat = {'gdata':gdata}
@@ -63,12 +63,12 @@ class SessionState:
         dat['reference_categories'] = self.ev.query_ground_truth.columns.values.tolist()
         return dat
 
-    def get_panel_data(self, *, next_idxs):
+    def get_panel_data(self, *, idxbatch):
         reslabs = []
         bx = self.ev.box_data
-        urls = get_image_paths(self.current_dataset, self.ev, next_idxs)
+        urls = get_image_paths(self.current_dataset, self.ev, idxbatch)
 
-        for (url, dbidx) in zip(urls, next_idxs):
+        for (url, dbidx) in zip(urls, idxbatch):
             dbidx = int(dbidx)
             rows = bx[bx.dbidx == dbidx]
             rows = rows.rename(mapper={'x1': 'xmin', 'x2': 'xmax', 'y1': 'ymin', 'y2': 'ymax'}, axis=1)
@@ -91,15 +91,15 @@ class Box(BaseModel):
     ymin : float
     xmax : float
     ymax : float
-    category : Optional[str] # used for sending refdata only
+    category : Optional[str] # used for sending ground truth data only, so we can filter by category on the client.
 
 class Imdata(BaseModel):
     url : str
     dbidx : int
-    boxes : Optional[List[Box]]
+    boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
     refboxes : Optional[List[Box]]
 
-class ClientData(BaseModel):
+class ClientData(BaseModel): # Using this as a response for every state transition.
     gdata : List[List[Imdata]]
     datasets : List[str]
     current_dataset : str
@@ -156,18 +156,23 @@ class WebSeesaw:
             box_dict = {}
             idxbatch = []
             for elt in body.imdata:
-                df = pd.DataFrame([b.dict() for b in elt.boxes], 
-                                    columns=['xmin', 'xmax', 'ymin', 'ymax']).astype('float32') # cols in case it is empty
-                df = df.assign(dbidx=elt.dbidx)
-                df = df.rename(mapper={'xmin':'x1', 'xmax':'x2', 'ymin':'y1', 'ymax':'y2'},axis=1)
-                box_dict[elt.dbidx] = df
-                idxbatch.append(elt.dbidx)
+                if elt.boxes is not None:
+                    df = pd.DataFrame([b.dict() for b in elt.boxes], 
+                                        columns=['xmin', 'xmax', 'ymin', 'ymax']).astype('float32') # cols in case it is empty
+                    df = df.assign(dbidx=elt.dbidx)
+                    df = df.rename(mapper={'xmin':'x1', 'xmax':'x2', 'ymin':'y1', 'ymax':'y2'},axis=1)
+                    box_dict[elt.dbidx] = df
+                    idxbatch.append(elt.dbidx)
 
             self.state.ldata_db.update(box_dict)
 
-            print('calling refine...')
-            self.state.loop.refine(idxbatch=np.array(idxbatch), box_dict=box_dict)
-            print('done refining...')
+            if len(box_dict) > 0:
+                print('calling refine...')
+                ## should we provide the full box dict?
+                self.state.loop.refine(idxbatch=np.array(idxbatch), box_dict=box_dict)
+                print('done refining...')
+            else:
+                print('no new annotations, skipping refinement')
 
         self.state.step()
         return self._getstate()

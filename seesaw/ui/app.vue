@@ -44,8 +44,8 @@
           </div>
           <div class="row space"/>
         </div>
-        <div class="row">
-              <button v-if="gdata.length > 0" @click="next()" class="btn btn-dark btn-block">More...</button>
+        <div class="row" v-if="gdata.length > 0">
+              <button @click="next()" class="btn btn-dark btn-block">More...</button>
         </div>
     </main>
     </div> 
@@ -125,9 +125,11 @@ export default {
         },
         next(){
           console.log(' this' , this);
+          let body = { imdata : _.last(this.gdata) };
+
             fetch(`/api/next`, {method:'POST',
                             headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(this.gdata.length > 0 ? this.gdata[this.gdata.length - 1] : []) // body data type must match "Content-Type" header
+                            body: JSON.stringify(body) // body data type must match "Content-Type" header
                             })
             .then(response => response.json())
             .then(data => (this.gdata = data.gdata, this.selection = null))
