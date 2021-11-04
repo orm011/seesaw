@@ -36,7 +36,7 @@ class SessionState:
     def __init__(self, dataset_name, ev):
         self.current_dataset = dataset_name
         self.ev = ev
-        self.acc_indices = [np.zeros(0, dtype=np.int32)]
+        self.acc_indices = []
         self.ldata_db = {}
 
         self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=10, 
@@ -53,14 +53,14 @@ class SessionState:
         return idxbatch
         
     def get_state(self):
-        imdata = self.get_panel_data(next_idxs=np.concatenate(self.acc_indices))
-        dat = {'imdata':imdata}
+        gdata = []
+        for indices in self.acc_indices:
+            imdata = self.get_panel_data(next_idxs=np.concatenate(self.acc_indices))
+            gdata.append(imdata)
+        
+        dat = {'gdata':gdata}
         dat['current_dataset'] = self.current_dataset
         dat['reference_categories'] = self.ev.query_ground_truth.columns.values.tolist()
-        return dat
-
-    def get_latest(self):
-        dat = self.get_panel_data(next_idxs=self.acc_indices[-1])
         return dat
 
     def get_panel_data(self, *, next_idxs):
@@ -75,8 +75,8 @@ class SessionState:
             rows = rows[['xmin', 'xmax', 'ymin', 'ymax', 'category']]
             refboxes = rows.to_dict(orient='records')
 
-            boxes = self.ldata_db.get(dbidx,[])
-            if len(boxes) > 0:
+            boxes = self.ldata_db.get(dbidx,None) # None means no annotations yet (undef), empty means no boxes.
+            if boxes is not None and len(boxes) > 0: # serialize boxes to format
                 rows = pd.DataFrame.from_records(boxes)
                 rows = rows.rename(mapper={'x1': 'xmin', 'x2': 'xmax', 'y1': 'ymin', 'y2': 'ymax'}, axis=1)
                 rows = rows[['xmin', 'xmax', 'ymin', 'ymax']]
@@ -85,9 +85,6 @@ class SessionState:
             elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, refboxes=refboxes)
             reslabs.append(elt)
         return reslabs
-
-class ResetReq(BaseModel):
-    dataset: str
 
 class Box(BaseModel):
     xmin : float
@@ -102,8 +99,17 @@ class Imdata(BaseModel):
     boxes : Optional[List[Box]]
     refboxes : Optional[List[Box]]
 
+class ClientData(BaseModel):
+    gdata : List[List[Imdata]]
+    datasets : List[str]
+    current_dataset : str
+    reference_categories : List[str]
+
 class NextReq(BaseModel):
     imdata : List[Imdata]
+
+class ResetReq(BaseModel):
+    dataset: str
 
 @serve.deployment(name="seesaw_deployment", ray_actor_options={"num_cpus": 32}, route_prefix='/')
 @serve.ingress(app)
@@ -135,15 +141,11 @@ class WebSeesaw:
         s['datasets'] = self.datasets
         return s
 
-    @app.get('/getstate')
+    @app.get('/getstate', response_model=ClientData)
     def getstate(self):
         return self._getstate()
 
-    @app.get('/datasets')
-    def getdatasets(self):
-        return self.datasets
-
-    @app.post('/reset')
+    @app.post('/reset', response_model=ClientData)
     def reset(self, r : ResetReq):
         print(f'resetting state with freshly constructed one for {r.dataset}')
         self._reset_dataset(r.dataset)
@@ -168,13 +170,13 @@ class WebSeesaw:
             print('done refining...')
 
         self.state.step()
-        return self.state.get_latest()
+        return self._getstate()
 
-    @app.post('/next')
+    @app.post('/next', response_model=ClientData)
     def next(self, body : NextReq):
         return self._step(body)
 
-    @app.post('/text')
+    @app.post('/text', response_model=ClientData)
     def text(self, key : str):
         self.state.loop.initialize(qstr=key) 
         return self._step(body=None)

@@ -5,23 +5,18 @@
         <img v-for="(data,index) in imdata" :key="index" :src="data.url" 
         draggable 
         @click="onclick(index)"
-        @dragstart="$emit('itemdrag', [$event, index])" 
         :class="get_class(index)" />
     </div>
     </div>
-    <!-- <div class='row'> -->
-            <!-- <img :src="this.imdata[selection].url">  -->
-    <!-- </div> --> 
-    <m-modal v-if="with_modal" ref='modal2' @keyup.esc='this.$refs.modal2.close()'  tabindex='0' >
-        <m-annotator  ref='annotator' :imdata="this.imdata[selection]" :read_only="false" 
-            v-on:esc='this.$refs.modal2.close()' @keyup.esc='this.$refs.modal2.close()'   tabindex='1' />
+    <m-modal v-if="show_modal" ref='modal' v-on:close='close_modal(selection)' tabindex='0' >
+        <m-annotator  ref='annotator' :imdata="imdata[selection]" :read_only="false"  tabindex='1' />
         <!-- <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" 
           data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" 
             aria-expanded="false" aria-label="Toggle navigation">
               <span class="navbar-toggler-icon"></span>
         </button> -->
-        <button class="btn btn-dark bton-block" @click="copyref"> 
-            Fill with reference
+        <button class="btn btn-dark bton-block" @click="copyref(selection)"> 
+            Autofill
         </button>
     </m-modal>
   </div>
@@ -33,8 +28,8 @@ import MModal from './m-modal.vue';
 
  export default {
   components: { 'm-annotator':MAnnotator, 'm-modal':MModal },
-  props: { imdata:{type:Array, default:[]}, with_modal:true},
-  data : function() { return {selection:null, show_modal:false}},
+  props: { initial_imdata:{type:Array, default:[]} },
+  data : function() { return { selection:null, show_modal:false, imdata:_.cloneDeep(this.initial_imdata) }},
   created : function (){},
   mounted : function (){
       // this.$refs.gallery_modal.addEventListener('show.bs.modal',this.modalclick);
@@ -43,7 +38,6 @@ import MModal from './m-modal.vue';
     // kinds of feedback: 
     // 1. this image does not have what I'm looking for (checkbox?)
     // 2. 
-
     get_class(index){
       let ldata = this.imdata[index];
       if (ldata.boxes == null){
@@ -54,22 +48,29 @@ import MModal from './m-modal.vue';
         return 'rejected'
       }
     },
-    onclick(index){
-        console.log('click callback')
-        this.selection = index;
-        if (this.with_modal){
-          this.$refs.modal2.active = true;
-        }
-        // this.$refs.modal.show()
-        this.$emit('update:selection', index); 
+    close_modal(index){ // closing modal emits a data edit event
+      this.show_modal = false;
+      let imdict = this.imdata[index];
+      console.log('flushing', imdict.boxes)
+      this.$emit('data_update', {idx:index, dbidx:imdict.dbidx, boxes:_.cloneDeep(imdict.boxes)})
     },
-    copyref(){
+    onclick(index){
+      console.log('click callback')
+      this.selection = index;
+      this.show_modal = true;
+    },
+    copyref(index){
+        let imdict = this.imdata[index];
+
         console.log('click copyref');
-        const reflabels = this.imdata[this.selection].refboxes;
-        let adata = this.imdata[this.selection].boxes
-        console.log(reflabels)
+        const reflabels = imdict.refboxes;
+
+        if (imdict.boxes == null){
+          imdict.boxes = []
+        }
+
         for (const obj of reflabels){
-                adata.push(obj)  
+          imdict.boxes.push(obj)  
         }
 
         this.$refs.annotator.load_current_box_data()

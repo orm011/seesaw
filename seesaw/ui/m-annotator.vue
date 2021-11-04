@@ -1,6 +1,6 @@
 <template>
-    <div class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
-        <img class="annotator_image" :src="imdata.url" ref="image"  @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
+    <div v-if="imdata != null" class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
+        <img  class="annotator_image" :src="imdata.url" ref="image"  @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
         <canvas class="annotator_canvas" ref="canvas" @keyup.esc="emit('esc')" tabindex='2'/>
     </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
@@ -58,17 +58,20 @@ export default {
       // assumes currently image on canvas is the one where we want to display boxes on
       let paper = this.paper;
       // console.log('about to iterate', this);
-      for (const boxdict of this.imdata.boxes) {
-          let rdict = this.rescale_box(boxdict, 1./this.height_ratio, 1./this.width_ratio);
-          let paper_style = ['Rectangle', rdict.xmin, rdict.ymin, rdict.xmax - rdict.xmin, rdict.ymax - rdict.ymin];
-          let rect = paper.Rectangle.deserialize(paper_style)
-          let r = new paper.Path.Rectangle(rect);
-          r.strokeColor = 'green';
-          r.strokeWidth = 2;
-          r.data.state = null;
-          r.selected = false;
-        }
+      if (this.imdata.boxes != null) {
+        for (const boxdict of this.imdata.boxes) {
+            let rdict = this.rescale_box(boxdict, 1./this.height_ratio, 1./this.width_ratio);
+            let paper_style = ['Rectangle', rdict.xmin, rdict.ymin, rdict.xmax - rdict.xmin, rdict.ymax - rdict.ymin];
+            let rect = paper.Rectangle.deserialize(paper_style)
+            let r = new paper.Path.Rectangle(rect);
+            r.strokeColor = 'green';
+            r.strokeWidth = 2;
+            r.data.state = null;
+            r.selected = false;
+            }
+      }
     },
+
     draw_initial_contents : function() {
         console.log('(draw)setting up', this)
         let paper = this.paper;
