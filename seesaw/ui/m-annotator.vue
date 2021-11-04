@@ -1,6 +1,6 @@
 <template>
     <div class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
-        <img class="annotator_image" :src="image_url" ref="image"  @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
+        <img class="annotator_image" :src="imdata.url" ref="image"  @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
         <canvas class="annotator_canvas" ref="canvas" @keyup.esc="emit('esc')" tabindex='2'/>
     </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
@@ -34,7 +34,7 @@
 <script>
 export default { 
   name: "m-annotator.vue", // used by ipyvue?
-  props: ['image_url', 'adata', 'read_only'],
+  props: ['imdata', 'read_only'],
   data : function() {
         let paper = new window.paper.PaperScope();
         new paper.Tool(); // also implicitly adds tool to paper scope
@@ -52,13 +52,13 @@ export default {
         let boxes = (paper.project.getItems({className:'Path'})
                           .map(x =>  {let b = x.bounds; return {xmin:b.left, xmax:b.right, ymin:b.top, ymax:b.bottom}})
                           .map(box => this.rescale_box(box, this.height_ratio, this.width_ratio)))
-        this.adata.boxes = boxes;
+        this.imdata.boxes = boxes;
     },
     load_current_box_data : function() {
       // assumes currently image on canvas is the one where we want to display boxes on
       let paper = this.paper;
       // console.log('about to iterate', this);
-      for (const boxdict of this.adata.boxes) {
+      for (const boxdict of this.imdata.boxes) {
           let rdict = this.rescale_box(boxdict, 1./this.height_ratio, 1./this.width_ratio);
           let paper_style = ['Rectangle', rdict.xmin, rdict.ymin, rdict.xmax - rdict.xmin, rdict.ymax - rdict.ymin];
           let rect = paper.Rectangle.deserialize(paper_style)

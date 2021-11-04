@@ -37,12 +37,10 @@
       </div>
     </nav>
     <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
-        <div class="row" v-for="(data,idx) in gdata" :key="idx">
+        <div class="row" v-for="(imdata,idx) in gdata" :key="idx">
           <div class="row">
-          <m-image-gallery v-if="data.image_urls.length > 0" 
-              :image_urls="data.image_urls" 
-              :ldata="data.ldata" 
-              :refdata="filter_category(data.refdata)"
+          <m-image-gallery v-if="imdata.length > 0" 
+              :imdata="filter_category(imdata)"
             v-on:update:selection="onselection($event)" v-on:itemdrag='startDrag($event, idx)' :with_modal="true"/>
           </div>
           <div class="row space"/>
@@ -70,8 +68,8 @@ import MAnnotator from './m-annotator.vue';
 
 export default {
     components : {'m-annotator':MAnnotator, 'm-image-gallery':MImageGallery},
-    // ldata : [{'value': -1, 'id': int, 'dbidx': int, 'boxes':[]}]
-    // gdata elt {image_urls:[], ldata:[], refdata:[]}
+    // ldata : [{'url': str, 'dbidx': int, 'boxes':null|List, 'refboxes':null|List}]
+    // gdata : [ldata]
     props: {},
     data () { return {  gdata:[], selection: null, datasets:[], current_dataset:'', reference_categories:[],
       current_category:'', dragged_id:null, text_query:null}},
@@ -82,11 +80,11 @@ export default {
             this.current_dataset = data.current_dataset ))
     },
     methods : {
-        filter_category(refdata_list){
+        filter_category(imdata){
           let out = []
-          for (const ent of refdata_list){
+          for (const ent of imdata){
             let nmap = {...ent}
-            nmap.boxes = nmap.boxes.filter((b) => b.category == this.current_category);
+            nmap.refboxes = nmap.refboxes.filter((b) => b.category == this.current_category);
             out.push(nmap);
           }
           return out
@@ -129,18 +127,18 @@ export default {
             .then(response => response.json())
             .then(data => (this.gdata.push(data), this.selection = null))
         },
-        onselection(ev){
-          const next_value = [1,1,0][this.data.ldata[ev].value+1]; // {-1:1, 0:1,1:0}
-          this.$set(this.data.ldata[ev], 'value', next_value);
+        // onselection(ev){
+        //   const next_value = [1,1,0][this.data.ldata[ev].value+1]; // {-1:1, 0:1,1:0}
+        //   this.$set(this.data.ldata[ev], 'value', next_value);
 
-          if (next_value === 1){
-            this.$set(this.data.ldata[ev], 'boxes', [{'xmin':0, 'xmax':1, 'ymin':0, 'ymax':1}])
-          } else if (next_value === 0) {
-            this.$set(this.data.ldata[ev], 'boxes', [])
-          } else if (next_value === -1) {
-            this.$set(this.data.ldata[ev], 'boxes', null)
-          }
-        },
+        //   if (next_value === 1){
+        //     this.$set(this.data.ldata[ev], 'boxes', [{'xmin':0, 'xmax':1, 'ymin':0, 'ymax':1}])
+        //   } else if (next_value === 0) {
+        //     this.$set(this.data.ldata[ev], 'boxes', [])
+        //   } else if (next_value === -1) {
+        //     this.$set(this.data.ldata[ev], 'boxes', null)
+        //   }
+        // },
         startDrag: (event_data, idx) => {
           console.log(event_data)
           let [evt, item] = event_data;
@@ -153,7 +151,6 @@ export default {
           const pid = evt.dataTransfer.getData('paneid')
           const itemid = evt.dataTransfer.getData('itemid')
           this.dragged_id = {pid:pid, itemid:itemid};
-          // const item = this.ldata.find(item => item.id == itemID)
         },
         submitHybrid(){
           let dbidx = this.gdata[this.dragged_id.pid].ldata[this.dragged_id.itemid].dbidx

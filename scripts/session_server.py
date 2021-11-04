@@ -53,7 +53,8 @@ class SessionState:
         return idxbatch
         
     def get_state(self):
-        dat = self.get_panel_data(next_idxs=np.concatenate(self.acc_indices))
+        imdata = self.get_panel_data(next_idxs=np.concatenate(self.acc_indices))
+        dat = {'imdata':imdata}
         dat['current_dataset'] = self.current_dataset
         dat['reference_categories'] = self.ev.query_ground_truth.columns.values.tolist()
         return dat
@@ -64,38 +65,26 @@ class SessionState:
 
     def get_panel_data(self, *, next_idxs):
         reslabs = []
-        for (i,dbidx) in enumerate(next_idxs):
-            # boxes = copy.deepcopy(label_db.get(dbidx, None))
-            bx = self.ev.box_data
+        bx = self.ev.box_data
+        urls = get_image_paths(self.current_dataset, self.ev, next_idxs)
+
+        for (url, dbidx) in zip(urls, next_idxs):
+            dbidx = int(dbidx)
             rows = bx[bx.dbidx == dbidx]
             rows = rows.rename(mapper={'x1': 'xmin', 'x2': 'xmax', 'y1': 'ymin', 'y2': 'ymax'}, axis=1)
             rows = rows[['xmin', 'xmax', 'ymin', 'ymax', 'category']]
-            recs = rows.to_dict(orient='records')
-            reslabs.append({'value': -1 if rows.shape[0] == 0 else 1, 
-                            'id': i, 'dbidx': int(dbidx), 'boxes': recs})
+            refboxes = rows.to_dict(orient='records')
 
-
-        llabs = []
-        for (i,dbidx) in enumerate(next_idxs):
             boxes = self.ldata_db.get(dbidx,[])
-            recs = []
             if len(boxes) > 0:
                 rows = pd.DataFrame.from_records(boxes)
                 rows = rows.rename(mapper={'x1': 'xmin', 'x2': 'xmax', 'y1': 'ymin', 'y2': 'ymax'}, axis=1)
                 rows = rows[['xmin', 'xmax', 'ymin', 'ymax']]
-                recs = rows.to_dict(orient='records')
+                boxes = rows.to_dict(orient='records')
 
-            llabs.append({'value': -1 if rows.shape[0] == 0 else 1, 
-                            'id': i, 'dbidx': int(dbidx), 'boxes': recs})
-
-        urls = get_image_paths(self.current_dataset, self.ev, next_idxs)
-        pdata = {
-            'image_urls': urls,
-            'ldata': llabs,
-            'refdata':reslabs,
-        }
-        return pdata
-
+            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, refboxes=refboxes)
+            reslabs.append(elt)
+        return reslabs
 
 class ResetReq(BaseModel):
     dataset: str
@@ -105,17 +94,16 @@ class Box(BaseModel):
     ymin : float
     xmax : float
     ymax : float
+    category : Optional[str] # used for sending refdata only
 
-class LData(BaseModel):
-    value : int
-    id : int
+class Imdata(BaseModel):
+    url : str
     dbidx : int
-    boxes : List[Box]
+    boxes : Optional[List[Box]]
+    refboxes : Optional[List[Box]]
 
 class NextReq(BaseModel):
-    image_urls : List[str]
-    ldata : List[LData]
-    refdata : List[LData]
+    imdata : List[Imdata]
 
 @serve.deployment(name="seesaw_deployment", ray_actor_options={"num_cpus": 32}, route_prefix='/')
 @serve.ingress(app)
@@ -165,8 +153,7 @@ class WebSeesaw:
         if body is not None: ## refinement code
             box_dict = {}
             idxbatch = []
-            for elt in body.ldata:
-
+            for elt in body.imdata:
                 df = pd.DataFrame([b.dict() for b in elt.boxes], 
                                     columns=['xmin', 'xmax', 'ymin', 'ymax']).astype('float32') # cols in case it is empty
                 df = df.assign(dbidx=elt.dbidx)

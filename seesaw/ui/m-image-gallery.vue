@@ -2,18 +2,18 @@
   <div>
     <div class='row'>
     <div class="image-gallery" >
-        <img v-for="(url,index) in image_urls" :key="index" :src="url" 
+        <img v-for="(data,index) in imdata" :key="index" :src="data.url" 
         draggable 
         @click="onclick(index)"
         @dragstart="$emit('itemdrag', [$event, index])" 
-        :class="['unknown', 'rejected', 'accepted'][ldata.length === 0? 0 : ldata[index].value+1]" />
+        :class="get_class(index)" />
     </div>
     </div>
     <!-- <div class='row'> -->
-            <!-- <img :src="this.image_urls[selection]">  -->
+            <!-- <img :src="this.imdata[selection].url">  -->
     <!-- </div> --> 
     <m-modal v-if="with_modal" ref='modal2' @keyup.esc='this.$refs.modal2.close()'  tabindex='0' >
-        <m-annotator  ref='annotator' :image_url="this.image_urls[selection]" :adata="this.ldata[selection]" :read_only="false" 
+        <m-annotator  ref='annotator' :imdata="this.imdata[selection]" :read_only="false" 
             v-on:esc='this.$refs.modal2.close()' @keyup.esc='this.$refs.modal2.close()'   tabindex='1' />
         <!-- <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" 
           data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" 
@@ -33,27 +33,40 @@ import MModal from './m-modal.vue';
 
  export default {
   components: { 'm-annotator':MAnnotator, 'm-modal':MModal },
-  props: {image_urls:{type:Array}, ldata:{type:Array, default:[]}, refdata:{type:Array, default:[]}, with_modal:true},
+  props: { imdata:{type:Array, default:[]}, with_modal:true},
   data : function() { return {selection:null, show_modal:false}},
   created : function (){},
   mounted : function (){
       // this.$refs.gallery_modal.addEventListener('show.bs.modal',this.modalclick);
   },
   methods : {
+    // kinds of feedback: 
+    // 1. this image does not have what I'm looking for (checkbox?)
+    // 2. 
+
+    get_class(index){
+      let ldata = this.imdata[index];
+      if (ldata.boxes == null){
+        return 'unknown'
+      } else if (ldata.boxes.length > 0) {
+        return 'accepted'
+      } else if (ldata.boxes.length === 0){
+        return 'rejected'
+      }
+    },
     onclick(index){
         console.log('click callback')
         this.selection = index;
-        // this.$refs.modal2.src = this.image_urls[this.selection];
         if (this.with_modal){
-          this.$refs.modal2.active = true; //this.image_urls[this.selection];
+          this.$refs.modal2.active = true;
         }
         // this.$refs.modal.show()
         this.$emit('update:selection', index); 
     },
     copyref(){
         console.log('click copyref');
-        const reflabels = this.refdata[this.selection].boxes;
-        let adata = this.ldata[this.selection].boxes
+        const reflabels = this.imdata[this.selection].refboxes;
+        let adata = this.imdata[this.selection].boxes
         console.log(reflabels)
         for (const obj of reflabels){
                 adata.push(obj)  
