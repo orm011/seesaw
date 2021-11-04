@@ -335,7 +335,7 @@ class AugmentedDB(object):
     def __len__(self):
         return len(self.raw)
 
-    def _query_prelim(self, *, vector, topk,  zoom_level, exclude=None):
+    def _query_prelim(self, *, vector, topk,  zoom_level, exclude=None, startk=None):
         if exclude is None:
             exclude = pr.BitMap([])
 
@@ -405,23 +405,24 @@ class AugmentedDB(object):
             return np.array(idxs).astype('int'), np.array(scores)
 
 
-        def get_nns():
+        def get_nns(startk, topk):
             i = 0
-            try_n = (len(exclude) + topk)*3
+            deltak = topk*100
             while True:
                 if i > 1:
                     print('warning, we are looping too much. adjust initial params?')
 
-                idxs,scores = self.vec_index.query(vector, top_k=try_n)
+                idxs,scores = self.vec_index.query(vector, top_k=startk + deltak)
                 found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
-                if len(found_idxs.difference(exclude)) >= topk:
+
+                newidxs = found_idxs.difference(exclude)
+                if len(newidxs) >= topk:
                     break
                 
-                try_n = try_n*2
+                deltak = deltak*2
                 i+=1
 
-            return np.array(idxs).astype('int'), np.array(scores)
-
+            return idxs, scores
 
         def get_nns_by_vector_exact():
             scores = self.embedded @ vector.reshape(-1)
@@ -429,7 +430,7 @@ class AugmentedDB(object):
             return scorepos, scores[scorepos]
 
         if self.vec_index is not None:
-            idxs, scores = get_nns()
+            idxs, scores  = get_nns(startk, topk)
         else:
             idxs, scores = get_nns_by_vector_exact()
 
@@ -437,23 +438,32 @@ class AugmentedDB(object):
         topscores = vec_meta[['dbidx']].iloc[idxs]
         topscores = topscores.assign(score=scores)
         allscores = topscores
-        topscores = topscores[~topscores.dbidx.isin(exclude)]
-        scoresbydbidx = topscores.groupby('dbidx').score.max().sort_values(ascending=False)
+        
+        newtopscores = topscores[~topscores.dbidx.isin(exclude)]
+        scoresbydbidx = newtopscores.groupby('dbidx').score.max().sort_values(ascending=False)
         score_cutoff = scoresbydbidx.iloc[topk-1] # kth largest score
-        topscores = topscores[topscores.score >=  score_cutoff]
-        candidates =  pr.BitMap(topscores.dbidx)
+        newtopscores = newtopscores[newtopscores.score >=  score_cutoff]
+
+        # newtopscores = newtopscores.sort_values(ascending=False)
+        nextstartk = (allscores.score >= score_cutoff).sum()
+        nextstartk  = math.ceil(startk*.8 + nextstartk*.2) # average to estimate next
+        candidates =  pr.BitMap(newtopscores.dbidx)
         assert len(candidates) >= topk
         assert candidates.intersection_cardinality(exclude) == 0
-        return topscores.index.values, candidates, allscores
+        return newtopscores.index.values, candidates, allscores, nextstartk
         
-    def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1, **kwargs):
+    def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1, startk=None, **kwargs):
 #        print('ignoring extra args:', kwargs)
         if shortlist_size is None:
             shortlist_size = topk*5
         
+        if startk is None:
+            startk = len(exclude)*10
+
         db = self
         qvec=vector
-        meta_idx, candidate_id, allscores = self._query_prelim(vector=qvec, topk=shortlist_size, zoom_level=None, exclude=exclude)
+        meta_idx, candidate_id, allscores, nextstartk = self._query_prelim(vector=qvec, topk=shortlist_size, 
+                                            zoom_level=None, exclude=exclude, startk=startk)
 
         fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(candidate_id)]
         fullmeta = fullmeta.assign(**get_boxes(fullmeta))
@@ -476,9 +486,5 @@ class AugmentedDB(object):
 
             dbscores[i] = np.max(boxscs)
 
-        # final = scmeta.assign(aug_score=np.array(scs))
-        # agg = final.groupby('dbidx').aug_score.max().reset_index().sort_values('aug_score', ascending=False)
         topkidx = np.argsort(-dbscores)[:topk]
-        return dbidxs[topkidx].astype('int'), allscores # return fullmeta 
-        # idxs = agg.dbidx.iloc[:topk]
-        # return idxs
+        return dbidxs[topkidx].astype('int'), nextstartk # return fullmeta 

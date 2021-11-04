@@ -11,6 +11,9 @@ from torch.utils.data import TensorDataset
 from torch.utils.data import Subset
 from torch.utils.data import DataLoader
 
+import pandas as pd
+import numpy as np
+
 import os
 import pytorch_lightning as pl
 
@@ -147,7 +150,7 @@ class LookupVec(pl.LightningModule):
     ):
         """
         Args:
-            input_dim: number of dimensions of the input (at least 1)
+        input_dim: number of dimensions of the input (at least 1)
         """
         super().__init__()
         self.save_hyperparameters()
@@ -159,12 +162,14 @@ class LookupVec(pl.LightningModule):
             t = torch.randn(1,input_dim)
             self.vec = nn.Parameter(t/t.norm())
 
+
         # self.loss = nn.CosineEmbeddingLoss(margin,reduction='none')
         self.rank_loss = nn.MarginRankingLoss(margin=margin, reduction='none')
 
     def forward(self, qvec):
-        return F.cosine_similarity(self.vec, qvec)
-    
+        return qvec @ self.vec.reshape(-1) # qvecs are already normalized
+        # return F.cosine_similarity(self.vec, qvec)
+
     def _batch_step(self, batch, batch_idx):
         X1, X2, y = batch
         sim1 = self(X1)
@@ -287,7 +292,6 @@ def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logg
     # ridx,iis,jjs = hard_neg_tuples(mod.vec.detach().numpy(), X.numpy(), y, max_tups=max_examples)
     # train_ds = TensorDataset(X[ridx][iis],X[ridx][jjs], torch.ones(X[ridx][iis].shape[0]))
     train_ds = hard_neg_tuples_faster(mod.vec.detach().numpy(), X.numpy(), y, max_tups=max_examples, margin=margin)
-
     ## want a tensor with pos, neg, 1. ideally the highest scored negatives and lowest scored positives.
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
@@ -316,15 +320,13 @@ def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logg
 
 
 def adjust_vec(vec, Xt, yt, learning_rate, loss_margin, max_examples, minibatch_size):
+    ## cosine sim in produce
     vec = torch.from_numpy(vec).type(torch.float32)
     mod = LookupVec(Xt.shape[1], margin=loss_margin, optimizer=torch.optim.SGD, learning_rate=learning_rate, init_vec=vec)
     fit_rank2(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), 
             max_examples=max_examples, batch_size=minibatch_size,max_epochs=1, margin=loss_margin)
     newvec = mod.vec.detach().numpy().reshape(1,-1)
     return newvec 
-
-import pandas as pd
-import numpy as np
 
 def _positive_inversions(labs):
     return np.cumsum(~labs)*labs

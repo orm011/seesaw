@@ -13,6 +13,7 @@ import numpy as np
 import sklearn.metrics
 import math
 from .util import *
+from .pairwise_rank_loss import VecState
 
 import importlib
 
@@ -190,6 +191,9 @@ class LoopState:
     latency_profile : list = field(default_factory=list)
     acc_pos : list = field(default_factory=list)
     acc_neg : list = field(default_factory=list)
+    vec_state : VecState = None
+
+
 
 class SeesawLoop:
     bfq : BoxFeedbackQuery
@@ -211,15 +215,7 @@ class SeesawLoop:
         p = self.params
         s = self.state
 
-        if p.granularity == 'fine':
-            vec_meta = ev.fine_grained_meta
-            vecs = ev.fine_grained_embedding
-            vec_meta = vec_meta[vec_meta.zoom_level == 0]
-            vecs = vecs[vec_meta.index.values]
-            vec_meta.reset_index(drop=True)
-            hdb = FineEmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-                embedded_dataset=vecs, vector_meta=vec_meta)
-        elif p.granularity == 'multi':
+        if p.granularity == 'multi':
             vec_meta = ev.fine_grained_meta
             vecs = ev.fine_grained_embedding
             hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
@@ -246,6 +242,10 @@ class SeesawLoop:
             init_vec = init_vec/np.linalg.norm(init_vec)
             s.tvec = init_vec
             s.tmode = 'dot'
+            if p.model_type == 'multirank2':
+                print('using adagrad')
+                s.vec_state = VecState(init_vec, margin=p.loss_margin, opt_class=torch.optim.Adagrad, 
+                opt_params={'lr':3.3*p.learning_rate})
         
         #res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
 
@@ -376,6 +376,16 @@ class SeesawLoop:
                                                 max_examples=p.max_examples, 
                                                 minibatch_size=p.minibatch_size,
                                                 loss_margin=p.loss_margin)
+                    elif p.model_type in ['multirank2']:
+                        npairs = yt.sum() * (1-yt).sum()
+                        max_iters = math.ceil(min(npairs, p.max_examples)//p.minibatch_size) * p.num_epochs
+                        for _ in range(max_iters):
+                            loss = s.vec_state.update(Xt, yt)
+                            if loss == 0: # gradient is 0 when loss is 0.
+                                print('loss is 0, breaking early')
+                                break
+
+                        s.tvec = s.vec_state.get_vec()
                     elif p.model_type == 'solver':
                         s.tvec = adjust_vec2(s.tvec, Xt, yt, **p.solver_opts)
                     else:
@@ -481,15 +491,22 @@ class BenchRunner(object):
         self.evs = revs
         vls_init_logger()
         print('loaded all evs...')
+
+    def ready(self):
+        return True
     
     def run_loop(self, tup):
+        import seesaw
+        importlib.reload(seesaw)
+
         start = time.time()
         print(f'getting ev for {tup["dataset"]}...')
         ev = self.evs[tup['dataset']]
         print(f'got ev {ev} after {time.time() - start}')
         ## for repeated benchmarking we want to reload without having to recreate these classes
-        importlib.reload(importlib.import_module(benchmark_loop.__module__))
-        res = benchmark_loop(ev=ev, **tup)
+        # importlib.reload(importlib.import_module('seesaw'))
+        # importlib.reload(importlib.import_module(benchmark_loop.__module__))
+        res = seesaw.benchmark_loop(ev=ev, **tup)
         print(f'Finished running after {time.time() - start}')
         return res
 

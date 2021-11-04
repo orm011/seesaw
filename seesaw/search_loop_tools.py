@@ -104,6 +104,7 @@ class InteractiveQuery(object):
         self.query_history = []
         self.acc_idxs = []
         self.batch_size = batch_size
+        self.startk = 0
 
     def query_stateful(self, *args, **kwargs):
         '''
@@ -116,19 +117,13 @@ class InteractiveQuery(object):
         if 'batch_size' in kwargs:
             del kwargs['batch_size']
             
-        idxs, other = self.db.query(*args, topk=batch_size, **kwargs, exclude=self.seen)
+        idxs, nextstartk = self.db.query(*args, topk=batch_size, **kwargs, exclude=self.seen, startk=self.startk)
+        # assert nextstartk >= self.startk nor really true: if vector changes a lot, 
+        self.startk = nextstartk
         self.query_history.append((args, kwargs))
         self.seen.update(idxs)
         self.acc_idxs.append(idxs)
-        return idxs, other
-
-    def repeat_last(self):
-        '''
-        :return: continues the search from last query, effectively paging through results
-        '''
-        assert self.query_history != []
-        args, kwargs = self.query_history[-1]
-        return self.query_stateful(*args, **kwargs)
+        return idxs, nextstartk
 
 
 def get_panel_data(q, label_db, next_idxs):

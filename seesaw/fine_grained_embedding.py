@@ -1,6 +1,7 @@
 import numpy as np
 import pyroaring as pr
 import os
+import math
 
 from .search_loop_models import *
 from .embeddings import *
@@ -25,100 +26,7 @@ def restrict_fine_grained(vec_meta, vec, indxs):
     assert vec_meta.shape[0] == vec.shape[0]
     return vec_meta.reset_index(drop=True), vec
 
-class FineEmbeddingDB(object):
-    """Structure holding a dataset,
-     together with precomputed embeddings
-     and (optionally) data structure
-    """
-    def __init__(self, raw_dataset : torch.utils.data.Dataset,
-                 embedding : XEmbedding,
-                 embedded_dataset : np.ndarray,
-                 vector_meta : pd.DataFrame):
-        self.raw = raw_dataset
-        self.embedding = embedding
-        self.embedded = embedded_dataset
-        self.vector_meta = vector_meta
 
-        all_indices = pr.BitMap()
-        assert len(self.raw) == vector_meta.dbidx.unique().shape[0]
-        assert embedded_dataset.shape[0] == vector_meta.shape[0]
-        all_indices.add_range(0, len(self.raw))
-        self.all_indices = pr.FrozenBitMap(all_indices)
-        
-        #norms = np.linalg.norm(embedded_dataset, axis=1)[:,np.newaxis]
-        # if not np.isclose(norms,0).all():
-        #     print('warning: embeddings are not normalized?', norms.max())
-    
-    def __len__(self):
-        return len(self.raw)
-
-    def query(self, *, topk, mode, model=None, cluster_id=None, 
-        vector=None, exclude=None, return_scores=False):
-        if exclude is None:
-            exclude = pr.BitMap([])        
-        included_dbidx = pr.BitMap(self.all_indices).difference(exclude)
-        vec_meta = self.vector_meta
-        vecs = self.embedded  # = restrict_fine_grained(self.vector_meta, self.embedded, included_dbidx)
-        
-        if len(included_dbidx) == 0:
-            if return_scores:
-                return np.array([]),np.array([])
-            else:
-                return np.array([])
-
-        if len(included_dbidx) <= topk:
-            topk = len(included_dbidx)
-
-        if vector is None and model is None:
-            assert mode == 'random'
-        elif vector is not None:
-            assert mode in ['nearest', 'dot']
-        elif model is not None:
-            assert mode in ['model']
-        else:
-            assert False            
-
-        if mode == 'nearest':
-            scores = sklearn.metrics.pairwise.cosine_similarity(vector, vecs)
-            scores = scores.reshape(-1)
-        elif mode == 'dot':
-            scores = vecs @ vector.reshape(-1)
-        elif mode == 'random':
-            scores = np.random.randn(vecs.shape[0])
-        elif mode == 'model':
-            with torch.no_grad():
-                scores = model.forward(torch.from_numpy(vecs))
-                scores = scores.numpy()[:,1]
-
-        dbscores = (vec_meta
-                        .assign(score=scores)[['dbidx', 'score']]
-                        .groupby('dbidx').score.max() # max pooled...
-                        .sort_values(ascending=False)).reset_index()
-
-
-        included = np.ones(dbscores.shape[0]) # order 0 to nimg
-        included[exclude] = 0.
-
-        included_col = included[dbscores.dbidx.values] # order same as dbscores
-        # dbscores = dbscores.assign(included=included_col)
-        dbscores = dbscores[included_col > 0] # select         
-        scores = dbscores.score.iloc[:topk].values
-        dbidxs = dbscores.dbidx.iloc[:topk].values
-        # dbidxs = np.array(included_dbidx)[maxpos]
-
-        ret = dbidxs
-        assert ret.shape[0] == scores.shape[0]
-        sret = pr.BitMap(ret)
-        assert len(sret) == ret.shape[0]  # no repeats
-        assert ret.shape[0] == topk  # return quantity asked, in theory could be less
-        assert sret.intersection_cardinality(exclude) == 0  # honor exclude request
-
-        if return_scores:
-            return ret, scores
-        else:
-            return ret
-
-import math
 def resize_to_grid(base_size):
     """
     makes a transform that increases size and crops an image and any boxes so that the output meets the following 

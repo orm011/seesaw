@@ -42,7 +42,7 @@ class SessionState:
         self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=10, 
                 minibatch_size=10, learning_rate=0.003, max_examples=225, loss_margin=0.1,
                 tqdm_disabled=True, granularity='multi', positive_vector_type='vec_only', 
-                 num_epochs=2, n_augment=None, min_box_size=10, model_type='cosine', 
+                 num_epochs=2, n_augment=None, min_box_size=10, model_type='multirank2', 
                  solver_opts={'C': 0.1, 'max_examples': 225, 'loss_margin': 0.05})
 
         self.loop = SeesawLoop(ev, params=self.params)
