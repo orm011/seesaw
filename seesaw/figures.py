@@ -214,8 +214,8 @@ def better_same_worse(stats, variant, baseline_variant='plain', metric='ndcg_sco
     else:
         return sbs
 
-def bsw_table(stats, reltol=1.1):
-    bsw = better_same_worse(stats, variant='multiplain_warm_vec_only', reltol=reltol)
+def bsw_table(stats, variant, reltol=1.1):
+    bsw = better_same_worse(stats, variant=variant, reltol=reltol)
     dstot = bsw.sum(axis=1)
     bsw = bsw.assign(total=dstot)
     tot = bsw.sum()
@@ -252,9 +252,9 @@ def remove_leading_zeros(fmtr):
         return fx
     return fun
 
-def comparison_table(tot_res):
+def comparison_table(tot_res, variant):
     baseline = 'plain'
-    sys = 'multiplain_warm_vec_only'
+    sys = variant
     tot_res = tot_res.transpose()
     tot_res = tot_res.assign(ratio=tot_res[sys]/tot_res[baseline])
     total_counts = tot_res['counts'].sum()
@@ -268,10 +268,10 @@ def comparison_table(tot_res):
     print(tot_res.to_latex(float_format=fmtter))
     return tot_res
 
-def ablation_table(tot_res):
+def ablation_table(tot_res, variant):
     baseline = 'plain'
     inter = 'multiplain'
-    sys = 'multiplain_warm_vec_only'
+    sys = variant
     #tot_res = tot_res.loc[]
     tot_res = tot_res.transpose()[[baseline,inter,sys]].rename(mapper={baseline:'semantic embeddding',
                                                  inter:'+ multiscale search',
@@ -299,7 +299,7 @@ def old_benchresults(resultlist):
         ans[tup[0]['dataset']].append(tup)
     return ans
 
-def print_tables(evs2 , resultlist, at_N):
+def print_tables(evs2, variant, resultlist, at_N):
     benchresults = old_benchresults(resultlist)
     stats = process_tups(evs=evs2, keys=evs2.keys(), benchresults=benchresults, at_N=at_N)
     all_vars = stats.groupby(['dataset', 'category', 'variant',]).ndcg_score.mean().unstack(-1)
@@ -310,17 +310,17 @@ def print_tables(evs2 , resultlist, at_N):
     display(per_dataset)
     
     print('by query')
-    bsw_table(stats, reltol=1.1)
+    bsw_table(stats, variant=variant, reltol=1.1)
     
     
     print('breakdown by initial res')
-    sbs = better_same_worse(stats, variant='multiplain_warm_vec_only', summary=False)
+    sbs = better_same_worse(stats, variant=variant, summary=False)
     tot_res = summary_breakdown(sbs)
-    comparison_table(tot_res)
+    comparison_table(tot_res, variant=variant)
 
 
     print('ablation')
-    display(ablation_table(tot_res))
+    display(ablation_table(tot_res, variant=variant))
 
     x = np.geomspace(.02, 1, num=5)
     y = 1/x
@@ -328,7 +328,7 @@ def print_tables(evs2 , resultlist, at_N):
 
     ### plot
 
-    plotdata = sbs[sbs.variant == 'multiplain_warm_vec_only']
+    plotdata = sbs[sbs.variant == variant]
     scatterplot = (ggplot(plotdata)
         + geom_point(aes(x='base', y='ratio', fill='dataset', color='dataset'), alpha=.6, size=1.) 
     #                 shape=plotdata.dataset.map(lambda x : '.' if x in ['lvis','objectnet'] else 'o'), 
@@ -362,3 +362,39 @@ def print_tables(evs2 , resultlist, at_N):
     )
 
     return scatterplot
+
+from tqdm.auto import tqdm
+
+def latency_profile(evs2, results, variant):
+    #v = 'multiplain_warm_vec_fast'
+    #v = 'multiplain_warm_vec_only'
+    v = variant
+    dfs = []
+    for r in tqdm(results):
+        tup = r[0]
+        res = r[1]
+        df = pd.DataFrame.from_records(res['latency_profile'])
+        df = df.assign(dataset=tup['dataset'], variant=tup['variant'], category=tup['category'])
+        dfs.append(df)
+    ldf = pd.concat(dfs, ignore_index=True)
+    gps = ldf.groupby(['dataset', 'category','variant'])[['lookup', 'label', 'refine']].median()
+    meds = gps.reset_index().groupby(['dataset', 'variant']).median().reset_index()
+
+    lat = meds[meds.variant.isin([v])][['dataset','lookup', 'refine']].set_index('dataset')
+    lat = lat.rename(mapper={'lookup':'latency_pyr_lookup', 'refine':'latency_vec_refine'},axis=1)
+    latplain = meds[meds.variant.isin(['plain'])][['dataset','lookup']].set_index('dataset')
+    lat = lat.assign(latency_plain_lookup=latplain['lookup'])
+    lat = lat[['latency_plain_lookup', 'latency_pyr_lookup', 'latency_vec_refine']]
+    
+    dataset_info = []
+    for (k,ev) in evs2.items():
+        c = ev.query_ground_truth.columns.shape[0]
+        ans = {'dataset':k, 'queries':c, 'images':ev.query_ground_truth.shape[0],
+              'vectors':ev.fine_grained_embedding.shape[0]}
+        dataset_info.append(ans)
+        
+    lat2 = pd.concat([lat, pd.DataFrame(dataset_info)[['dataset', 'images', 'vectors']].set_index('dataset')], axis=1)
+    lat2['vecs/im'] = np.round(lat2.vectors/lat2.images)
+    lat2 = lat2.sort_values('vectors')
+    print(lat2.astype('float').to_latex(float_format=remove_leading_zeros('{:.02f}'.format)))
+    return lat2
