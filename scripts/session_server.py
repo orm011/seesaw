@@ -7,10 +7,27 @@ import typing
 import pydantic
 from typing import Optional, List
 from pydantic import BaseModel
+from devtools import debug
 
 import numpy as np
 import pandas as pd
 from seesaw import EvDataset, SeesawLoop, LoopParams, ModelService, GlobalDataManager
+
+
+import starlette
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class CustomHeaderMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        print('request: ', request)
+        print('data: ', request.data)
+        response = await call_next(request)
+        print('response: ', response)
+        return response
+
+# 'middlewares':[Middleware(CustomHeaderMiddleware)]
+
 
 app = FastAPI()
 
@@ -183,7 +200,7 @@ class WebSeesaw:
 
     @app.post('/text', response_model=ClientData)
     def text(self, key : str):
-        self.state.loop.initialize(qstr=key) 
+        self.state.loop.set_vec(qstr=key) 
         return self._step(body=None)
 
 
