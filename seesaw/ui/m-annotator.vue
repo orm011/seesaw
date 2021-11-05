@@ -1,55 +1,29 @@
 <template>
-    <div v-if="imdata != null" class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
-        <img :class="read_only ? 'annotator_image_small':'annotator_image'" :src="imdata.url" ref="image"  @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
+    <div class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
+        <img :class="read_only ? 'annotator_image_small':'annotator_image'" :src="initial_imdata.url" ref="image" 
+                @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
         <canvas class="annotator_canvas" ref="canvas" @keyup.esc="emit('esc')" tabindex='2' @click="canvas_click" 
                 @mouseover="hover(true)" @mouseleave="hover(false)" />
     </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
     eg, the $refs and other vue component object attributes) -->
 </template>
-<style scoped>
-.annotator_div {
-    position:relative;
-    margin:0px;
-    /* width:fit-content;
-    height:fit-content; */
-    display:inline-block
-}
-.annotator_image {
-    /* max-width:100%; */
-    /* max-height:100%; */
-    /* display:inline; */
-    position:relative; top:0px; left:0px;
-    object-fit:none; /* never rescale up */ 
-}
-.annotator_image_small {
-  width: auto !important;
-  height: auto !important;
-  max-height: 200px;
-  /*max-width: 400px; */
-  object-fit: scale-down; /* never rescale up */ 
-}
-
-.annotator_canvas {
-    /* border:0px solid #d3d3d3; */
-    /* max-width:100%;*/
-    /* max-height:100%; */
-    position:absolute; top:0px; left:0px;
-    /* display:;  */
-    /* for now not showing it to try to fix centering issue...*/
-}
-
-</style>
 <script>
 export default { 
   name: "m-annotator.vue", // used by ipyvue?
-  props: ['imdata', 'read_only'],
+  props: ['initial_imdata', 'read_only'],
   data : function() {
         let paper = new window.paper.PaperScope();
         new paper.Tool(); // also implicitly adds tool to paper scope
-        return {height_ratio:null, width_ratio:null, paper:paper }
+        return {height_ratio:null, width_ratio:null, paper:paper , canvas : null}
   },
   created : function (){
+      console.log('created annotator')
+  },
+  mounted : function() {
+      let c = this.$refs.canvas
+      this.canvas = c.getContext('2d');
+      console.log('mounted annotator')
   },
   methods : {
     rescale_box : function(box, height_scale, width_scale) {
@@ -61,15 +35,17 @@ export default {
         let boxes = (paper.project.getItems({className:'Path'})
                           .map(x =>  {let b = x.bounds; return {xmin:b.left, xmax:b.right, ymin:b.top, ymax:b.bottom}})
                           .map(box => this.rescale_box(box, this.height_ratio, this.width_ratio)))
-        this.imdata.boxes = boxes;
+        console.log('saving boxes', )
+        this.$emit('box-save', boxes)
     },
     load_current_box_data : function() {
       // assumes currently image on canvas is the one where we want to display boxes on
       let paper = this.paper;
       // console.log('about to iterate', this);
 
-      if (this.imdata.boxes != null) {
-        for (const boxdict of this.imdata.boxes) {
+      if (this.initial_imdata.boxes != null) {
+          console.log('drawing boxes', this.initial_imdata.boxes)
+        for (const boxdict of this.initial_imdata.boxes) {
             let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
             let paper_style = ['Rectangle', rdict.xmin, rdict.ymin, rdict.xmax - rdict.xmin, rdict.ymax - rdict.ymin];
             let rect = paper.Rectangle.deserialize(paper_style)
@@ -78,6 +54,7 @@ export default {
             r.strokeWidth = 2;
             r.data.state = null;
             r.selected = false;
+            console.log('drew rect ', r)
             }
       }
     },
@@ -98,7 +75,7 @@ export default {
         console.log('(draw)setting up', this)
         let paper = this.paper;
         let img = this.$refs.image; 
-        let cnv = this.$refs.canvas; 
+        let cnv = this.$refs.canvas;
 
         // let scale = Math.min(img.width/img.naturalWidth, img.height/img.naturalHeight);
         // let img_height = Math.round(scale*img.height);
@@ -204,7 +181,7 @@ export default {
           let preselected = paper.project.getSelectedItems();
           if (preselected.length === 0){
               return;
-          } else if (e.key === 't') { // auto save upon deletion
+          } else if (e.key === 'd') { // auto save upon deletion
               preselected.forEach(r => r.remove());
               this.save_current_box_data();
           } else {
@@ -235,3 +212,36 @@ export default {
     }
 }
 </script>
+<style scoped>
+.annotator_div {
+    position:relative;
+    margin:0px;
+    /* width:fit-content;
+    height:fit-content; */
+    display:inline-block
+}
+.annotator_image {
+    /* max-width:100%; */
+    /* max-height:100%; */
+    /* display:inline; */
+    position:relative;
+    object-fit:none; /* never rescale up */ 
+}
+.annotator_image_small {
+  width: auto !important;
+  height: auto !important;
+  max-height: 200px;
+  /*max-width: 400px; */
+  object-fit: scale-down; /* never rescale up */ 
+}
+
+.annotator_canvas {
+    /* border:0px solid #d3d3d3; */
+    /* max-width:100%;*/
+    /* max-height:100%; */
+    position:absolute; top:0px; left:0px;
+    /* display:;  */
+    /* for now not showing it to try to fix centering issue...*/
+}
+
+</style>

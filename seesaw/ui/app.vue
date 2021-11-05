@@ -28,7 +28,7 @@
           </li>
         </ul>
         </div>
-        <div class='row'>
+        <div v-if="refmode" class='row'>
           <label for="reference category">Choose a reference category:</label>
           <select v-model="current_category">
             <option v-for="(cat,idx) in ['', ...reference_categories]" :key="idx" :value="cat">{{cat}}</option>
@@ -39,8 +39,8 @@
     <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
         <div class="row" v-for="(imdata,idx) in gdata" :key="idx">
           <div class="row">
-          <m-image-gallery v-if="imdata.length > 0" :initial_imdata="filter_category(imdata)"
-              v-on:data_update="data_update(idx, $event)" />
+          <m-image-gallery ref="galleries" v-if="imdata.length > 0" :initial_imdata="imdata"
+              v-on:data_update="data_update(idx, $event)" :refmode="refmode" v-on:copy-ref="copy_ref(idx, $event)"/>
           </div>
           <div class="row space"/>
         </div>
@@ -65,7 +65,8 @@ export default {
                 current_dataset:'', 
                 reference_categories:[],
                 current_category:'', 
-                text_query:null
+                text_query:null,
+                refmode : true
               }
             },
     mounted (){
@@ -89,9 +90,25 @@ export default {
         },
         data_update(gdata_idx, ev){
           console.log('data_update')
+          this.gdata[gdata_idx][ev.idx].boxes =  ev.boxes
+          // // console.assert(ev.dbidx == imdata[ev.idx].dbidx);
+          // let panel_data = [...this.gdata[gdata_idx]]
+          // panel_data[ev.idx].boxes = ev.boxes
+          // this.$set(this.gdata, gdata_idx, panel_data)
+        },
+        copy_ref(gdata_idx, panel_idx){
           let imdata = this.gdata[gdata_idx];
-          console.assert(ev.dbidx == imdata[ev.idx].dbidx);
-          imdata[ev.idx].boxes = _.cloneDeep(ev.boxes)
+          let imdict = imdata[panel_idx];
+          console.log('click copyref', gdata_idx, panel_idx);
+          const reflabels = imdict.refboxes;
+
+          if (imdict.boxes == null){
+              imdict.boxes = []
+          }
+
+          for (const obj of reflabels){
+              imdict.boxes.push(obj)  
+          }
         },
         reset(dsname){
           console.log(this);
