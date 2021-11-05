@@ -193,8 +193,6 @@ class LoopState:
     acc_neg : list = field(default_factory=list)
     vec_state : VecState = None
 
-
-
 class SeesawLoop:
     bfq : BoxFeedbackQuery
     params : LoopParams
@@ -207,10 +205,6 @@ class SeesawLoop:
         self.params = params
         self.state = LoopState()
 
-    def initialize(self, qstr : str):
-        """
-        sets up initial state. must be called ahead of everything else
-        """
         ev = self.ev
         p = self.params
         s = self.state
@@ -234,6 +228,11 @@ class SeesawLoop:
         self.hdb = hdb
         self.bfq = bfq
 
+    def set_vec(self, qstr : str):
+        ev = self.ev
+        p = self.params
+        s = self.state
+
         if qstr == 'nolang':
             s.tvec = None
             s.tmode = 'random'
@@ -244,7 +243,7 @@ class SeesawLoop:
             s.tmode = 'dot'
             if p.model_type == 'multirank2':
                 print('using adagrad')
-                s.vec_state = VecState(init_vec, margin=p.loss_margin, opt_class=torch.optim.Adagrad, 
+                s.vec_state = VecState(init_vec, margin=p.loss_margin, opt_class=torch.optim.Adam, 
                 opt_params={'lr':3.3*p.learning_rate})
         
         #res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
@@ -433,7 +432,7 @@ def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qs
 
     total_results = 0
     loop = SeesawLoop(ev, params)
-    loop.initialize(qstr)
+    loop.set_vec(qstr=qstr)
     for i in tqdm(range(n_batches),leave=False, disable=tqdm_disabled):
         idxbatch = loop.next_batch()
         
