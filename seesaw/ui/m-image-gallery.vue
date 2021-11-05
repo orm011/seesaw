@@ -2,10 +2,10 @@
   <div>
     <div class='row'>
     <div class="image-gallery" >
-        <img v-for="(data,index) in imdata" :key="index" :src="data.url" 
-        draggable 
-        @click="onclick(index)"
-        :class="get_class(index)" />
+      <div v-for="(data,index) in imdata" :key="index">
+        <img v-if="data.boxes == null || data.boxes.length === 0" :src="data.url" @click="onclick(index)" :class="get_class(index)" />
+        <m-annotator v-else :imdata=data :read_only="true" v-on:cclick="onclick(index)" />
+      </div>
     </div>
     </div>
     <m-modal v-if="show_modal" ref='modal' v-on:close='close_modal(selection)' tabindex='0' >

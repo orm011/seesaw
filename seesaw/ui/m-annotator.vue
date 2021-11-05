@@ -1,7 +1,8 @@
 <template>
     <div v-if="imdata != null" class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
-        <img  class="annotator_image" :src="imdata.url" ref="image"  @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
-        <canvas class="annotator_canvas" ref="canvas" @keyup.esc="emit('esc')" tabindex='2'/>
+        <img :class="read_only ? 'annotator_image_small':'annotator_image'" :src="imdata.url" ref="image"  @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
+        <canvas class="annotator_canvas" ref="canvas" @keyup.esc="emit('esc')" tabindex='2' @click="canvas_click" 
+                @mouseover="hover(true)" @mouseleave="hover(false)" />
     </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
     eg, the $refs and other vue component object attributes) -->
@@ -21,6 +22,14 @@
     position:relative; top:0px; left:0px;
     object-fit:none; /* never rescale up */ 
 }
+.annotator_image_small {
+  width: auto !important;
+  height: auto !important;
+  max-height: 200px;
+  /*max-width: 400px; */
+  object-fit: scale-down; /* never rescale up */ 
+}
+
 .annotator_canvas {
     /* border:0px solid #d3d3d3; */
     /* max-width:100%;*/
@@ -38,7 +47,7 @@ export default {
   data : function() {
         let paper = new window.paper.PaperScope();
         new paper.Tool(); // also implicitly adds tool to paper scope
-        return {height_ratio:null, width_ratio:null, paper:paper}
+        return {height_ratio:null, width_ratio:null, paper:paper }
   },
   created : function (){
   },
@@ -58,9 +67,10 @@ export default {
       // assumes currently image on canvas is the one where we want to display boxes on
       let paper = this.paper;
       // console.log('about to iterate', this);
+
       if (this.imdata.boxes != null) {
         for (const boxdict of this.imdata.boxes) {
-            let rdict = this.rescale_box(boxdict, 1./this.height_ratio, 1./this.width_ratio);
+            let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
             let paper_style = ['Rectangle', rdict.xmin, rdict.ymin, rdict.xmax - rdict.xmin, rdict.ymax - rdict.ymin];
             let rect = paper.Rectangle.deserialize(paper_style)
             let r = new paper.Path.Rectangle(rect);
@@ -71,7 +81,19 @@ export default {
             }
       }
     },
-
+    hover : function (start) {
+        if (this.read_only) {
+            if (start) {
+                this.$refs.image.style.opacity = .5
+            } else {
+                this.$refs.image.style.opacity = 1.
+            }
+        }
+    },
+    canvas_click : function (e){
+        console.log('canvas click!', e);
+        this.$emit('cclick', e)
+    },
     draw_initial_contents : function() {
         console.log('(draw)setting up', this)
         let paper = this.paper;
@@ -101,8 +123,8 @@ export default {
         //     // console.log('resized! new aspect ratio:', e.width, e.height, e.width/e.height);
         // }
         // raster.locked = true;
-        this.height_ratio =1. //img.height / raster.height;
-        this.width_ratio = 1.//img.width / raster.width;
+        this.height_ratio = img.height / img.naturalHeight
+        this.width_ratio = img.width / img.naturalWidth
         paper.view.draw();
         this.load_current_box_data();
 
@@ -117,8 +139,8 @@ export default {
       let tool = paper.tool;
       let makeRect = (from,to) => {
           let r = new paper.Path.Rectangle(from,to);
-          r.strokeColor = 'red';
-          r.strokeWidth = 1;
+          r.strokeColor = 'green';
+          r.strokeWidth = 2;
           r.data.state = null;
           r.selected = false;
           return r;
