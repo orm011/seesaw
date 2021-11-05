@@ -13,17 +13,15 @@ export default {
   name: "m-annotator.vue", // used by ipyvue?
   props: ['initial_imdata', 'read_only'],
   data : function() {
-        let paper = new window.paper.PaperScope();
-        new paper.Tool(); // also implicitly adds tool to paper scope
-        return {height_ratio:null, width_ratio:null, paper:paper , canvas : null}
+        return {height_ratio:null, width_ratio:null, paper: null }
   },
   created : function (){
       console.log('created annotator')
   },
   mounted : function() {
-      let c = this.$refs.canvas
-      this.canvas = c.getContext('2d');
-      console.log('mounted annotator')
+        this.paper = new window.paper.PaperScope();
+        new paper.Tool(); // also implicitly adds tool to paper scope
+        console.log('mounted annotator')
   },
   methods : {
     rescale_box : function(box, height_scale, width_scale) {
@@ -36,7 +34,12 @@ export default {
                           .map(x =>  {let b = x.bounds; return {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}})
                           .map(box => this.rescale_box(box, this.height_ratio, this.width_ratio)))
         console.log('saving boxes', )
-        this.$emit('box-save', boxes)
+        if (boxes.length == 0){
+            console.log('length 0 reverts to null right now')
+            this.$emit('box-save', null)
+        } else {
+            this.$emit('box-save', boxes)
+        }
     },
     load_current_box_data : function() {
       // assumes currently image on canvas is the one where we want to display boxes on
@@ -77,29 +80,11 @@ export default {
         let img = this.$refs.image; 
         let cnv = this.$refs.canvas;
 
-        // let scale = Math.min(img.width/img.naturalWidth, img.height/img.naturalHeight);
-        // let img_height = Math.round(scale*img.height);
-        // let img_width = Math.round(scale*img.width);
-
         // size of element outside
         cnv.height = img.height;
         cnv.width = img.width;
-        // this.$refs.container.style.width=`${img.width} px`;
-        // this.$refs.container.style.height=`${img.height} px`;
-        // cnv.style.height = img_height + 'px';
-        // cnv.style.width = img_width + 'px';
 
         paper.setup(cnv);
-        // let raster = new paper.Raster(img);
-
-        // Move raster to view center
-        // raster.position = paper.view.center;
-        // raster.size = paper.view.bounds;
-        // raster.fitBounds(paper.view.bounds)
-        // paper.view.onResize = (e) => { // used for responsive resizing. would need to also resize the boxes...
-        //     // console.log('resized! new aspect ratio:', e.width, e.height, e.width/e.height);
-        // }
-        // raster.locked = true;
         this.height_ratio = img.height / img.naturalHeight
         this.width_ratio = img.width / img.naturalWidth
         paper.view.draw();

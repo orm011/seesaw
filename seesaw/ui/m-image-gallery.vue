@@ -11,8 +11,8 @@
     </div>
     <m-modal v-if="selection != null" ref='modal' v-on:close='close_modal(selection)' tabindex='0' >
       <div class='row'>
-        <m-annotator  ref='annotator' :initial_imdata="initial_imdata[selection]" :read_only="false"  tabindex='1'
-            v-on:box-save="box_save(selection, $event)" />
+        <m-annotator  ref='annotator' :initial_imdata="initial_imdata[selection]" :key="index*10000 + (initial_imdata[selection].boxes == null ? 0 :
+         initial_imdata[selection].boxes.length)"  :read_only="false"  tabindex='1' v-on:box-save="box_save(selection, $event)" />
       </div>
         <!-- <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" 
           data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" 
@@ -21,7 +21,7 @@
         </button> -->
       <div class='row'>
         <button v-if="refmode" class="btn btn-dark bton-block" @click="$emit('copy-ref', selection)"> 
-            Autofill
+            Autofill ({{initial_imdata[selection].refboxes.length}} boxes)
         </button>
         <!-- <button v-if="refmode" class="btn btn-dark bton-block" @click="copyref(selection)"> 
             Mark not-relevant

@@ -29,7 +29,7 @@
         </ul>
         </div>
         <div v-if="refmode" class='row'>
-          <label for="reference category">Choose a reference category:</label>
+          <label for="reference category">(DEBUG) pick ground truth category:</label>
           <select v-model="current_category">
             <option v-for="(cat,idx) in ['', ...reference_categories]" :key="idx" :value="cat">{{cat}}</option>
           </select>
@@ -39,7 +39,7 @@
     <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
         <div class="row" v-for="(imdata,idx) in gdata" :key="idx">
           <div class="row">
-          <m-image-gallery ref="galleries" v-if="imdata.length > 0" :initial_imdata="imdata"
+          <m-image-gallery ref="galleries" v-if="imdata.length > 0" :initial_imdata="filter_boxes(imdata, current_category)"
               v-on:data_update="data_update(idx, $event)" :refmode="refmode" v-on:copy-ref="copy_ref(idx, $event)"/>
           </div>
           <div class="row space"/>
@@ -79,36 +79,24 @@ export default {
             )
     },
     methods : {
-        filter_category(imdata){
-          imdata = _.cloneDeep(imdata);
+        filter_boxes(imdata, category){
           let out = []
           for (const ent of imdata){
-            ent.refboxes = ent.refboxes.filter((b) => b.category == this.current_category);
-            out.push(ent);
+            let outent = {...ent};
+            outent.refboxes = ent.refboxes.filter((b) => b.category === category || category === '');
+            out.push(outent);
           }
           return out
         },
         data_update(gdata_idx, ev){
           console.log('data_update')
           this.gdata[gdata_idx][ev.idx].boxes =  ev.boxes
-          // // console.assert(ev.dbidx == imdata[ev.idx].dbidx);
-          // let panel_data = [...this.gdata[gdata_idx]]
-          // panel_data[ev.idx].boxes = ev.boxes
-          // this.$set(this.gdata, gdata_idx, panel_data)
         },
         copy_ref(gdata_idx, panel_idx){
-          let imdata = this.gdata[gdata_idx];
-          let imdict = imdata[panel_idx];
-          console.log('click copyref', gdata_idx, panel_idx);
-          const reflabels = imdict.refboxes;
-
-          if (imdict.boxes == null){
-              imdict.boxes = []
-          }
-
-          for (const obj of reflabels){
-              imdict.boxes.push(obj)  
-          }
+          let refboxes = this.gdata[gdata_idx][panel_idx].refboxes;
+          let frefboxes = refboxes.filter((b) => b.category === this.current_category || this.current_category === '')
+          let newboxes = frefboxes.length == 0 ? null : frefboxes
+          this.gdata[gdata_idx][panel_idx].boxes = newboxes
         },
         reset(dsname){
           console.log(this);
