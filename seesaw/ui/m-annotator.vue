@@ -27,13 +27,13 @@ export default {
   },
   methods : {
     rescale_box : function(box, height_scale, width_scale) {
-          let {xmin,xmax,ymin,ymax} = box;
-          return {xmin:xmin*width_scale, xmax:xmax*width_scale, ymin:ymin*height_scale, ymax:ymax*height_scale};
+          let {x1,x2,y1,y2} = box;
+          return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale};
     },
     save_current_box_data : function() {
         let paper = this.paper
         let boxes = (paper.project.getItems({className:'Path'})
-                          .map(x =>  {let b = x.bounds; return {xmin:b.left, xmax:b.right, ymin:b.top, ymax:b.bottom}})
+                          .map(x =>  {let b = x.bounds; return {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}})
                           .map(box => this.rescale_box(box, this.height_ratio, this.width_ratio)))
         console.log('saving boxes', )
         this.$emit('box-save', boxes)
@@ -47,7 +47,7 @@ export default {
           console.log('drawing boxes', this.initial_imdata.boxes)
         for (const boxdict of this.initial_imdata.boxes) {
             let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
-            let paper_style = ['Rectangle', rdict.xmin, rdict.ymin, rdict.xmax - rdict.xmin, rdict.ymax - rdict.ymin];
+            let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
             let rect = paper.Rectangle.deserialize(paper_style)
             let r = new paper.Path.Rectangle(rect);
             r.strokeColor = 'green';

@@ -88,15 +88,13 @@ class SessionState:
         for (url, dbidx) in zip(urls, idxbatch):
             dbidx = int(dbidx)
             rows = bx[bx.dbidx == dbidx]
-            rows = rows.rename(mapper={'x1': 'xmin', 'x2': 'xmax', 'y1': 'ymin', 'y2': 'ymax'}, axis=1)
-            rows = rows[['xmin', 'xmax', 'ymin', 'ymax', 'category']]
+            rows = rows[['x1', 'x2', 'y1', 'y2', 'category']]
             refboxes = rows.to_dict(orient='records')
 
             boxes = self.ldata_db.get(dbidx,None) # None means no annotations yet (undef), empty means no boxes.
             if boxes is not None and len(boxes) > 0: # serialize boxes to format
                 rows = pd.DataFrame.from_records(boxes)
-                rows = rows.rename(mapper={'x1': 'xmin', 'x2': 'xmax', 'y1': 'ymin', 'y2': 'ymax'}, axis=1)
-                rows = rows[['xmin', 'xmax', 'ymin', 'ymax']]
+                rows = rows[['x1', 'x2', 'y1', 'y2']]
                 boxes = rows.to_dict(orient='records')
 
             elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, refboxes=refboxes)
@@ -104,10 +102,10 @@ class SessionState:
         return reslabs
 
 class Box(BaseModel):
-    xmin : float
-    ymin : float
-    xmax : float
-    ymax : float
+    x1 : float
+    y1 : float
+    x2 : float
+    y2 : float
     category : Optional[str] # used for sending ground truth data only, so we can filter by category on the client.
 
 class Imdata(BaseModel):
@@ -175,9 +173,8 @@ class WebSeesaw:
             for elt in body.imdata:
                 if elt.boxes is not None:
                     df = pd.DataFrame([b.dict() for b in elt.boxes], 
-                                        columns=['xmin', 'xmax', 'ymin', 'ymax']).astype('float32') # cols in case it is empty
+                                        columns=['x1', 'x2', 'y1', 'y2']).astype('float32') # cols in case it is empty
                     df = df.assign(dbidx=elt.dbidx)
-                    df = df.rename(mapper={'xmin':'x1', 'xmax':'x2', 'ymin':'y1', 'ymax':'y2'},axis=1)
                     box_dict[elt.dbidx] = df
                     idxbatch.append(elt.dbidx)
 
