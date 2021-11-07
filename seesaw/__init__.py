@@ -16,6 +16,7 @@ importlib.reload(figures)
 importlib.reload(pairwise_rank_loss)
 importlib.reload(cross_modal_db)
 
+from .figures import *
 from .pairwise_rank_loss import VecState
 from .vloop_dataset_loaders import *
 from .vls_benchmark_tools import *

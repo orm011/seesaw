@@ -39,6 +39,28 @@ def make_labeler(fmt_func):
         return list(map(fmt_func, arrlike))
     return fun
 
+def ndcg_score_fn(hit_indices, total_frames_seen, at_k_frames, total_positives):
+    assert (hit_indices < total_frames_seen).all()
+    assert total_positives > 0, 'undefined if no positives'
+    assert at_k_frames > 0, 'undefined if no frames'
+    if at_k_frames > total_frames_seen:
+        assert hit_indices.shape[0] == total_positives, 'no data available for k larger than total_frames_seen'
+        at_k_frames = total_frames_seen # everything else would be zero anyway, so can compute
+        
+    assert at_k_frames <= total_frames_seen
+    best_hits = np.zeros(at_k_frames)
+    best_hits[:total_positives] = 1.
+
+    hits = np.zeros(at_k_frames)
+    rel_indices = hit_indices[hit_indices < at_k_frames]
+    hits[rel_indices] = 1.
+    
+    wi = np.arange(at_k_frames)
+    ws = 1./np.log2(wi+2)
+    # following https://github.com/scikit-learn/scikit-learn/blob/0d378913b/sklearn/metrics/_ranking.py#L1239
+    top = hits @ ws
+    best = best_hits @ ws
+    return top/best
 
 def ndcg_rank_score(ytrue, ordered_idxs):
     '''
@@ -115,71 +137,48 @@ def test_score_rare():
 
 # test_score_sanity()
 # test_score_rare()
-
-
-
-def compute_metrics(results, indices, gt):
-    hits = results
-    ndcg_score = ndcg_rank_score(gt.values, indices)
-    ndatabase=gt.shape[0]
-    ntotal=gt.values.sum()
+def compute_metrics(*, hit_indices, total_seen, total_positives, ndatabase):
+    ndcg_score = ndcg_score_fn(hit_indices, total_seen, total_positives=total_positives, at_k_frames=total_seen)
+    ntotal=total_positives
     
-    hpos= np.where(hits > 0)[0] # > 0 bc. nan.
+    hpos = hit_indices
     if hpos.shape[0] > 0:
-        nfirst = hpos.min() + 1
+        nfirst = hpos[0] + 1
         rr = 1./nfirst
     else:
         nfirst = np.inf
         rr = 1/nfirst
         
-    nfound = (hits > 0).cumsum()
-    nframes = np.arange(hits.shape[0]) + 1
+    nfound = hpos.shape[0]
+    nframes = total_seen
     precision = nfound/nframes
     recall = nfound/ntotal
-    total_prec = (precision*hits).cumsum() # see Evaluation of ranked retrieval results page 158
-    average_precision = total_prec/ntotal
     
-    return dict(ndcg_score=ndcg_score, ntotal=ntotal, nfound=nfound[-1], 
-                ndatabase=ndatabase, abundance=ntotal/ndatabase, nframes=hits.shape[0],
-                nfirst = nfirst, reciprocal_rank=rr,
-               precision=precision[-1], recall=recall[-1], average_precision=average_precision[-1])
+    return dict(ntotal=ntotal, nfound=nfound, 
+                ndatabase=ndatabase, abundance=ntotal/ndatabase,
+                nframes=nframes,
+                nfirst = nfirst, reciprocal_rank=rr)
 
-
-def process_tups(evs, benchresults, keys, at_N):
+def process_tups(results):
     tups = []
-    ## lvis: qgt has 0,1 and nan. 0 are confirmed negative. 1 are confirmed positive.
-    for k in keys:#['lvis','dota','objectnet', 'coco', 'bdd' ]:#,'bdd','ava', 'coco']:
-        val = benchresults[k]
-        ev = evs[k]
-    #     qgt = benchgt[k]
-        for tup,exp in val:
-            if exp is None:
-                continue
-            hits = np.concatenate(exp['results'])
-            indices = np.concatenate(exp['indices'])
-            index_set = pr.BitMap(indices)
-            assert len(index_set) == indices.shape[0], 'check no repeated indices'
-            #ranks = np.concatenate(exp['ranks'])
-            #non_nan = ~np.isnan(ranks)
-            gtfull = ev.query_ground_truth[tup['category']]
+    profs = []
+    for i,(params, res) in enumerate(results):
+        mets = res['metrics'].copy()
+        mets['dataset'] = params['dataset']
+        mets['variant'] = params['variant']
+        mets['category'] = params['category']
+        mets['qstr'] = params['qstr']
+        mets['dataset_variant'] = params['dataset_variant']
+        mets['run_id'] = i
+        tups.append(mets)
 
-            isna = gtfull.isna()
-            if isna.any():
-                gt = gtfull[~isna]
-                idx_d = dict(zip(gt.index,np.arange(gt.shape[0]).astype('int')))
-                idx_map = lambda x : idx_d[x]
-            else:
-                gt = gtfull
-                idx_map = lambda x : x
-
-            local_idx = np.array([idx_map(idx) for idx in indices])
-            metrics = compute_metrics(hits[:at_N], local_idx[:at_N], gt)
-            output_tup = {**tup, **metrics}
-            #output_tup['unique_ranks'] = np.unique(ranks[non_nan]).shape[0]
-            output_tup['dataset'] = k
-            tups.append(output_tup)
-            
-    return pd.DataFrame(tups)
+        df = res['latency_profile']
+        df = df.assign(dataset=params['dataset'], variant=params['variant'], category=params['category'],run_id=i)
+        profs.append(df)
+ 
+    accuracy_df = pd.DataFrame.from_records(tups)
+    latency_df = pd.concat(profs, ignore_index=True)
+    return accuracy_df, latency_df
 
 def side_by_side_comparison(stats, baseline_variant, metric):
     v1 = stats
@@ -299,9 +298,9 @@ def old_benchresults(resultlist):
         ans[tup[0]['dataset']].append(tup)
     return ans
 
-def print_tables(evs2, variant, resultlist, at_N):
-    benchresults = old_benchresults(resultlist)
-    stats = process_tups(evs=evs2, keys=evs2.keys(), benchresults=benchresults, at_N=at_N)
+def print_tables(stats, variant):
+    # benchresults = old_benchresults(resultlist)
+    # stats = process_tups(evs=evs2, keys=evs2.keys(), benchresults=benchresults, at_N=at_N)
     all_vars = stats.groupby(['dataset', 'category', 'variant',]).ndcg_score.mean().unstack(-1)
     means = all_vars.groupby('dataset').mean()
     counts = all_vars.groupby('dataset').size().rename('num_queries')
@@ -365,18 +364,10 @@ def print_tables(evs2, variant, resultlist, at_N):
 
 from tqdm.auto import tqdm
 
-def latency_profile(evs2, results, variant):
+def latency_table(ldf, variant, evs2):
     #v = 'multiplain_warm_vec_fast'
     #v = 'multiplain_warm_vec_only'
     v = variant
-    dfs = []
-    for r in tqdm(results):
-        tup = r[0]
-        res = r[1]
-        df = pd.DataFrame.from_records(res['latency_profile'])
-        df = df.assign(dataset=tup['dataset'], variant=tup['variant'], category=tup['category'])
-        dfs.append(df)
-    ldf = pd.concat(dfs, ignore_index=True)
     gps = ldf.groupby(['dataset', 'category','variant'])[['lookup', 'label', 'refine']].median()
     meds = gps.reset_index().groupby(['dataset', 'variant']).median().reset_index()
 

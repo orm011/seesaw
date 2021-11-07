@@ -14,8 +14,10 @@ import sklearn.metrics
 import math
 from .util import *
 from .pairwise_rank_loss import VecState
-
+import pyroaring as pr
 import importlib
+
+from .figures import ndcg_score_fn
 
 # ignore this comment
 
@@ -242,9 +244,8 @@ class SeesawLoop:
             s.tvec = init_vec
             s.tmode = 'dot'
             if p.model_type == 'multirank2':
-                print('using adagrad')
-                s.vec_state = VecState(init_vec, margin=p.loss_margin, opt_class=torch.optim.Adam, 
-                opt_params={'lr':3.3*p.learning_rate})
+                s.vec_state = VecState(init_vec, margin=p.loss_margin, opt_class=torch.optim.SGD, 
+                opt_params={'lr':p.learning_rate})
         
         #res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
 
@@ -378,7 +379,21 @@ class SeesawLoop:
                     elif p.model_type in ['multirank2']:
                         npairs = yt.sum() * (1-yt).sum()
                         max_iters = math.ceil(min(npairs, p.max_examples)//p.minibatch_size) * p.num_epochs
-                        for _ in range(max_iters):
+                        print('max iters this round would have been', max_iters)
+                        #print(s.vec_state.)
+
+                        # vecs * niters = number of vector seen.
+                        # n vec seen <= 10000
+                        # niters <= 10000/vecs
+                        max_vec_seen = 10000
+                        n_iters = math.ceil(max_vec_seen/Xt.shape[0])
+                        n_steps = np.clip(n_iters, 20, 200)
+
+                        # print(f'steps for this iteration {n_steps}. num vecs: {Xt.shape[0]} ')
+                        # want iters * vecs to be const..
+                        # eg. dota. 1000*100*30
+
+                        for _ in range(n_steps):
                             loss = s.vec_state.update(Xt, yt)
                             if loss == 0: # gradient is 0 when loss is 0.
                                 print('loss is 0, breaking early')
@@ -397,6 +412,7 @@ class SeesawLoop:
 
             lp['refine'] = time.time() - start_refine
 
+from .figures import compute_metrics
 
 def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qstr,
                 interactive, warm_start, batch_size, minibatch_size, 
@@ -409,7 +425,6 @@ def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qs
     args, _, _, values = inspect.getargvalues(frame)
     params = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'category', 'qstr', 'n_batches']} 
     rtup = {**{'category':category, 'qstr':qstr}, **params, **kwargs}       
-    print('benchmark loop', rtup)
 
     catgt = ev0.query_ground_truth[category]
     class_idxs = catgt[~catgt.isna()].index.values
@@ -419,9 +434,14 @@ def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qs
 
     ev, class_idxs = get_class_ev(ev0, category, boxes=True)
     ds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
-    gt = ev.query_ground_truth[category].values
+    gt0 = ev.query_ground_truth[category]
+    gt = gt0.values
 
+    rtup['ntotal'] = gt.sum()
+    rtup['nimages'] = gt.shape[0]
+    rtup['nvecs'] = ev.fine_grained_meta.shape[0]
 
+    print('benchmark loop', rtup)
     params = LoopParams(**params)
 
     max_results = gt.sum()
@@ -433,13 +453,23 @@ def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qs
     total_results = 0
     loop = SeesawLoop(ev, params)
     loop.set_vec(qstr=qstr)
+    start_time = time.time()
+    images_seen = pr.BitMap()
+
     for i in tqdm(range(n_batches),leave=False, disable=tqdm_disabled):
+        print(f'iter {i}')
+        if i >= 1:
+            curr_time = time.time()
+            print(f'previous iteration took {curr_time - start_time}s')
+            start_time = time.time()
+
         idxbatch = loop.next_batch()
         
         # ran out of batches
         if idxbatch.shape[0] == 0:
             break
 
+        #images_seen.update(idxbatch)
         acc_indices.append(idxbatch)
         acc_results.append(gt[idxbatch])
         total_results += gt[idxbatch].sum()
@@ -462,12 +492,23 @@ def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qs
 
         loop.refine(idxbatch=idxbatch, box_dict=box_dict)
 
-    res = {}
-    res['indices'] = [class_idxs[r].copy() for r in acc_indices]
-    res['results'] = [acc.copy() for acc in acc_results]
-    res['latency_profile'] = loop.state.latency_profile
-    return (rtup, res)
 
+    res = {}
+    hits = np.concatenate(acc_results)
+    indices = np.concatenate(acc_indices)
+
+    assert hits.shape[0] == indices.shape[0]
+    index_set = pr.BitMap(indices)
+    assert len(index_set) == indices.shape[0], 'check no repeated indices'
+    res['hits'] = np.where(hits)[0]
+    res['total_seen'] = indices.shape[0]
+    res['latency_profile'] = pd.DataFrame.from_records(loop.state.latency_profile)
+
+    metrics = compute_metrics(hit_indices=res['hits'], total_seen=indices.shape[0],
+                                total_positives=gt.sum().astype('int'), ndatabase=gt.shape[0])
+
+    res['metrics'] = metrics
+    return (rtup, res)
 
 def run_on_actor(br, tup):
     return br.run_loop.remote(tup)

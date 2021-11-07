@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,6 +15,7 @@ import numpy as np
 
 import os
 import pytorch_lightning as pl
+from .pairwise_rank_loss import compute_inversions
 
 
 class CustomInterrupt(pl.callbacks.Callback):
@@ -328,23 +328,7 @@ def adjust_vec(vec, Xt, yt, learning_rate, loss_margin, max_examples, minibatch_
     newvec = mod.vec.detach().numpy().reshape(1,-1)
     return newvec 
 
-def _positive_inversions(labs):
-    return np.cumsum(~labs)*labs
 
-def _negative_inversions(labs):
-    labs = ~labs[::-1]
-    return _positive_inversions(labs)[::-1]
-
-def compute_inversions(labs, scores):
-    assert labs.shape == scores.shape
-    assert len(labs.shape) == 1
-    labs = labs.astype('bool')
-    scores = scores.copy()
-    descending_order = np.argsort(-scores)
-    labs = labs[descending_order]
-    total_invs = _positive_inversions(labs) + _negative_inversions(labs)
-    inv_order = np.argsort(descending_order)
-    return total_invs[inv_order]
 
 
 def max_inversions_given_max_tups(labs, inversions, max_tups):
