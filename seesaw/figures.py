@@ -137,11 +137,11 @@ def test_score_rare():
 
 # test_score_sanity()
 # test_score_rare()
-def compute_metrics(*, hit_indices, total_seen, total_positives, ndatabase):
-    ndcg_score = ndcg_score_fn(hit_indices, total_seen, total_positives=total_positives, at_k_frames=total_seen)
+def compute_metrics(*, hit_indices, total_seen, total_positives, ndatabase, at_N):
+    ndcg_score = ndcg_score_fn(hit_indices, total_seen, total_positives=total_positives, at_k_frames=at_N)
     ntotal=total_positives
     
-    hpos = hit_indices
+    hpos = hit_indices[hit_indices < at_N]
     if hpos.shape[0] > 0:
         nfirst = hpos[0] + 1
         rr = 1./nfirst
@@ -150,20 +150,23 @@ def compute_metrics(*, hit_indices, total_seen, total_positives, ndatabase):
         rr = 1/nfirst
         
     nfound = hpos.shape[0]
-    nframes = total_seen
+    nframes = at_N
     precision = nfound/nframes
     recall = nfound/ntotal
     
     return dict(ntotal=ntotal, nfound=nfound, 
+                ndcg_score=ndcg_score,
                 ndatabase=ndatabase, abundance=ntotal/ndatabase,
                 nframes=nframes,
                 nfirst = nfirst, reciprocal_rank=rr)
 
-def process_tups(results):
+def process_tups(results, at_N):
     tups = []
     profs = []
-    for i,(params, res) in enumerate(results):
-        mets = res['metrics'].copy()
+    for i,(params, res) in tqdm(enumerate(results),total=len(results)):
+        mets = compute_metrics(hit_indices=res['hits'], total_seen=int(res['total_seen']),
+                 total_positives=int(params['ntotal']), ndatabase=params['nimages'], at_N=at_N)
+        mets['at_N'] = at_N
         mets['dataset'] = params['dataset']
         mets['variant'] = params['variant']
         mets['category'] = params['category']

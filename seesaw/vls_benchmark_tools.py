@@ -185,6 +185,7 @@ class LoopParams:
     model_type : int = 'logistic'
     solver_opts : dict = None
 
+
 @dataclass
 class LoopState:
     tvec : np.ndarray = None
@@ -417,13 +418,14 @@ from .figures import compute_metrics
 def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qstr,
                 interactive, warm_start, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
+              max_feedback=None,
                granularity:str, positive_vector_type, n_augment,min_box_size=10,
                model_type='logistic', solver_opts={}, **kwargs):     
     assert positive_vector_type in ['image_only', 'image_and_vec', 'vec_only', None]
     ev0 = ev
     frame = inspect.currentframe()
     args, _, _, values = inspect.getargvalues(frame)
-    params = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'category', 'qstr', 'n_batches']} 
+    params = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'category', 'qstr', 'n_batches', 'max_feedback']} 
     rtup = {**{'category':category, 'qstr':qstr}, **params, **kwargs}       
 
     catgt = ev0.query_ground_truth[category]
@@ -437,6 +439,7 @@ def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qs
     gt0 = ev.query_ground_truth[category]
     gt = gt0.values
 
+    rtup['nbatches'] = n_batches
     rtup['ntotal'] = gt.sum()
     rtup['nimages'] = gt.shape[0]
     rtup['nvecs'] = ev.fine_grained_meta.shape[0]
@@ -490,8 +493,8 @@ def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qs
         if (gt2 != gt[idxbatch]).all():
             print('Warning: gt data and box data seem to disagree. ')
 
-        loop.refine(idxbatch=idxbatch, box_dict=box_dict)
-
+        if max_feedback is None or (i+1)*batch_size <= max_feedback:
+            loop.refine(idxbatch=idxbatch, box_dict=box_dict)
 
     res = {}
     hits = np.concatenate(acc_results)
@@ -504,10 +507,6 @@ def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qs
     res['total_seen'] = indices.shape[0]
     res['latency_profile'] = pd.DataFrame.from_records(loop.state.latency_profile)
 
-    metrics = compute_metrics(hit_indices=res['hits'], total_seen=indices.shape[0],
-                                total_positives=gt.sum().astype('int'), ndatabase=gt.shape[0])
-
-    res['metrics'] = metrics
     return (rtup, res)
 
 def run_on_actor(br, tup):

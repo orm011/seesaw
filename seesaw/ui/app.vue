@@ -15,10 +15,28 @@
   <div class="container-fluid">
     <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
       <div class="position-sticky pt-3">
-        <!-- <div class='row'>
-          <button class="btn btn-dark btn-block" @click="reset()"> Reset </button>
-        </div> -->
         <div class='row'>
+          <div class="col">
+          <div class='row'>
+          <label>Current Database:</label>
+          </div>
+          <div class='row'>
+          <select v-model="current_dataset" v-on:change="reset(current_dataset)">
+            <option v-for="(dsname,idx) in datasets" :key="idx" :value="dsname">{{dsname}}</option>
+          </select>
+          </div>
+          </div>
+        </div>
+        <div class='row'>
+          <span>Total images seen: {{total_images()}}</span>
+        </div>
+        <div class='row'>
+          <span>Total results found: {{total_annotations()}}</span>
+        </div>
+        <div class='row'>
+          <button class="btn btn-dark btn-block" @click="save()"> Save </button>
+        </div>
+        <!-- <div class='row'>
         <ul class="nav flex-column">
           <li v-for="(dataset_name,idx) in datasets" :key="idx" class="nav-item">
             <a  :class="`nav-link ${(dataset_name === current_dataset) ? 'active' : ''}`" aria-current="page" href="#" 
@@ -27,7 +45,7 @@
             </a>
           </li>
         </ul>
-        </div>
+        </div> -->
         <div v-if="refmode" class='row'>
           <label for="reference category">(DEBUG) pick ground truth category:</label>
           <select v-model="current_category">
@@ -38,6 +56,9 @@
     </nav>
     <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
         <div class="row" v-for="(imdata,idx) in gdata" :key="idx">
+          <div v-if="timing.length > 0" class="row">
+            <span>Search refinement took {{timing[idx].toFixed(2)}} seconds</span>
+          </div>
           <div class="row">
           <m-image-gallery ref="galleries" v-if="imdata.length > 0" :initial_imdata="filter_boxes(imdata, current_category)"
               v-on:data_update="data_update(idx, $event)" :refmode="refmode" v-on:copy-ref="copy_ref(idx, $event)"/>
@@ -60,13 +81,14 @@ export default {
     props: {},
     data () { return {  
                 gdata:[],  // list of lists of {'url': str, 'dbidx': int, 'boxes':null|List, 'refboxes':null|List}
+                timing:[],
                 selection: null, 
-                datasets:[], 
+                datasets:[''], 
                 current_dataset:'', 
                 reference_categories:[],
                 current_category:'', 
                 text_query:null,
-                refmode : true
+                refmode : false,
               }
             },
     mounted (){
@@ -79,6 +101,23 @@ export default {
             )
     },
     methods : {
+        total_images() {
+            return this.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
+        },
+        total_annotations(){
+            let annot_per_list = function(l){
+              let total = 0;
+              for (const elt of l){
+                if (elt.boxes == null){
+                  continue;
+                } else {
+                  total += elt.boxes.length;
+                }
+              }
+              return total;
+            };
+            return this.gdata.map(annot_per_list).reduce((a,b)=>a+b, 0)
+        },
         filter_boxes(imdata, category){
           let out = []
           for (const ent of imdata){
@@ -126,19 +165,28 @@ export default {
                 body: JSON.stringify({})}
                 )
             .then(response => response.json())
-            .then(data => (this.gdata = data.gdata, this.selection = null))
+            .then(data => (this.timing.push(data.time), this.gdata = data.client_data.gdata, this.selection = null))
         },
         next(){
           console.log(' this' , this);
-          let body = { imdata : _.last(this.gdata) };
+          let body = { client_data : this.$data };
 
             fetch(`/api/next`, {method:'POST',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify(body) // body data type must match "Content-Type" header
                             })
             .then(response => response.json())
-            .then(data => (this.gdata = data.gdata, this.selection = null))
+            .then(data => (this.timing.push(data.time), this.gdata = data.client_data.gdata, this.selection = null))
         },
+        save(){
+          let body = { client_data : this.$data};
+          fetch(`/api/save`, {method:'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(body) // body data type must match "Content-Type" header
+                            })
+            .then(response => response.json())
+            .then(data => (this.gdata = data.gdata, this.selection = null))
+        }
     }
 }
 </script>
