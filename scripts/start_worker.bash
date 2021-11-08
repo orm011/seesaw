@@ -6,6 +6,10 @@ set -x
 HEAD_ADDRESS=$1
 OTHER_FLAGS=$2 # pass --block if needed
 
+## much faster to use local
+echo 'copying vector db to tmp...'
+LLcopy2tmp /home/gridsan/omoll/objectnet_vectors.annoy
+
 if [[ $HEAD_ADDRESS == "--head" ]];
 then
     ray start --head --temp-dir=$TMPNAME $OTHER_FLAGS

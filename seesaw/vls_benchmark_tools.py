@@ -16,6 +16,7 @@ from .util import *
 from .pairwise_rank_loss import VecState
 import pyroaring as pr
 import importlib
+from .dataset_manager import VectorIndex
 
 from .figures import ndcg_score_fn
 
@@ -528,6 +529,12 @@ class BenchRunner(object):
             else: # local
                 revs[k] = evref
         self.evs = revs
+        vector_path = f'{os.environ["TMPDIR"]}/{"objectnet"}_vectors.annoy'
+        if os.path.exists(vector_path):
+            print('using vector store directly instead of remotely')
+            vi = VectorIndex(load_path=vector_path, copy_to_tmpdir=False, prefault=True)
+            self.evs['objectnet'].vec_index = vi # use vector store directly instead
+
         vls_init_logger()
         print('loaded all evs...')
 

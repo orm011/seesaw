@@ -390,5 +390,6 @@ def latency_table(ldf, variant, evs2):
     lat2 = pd.concat([lat, pd.DataFrame(dataset_info)[['dataset', 'images', 'vectors']].set_index('dataset')], axis=1)
     lat2['vecs/im'] = np.round(lat2.vectors/lat2.images)
     lat2 = lat2.sort_values('vectors')
+    lat2 = lat2[['latency_plain_lookup', 'images', 'latency_pyr_lookup', 'vectors', 'latency_vec_refine', 'vecs/im']]
     print(lat2.astype('float').to_latex(float_format=remove_leading_zeros('{:.02f}'.format)))
     return lat2
