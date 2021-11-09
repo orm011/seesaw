@@ -410,6 +410,7 @@ class SeesawDatasetManager:
     
     def load_evdataset(self, *, force_recompute=False, load_coarse=True, load_ground_truth=True) -> EvDataset:
         cached_meta_path= f'{self.dataset_root}/meta/vectors.sorted.cached'
+        coarse_meta_path= f'{self.dataset_root}/meta/vectors.coarse.cached'
 
         if not os.path.exists(cached_meta_path) or force_recompute:
             if os.path.exists(cached_meta_path):
@@ -442,10 +443,19 @@ class SeesawDatasetManager:
         fine_grained_embedding = df['vectors'].values.to_numpy()
 
         if load_coarse:
-            print('computing coarse embedding...')
-            coarse_emb = infer_coarse_embedding(df)
-            assert coarse_emb.dbidx.is_monotonic_increasing
-            embedded_dataset = coarse_emb['vectors'].values.to_numpy()
+            if not os.path.exists(coarse_meta_path) or force_recompute:
+                if os.path.exists(coarse_meta_path):
+                    shutil.rmtree(coarse_meta_path)
+                print('computing coarse embedding...')
+                coarse_emb = infer_coarse_embedding(df)
+                assert coarse_emb.dbidx.is_monotonic_increasing
+                coarse_emb.to_parquet(coarse_meta_path)
+            else:
+                print('using cached version...')
+
+            coarse_df = pd.read_parquet(coarse_meta_path)
+            assert coarse_df.dbidx.is_monotonic_increasing, 'sanity check'
+            embedded_dataset = coarse_df['vectors'].values.to_numpy()
             assert embedded_dataset.shape[0] == self.paths.shape[0]
         else:
             embedded_dataset = None
@@ -738,12 +748,12 @@ class IndexWrapper:
 def load_ev(*, gdm, dsname, xclip, load_ground_truth=True, load_coarse=True):
     ds = gdm.get_dataset(dsname)  
     evref = ray.remote(lambda : ds.load_evdataset(load_ground_truth=load_ground_truth, 
-                load_coarse=load_coarse)).options(num_cpus=48).remote()
+                load_coarse=load_coarse)).options(num_cpus=16).remote()
 
-    mem_needed = os.stat(ds.index_path()).st_size
-    vi = (RemoteVectorIndex.options(num_cpus=8, memory=mem_needed).remote(load_path=ds.index_path(), copy_to_tmpdir=True, prefault=True))
-    readyref = vi.ready.remote()
-    (ev, _) = ray.get([evref, readyref])
+    # mem_needed = os.stat(ds.index_path()).st_size
+    # vi = (RemoteVectorIndex.options(num_cpus=8, memory=mem_needed).remote(load_path=ds.index_path(), copy_to_tmpdir=True, prefault=True))
+    # readyref = vi.ready.remote()
+    ev = ray.get(evref)
     ev.embedding = xclip
-    ev.vec_index = IndexWrapper(vi)
+    ev.vec_index = ds.index_path()
     return ev

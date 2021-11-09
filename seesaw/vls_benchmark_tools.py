@@ -516,6 +516,7 @@ def run_on_actor(br, tup):
 from .progress_bar import tqdm_map
 
 #from .dataset_manager import RemoteVectorIndex
+import os
 
 class BenchRunner(object):
     def __init__(self, evs):
@@ -529,11 +530,18 @@ class BenchRunner(object):
             else: # local
                 revs[k] = evref
         self.evs = revs
-        vector_path = f'{os.environ["TMPDIR"]}/{"objectnet"}_vectors.annoy'
-        if os.path.exists(vector_path):
-            print('using vector store directly instead of remotely')
+
+        vecdir = os.environ.get("VECTORDIR", None)
+        assert vecdir is not None
+        for k,ev in evs.items():
+            if k=='lvis':
+                vector_path = f'{vecdir}/coco.annoy'
+            else:
+                vector_path = f'{vecdir}/{k}.annoy'
+
+            assert os.path.exists(vector_path), vector_path
             vi = VectorIndex(load_path=vector_path, copy_to_tmpdir=False, prefault=True)
-            self.evs['objectnet'].vec_index = vi # use vector store directly instead
+            self.evs[k].vec_index = vi # use vector store directly instead
 
         vls_init_logger()
         print('loaded all evs...')

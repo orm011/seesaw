@@ -11,7 +11,7 @@ from devtools import debug
 
 import numpy as np
 import pandas as pd
-from seesaw import EvDataset, SeesawLoop, LoopParams, ModelService, GlobalDataManager
+from seesaw import EvDataset, SeesawLoop, LoopParams, ModelService, GlobalDataManager, VectorIndex
 
 import pickle
 
@@ -51,13 +51,22 @@ class SessionState:
     acc_indices : list
     ldata_db : dict
 
-    def __init__(self, dataset_name, ev):
+    def __init__(self, dataset_name, ev, vectordir):
         self.current_dataset = dataset_name
         self.ev = ev
         self.acc_indices = []
         self.ldata_db = {}
         self.init_q = None
         self.timing = []
+
+        assert vectordir is not None
+        if dataset_name == 'lvis':
+            dname = 'coco'
+        else:
+            dname = dataset_name
+        vipath = f'{vectordir}/{dname}.annoy'
+        assert os.path.exists(vipath), vipath
+        self.ev.vec_index = VectorIndex(load_path=vipath, prefault=True)
 
         self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=3, 
                 minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
@@ -146,6 +155,10 @@ import os
 class ResetReq(BaseModel):
     dataset: str
 
+
+
+
+
 @serve.deployment(name="seesaw_deployment", ray_actor_options={"num_cpus": 32}, route_prefix='/')
 @serve.ingress(app)
 class WebSeesaw:
@@ -159,6 +172,9 @@ class WebSeesaw:
             ev = self._get_ev(dsname)
             self.evs[dsname] = ev
         print('done loading')
+        vectordir = os.environ.get('VECTORDIR', None)
+        assert vectordir is not None
+        self.vectordir = vectordir
         self.xclip = ModelService(ray.get_actor('clip#actor'))
         self._reset_dataset(self.datasets[0])
 
@@ -169,7 +185,7 @@ class WebSeesaw:
 
     def _reset_dataset(self, dataset_name):
         ev = self.evs[dataset_name]
-        self.state = SessionState(dataset_name, ev)
+        self.state = SessionState(dataset_name, ev, vectordir=self.vectordir)
 
     def _getstate(self):
         s = self.state.get_state()
