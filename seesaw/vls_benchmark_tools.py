@@ -414,19 +414,20 @@ class SeesawLoop:
 
             lp['refine'] = time.time() - start_refine
 
+import random
 from .figures import compute_metrics
 
 def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qstr,
                 interactive, warm_start, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
-              max_feedback=None,
+              max_feedback=None, box_drop_prob=0.,
                granularity:str, positive_vector_type, n_augment,min_box_size=10,
                model_type='logistic', solver_opts={}, **kwargs):     
     assert positive_vector_type in ['image_only', 'image_and_vec', 'vec_only', None]
     ev0 = ev
     frame = inspect.currentframe()
     args, _, _, values = inspect.getargvalues(frame)
-    params = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'category', 'qstr', 'n_batches', 'max_feedback']} 
+    params = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'category', 'qstr', 'n_batches', 'max_feedback', 'box_drop_prob']} 
     rtup = {**{'category':category, 'qstr':qstr}, **params, **kwargs}       
 
     catgt = ev0.query_ground_truth[category]
@@ -488,11 +489,14 @@ def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qs
         
         box_dict = {}
         for idx in idxbatch:
-            box_dict[idx] = ds[idx]
+            bxs = ds[idx]
+            rnd = np.random.rand(bxs.shape[0])
+            bxs = bxs[rnd >= box_drop_prob]
+            box_dict[idx] = bxs
 
         gt2 = np.array([box_dict[idx].shape[0] > 0 for idx in idxbatch]).astype('float')
-        if (gt2 != gt[idxbatch]).all():
-            print('Warning: gt data and box data seem to disagree. ')
+        # if (gt2 != gt[idxbatch]).all():
+        #     print('Warning: gt data and box data seem to disagree. ')
 
         if max_feedback is None or (i+1)*batch_size <= max_feedback:
             loop.refine(idxbatch=idxbatch, box_dict=box_dict)
