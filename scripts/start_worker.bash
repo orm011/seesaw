@@ -1,6 +1,8 @@
 #! /bin/bash
 set -x
 
+cd /home/gridsan/omoll/seesaw/scripts/
+
 . ./setup_tmp_link.bash
 
 HEAD_ADDRESS=$1
