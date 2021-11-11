@@ -1,27 +1,25 @@
 <template>
 <!-- mostly based on https://www.w3schools.com/howto/howto_css_modal_images.asp -->
-<div :class="`modal ${active ? 'modal-active': ''}`">
+<div :class="`modal ${active ? 'modal-active': ''}` " tabindex="0" >
   <span class="close" @click='close'>&times;</span>
-  <div class="modal-content">
-    <slot>
-    </slot>
+  <div class="modal-content" tabindex='1'>
+    <slot></slot>
  </div>
 </div>
 </template>
 <script>
 export default {
-    data : function(){return {active:false}},
+    data : function(){return {active:true}},
     mounted : function () {
-            console.log('hi from modal2');
     },
     methods : {
         close(){
-            this.active = false;
+            this.$emit('close');
+            // this.active = false;
             // this.modal.hide()
-            // this.$emit('close');
         },
         show(){
-            this.active = true;
+            // this.active = true;
             // this.modal.show()
         }
     }

@@ -11,6 +11,8 @@ import sklearn
 import torchvision.transforms as T
 import pyroaring as pr
 import typing
+import clip
+import ray
 # from sentence_transformers import SentenceTransformer
 from .cross_modal_embedding import TextImageCrossModal
 
@@ -207,10 +209,6 @@ class ManualPooling(nn.Module):
         v = v.reshape(output[0].shape + (len(iis), len(jjs),))
         return v
 
-
-# def gen_strided_blocks(im, block_size):
-block_size =224
-
 def gen_strided_blocks(vecs, width_size, stride_size, flatten=True):
     assert flatten
     center = False
@@ -239,6 +237,7 @@ def gen_strided_blocks(vecs, width_size, stride_size, flatten=True):
             cuts.append(cut)
     input_batch = torch.cat(cuts) # cat along batch dim.
     return input_batch,iis,jjs
+
 
 def gen_strided_blocks2(im, block_size, stride_size,flatten=False):
     assert len(im.shape) == 4
@@ -296,55 +295,7 @@ def gen_strided_blocks2(im, block_size, stride_size,flatten=False):
     else:
         return ofblks.reshape((fii.max().item()+1, fjj.max().item()+1) + fblks.shape[1:])
 
-# def gen_strided_blocks(im, block_size,stride_size,flatten=True):
-#     assert len(im.shape) == 4
-#     assert im.shape[0] == 1
-
-#     def genblocks(im, block_size):
-#         assert len(im.shape) == 4
-#         assert im.shape[0] == 1
-#         im = im.squeeze(0)
-#         bh = im.shape[-2]//block_size
-#         bw = im.shape[-1]//block_size
-#         trim = im[...,:block_size*bh,:block_size*bw]
-#         break_lines = trim.reshape(trim.shape[:-2] + (bh,block_size,bw,block_size))
-#         block_order = break_lines.permute(1,3,0,2,4)
-#         return block_order
-
-#     blks = []
-#     iis = []
-#     jjs = []
-#     for oi in [0,1]:
-#         for oj in [0,1]:
-#             blk = genblocks(im[...,stride_size*oi:,stride_size*oj:], block_size)
-#             eis,ejs = torch.meshgrid(torch.arange(blk.shape[0])*2 + oi,
-#                                      torch.arange(blk.shape[1])*2 + oj)
-
-#             blks.append(blk)
-#             iis.append(eis)
-#             jjs.append(ejs)
-
-#     fblks = torch.cat([blk.reshape((-1,)+blk.shape[2:]) for blk in blks])
-#     fii = torch.cat([ii.reshape(-1) for ii in iis])
-#     fjj = torch.cat([jj.reshape(-1) for jj in jjs])    
-#     jjorder = np.argsort(fjj, kind='stable')
-#     tmp_fii = fii[jjorder]
-#     iiorder = np.argsort(tmp_fii,kind='stable')
-#     ofii = tmp_fii[iiorder]
-#     e2e_order = jjorder[iiorder]
-    
-#     assert (ofii == fii[e2e_order]).all()
-    
-#     ofblks = fblks[e2e_order]
-#     oii = fii[e2e_order]
-#     ojj = fjj[e2e_order]
-    
-#     if flatten:
-#         return ofblks,oii,ojj
-#     else:
-#         return ofblks.reshape((fii.max().item()+1, fjj.max().item()+1) + fblks.shape[1:])
-
-class ManualPooling2(nn.Module):
+class SlidingWindow(nn.Module):
     def __init__(self, kernel, kernel_size, stride=None, center=False):
         super().__init__()
         self.kernel = kernel
@@ -398,7 +349,7 @@ def test_pooling(pm):
             assert test.shape == target.shape, f'{test.shape} {target.shape}'
             assert torch.isclose(test, target, atol=1e-6).all()    
 test_pooling(ManualPooling)
-test_pooling(ManualPooling2)
+test_pooling(SlidingWindow)
 
 
 import torchvision.transforms as T
@@ -410,20 +361,29 @@ class ImTransform(object):
             
     def __call__(self, img):
         return self.full(img)
-    
-    
+
+def torgb(image):
+    return image.convert('RGB')
+
+def todtype(x):
+    return x.type(torch.float16)
+
+#lambda image: image.convert("RGB")
+
 def make_clip_transform(n_px, square_crop=False):
     maybe_crop = [T.CenterCrop(n_px)] if square_crop else []
     return ImTransform(visual_xforms=[T.Resize(n_px, interpolation=PIL.Image.BICUBIC)]
-                                    + maybe_crop + [lambda image: image.convert("RGB")],
+                                    + maybe_crop + [torgb],
                        tensor_xforms=[T.ToTensor(),
                                       T.Normalize((0.48145466, 0.4578275, 0.40821073), 
                                                 (0.26862954, 0.26130258, 0.27577711)),
-                                        lambda x : x.type(torch.float16)])
+                                        todtype])
+#                                        lambda x : x.type(torch.float16)])
+
+
 
 class CLIPWrapper(XEmbedding):
-    def __init__(self, device):
-        import clip
+    def __init__(self, device, jit=False):
 
         tx = make_clip_transform(n_px=224, square_crop=False)
         variant = "ViT-B/32"
@@ -433,21 +393,23 @@ class CLIPWrapper(XEmbedding):
         self.device = device
 
         if device.startswith('cuda'):
-            jit = True
+            jit = jit
         else:
             jit = False
         model, _ = clip.load(variant, device=device,  jit=jit)
         self.base_model = model # both text and images
 
         kernel_size = 224 # changes with variant
-        self.visual_model = ManualPooling2(self.base_model.visual,
+        self.visual_model = SlidingWindow(self.base_model.visual,
                      kernel_size=kernel_size, 
                      stride=kernel_size//2, 
                      center=True)
         self.pooled_model = nn.Sequential(self.visual_model,nn.AdaptiveAvgPool2d(1))
 
+    def ready(self):
+        return True
+
     def from_string(self, *, string=None, str_vec=None, numpy=True):
-        import clip
         if str_vec is not None:
             return str_vec
         else:
@@ -483,7 +445,6 @@ class CLIPWrapper(XEmbedding):
                     return image_features.cpu().numpy()
 
 
-import ray
 class ModelService(XEmbedding):
     def __init__(self, model_ref):
         self.model_ref = model_ref

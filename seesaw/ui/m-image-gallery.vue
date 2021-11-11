@@ -1,15 +1,32 @@
 <template>
   <div>
+    <div class='row'>
     <div class="image-gallery" >
-        <img v-for="(url,index) in image_urls" :key="index" :src="url" 
-        draggable 
-        @click="onclick(index)"
-        @dragstart="$emit('itemdrag', [$event, index])" 
-        :class="['unknown', 'rejected', 'accepted'][ldata.length === 0? 0 : ldata[index].value+1]" />
+      <div v-for="(data,index) in initial_imdata" :key="index*10000 + (data.boxes == null ? 0 : data.boxes.length)">
+        <!-- img is much more light weight to render, and the common case is no labels -->
+        <img v-if="data.boxes == null || data.boxes.length === 0" :src="data.url" @click="onclick(index)" :class="get_class(index)" />
+        <m-annotator v-else ref="annotators" :initial_imdata=data :read_only="true" v-on:cclick="onclick(index)" />
+      </div>
     </div>
-    <m-modal v-if="with_modal" ref='modal2'>
-      <img :src="this.image_urls[selection]">
-      <!-- <m-annotator :image_url="this.image_urls[selection]" :adata="{boxes:[]}" :read_only="false" /> -->
+    </div>
+    <m-modal v-if="selection != null" ref='modal' v-on:close='close_modal(selection)' tabindex='0' >
+      <div class='row'>
+        <m-annotator  ref='annotator' :initial_imdata="initial_imdata[selection]" :key="index*10000 + (initial_imdata[selection].boxes == null ? 0 :
+         initial_imdata[selection].boxes.length)"  :read_only="false"  tabindex='1' v-on:box-save="box_save(selection, $event)" />
+      </div>
+        <!-- <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" 
+          data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" 
+            aria-expanded="false" aria-label="Toggle navigation">
+              <span class="navbar-toggler-icon"></span>
+        </button> -->
+      <div class='row'>
+        <button v-if="refmode" class="btn btn-dark bton-block" @click="$emit('copy-ref', selection)"> 
+            Autofill ({{initial_imdata[selection].refboxes.length}} boxes)
+        </button>
+        <!-- <button v-if="refmode" class="btn btn-dark bton-block" @click="copyref(selection)"> 
+            Mark not-relevant
+        </button> -->
+      </div>
     </m-modal>
   </div>
 </template>
@@ -20,23 +37,55 @@ import MModal from './m-modal.vue';
 
  export default {
   components: { 'm-annotator':MAnnotator, 'm-modal':MModal },
-  props: {image_urls:{type:Array}, ldata:{type:Array, default:[]}, with_modal:true},
-  data : function() { return {selection:null, show_modal:false}},
+  props: { initial_imdata:{type:Array, default:[]}, refmode:Boolean },
+  data : function() { return { selection:null }},
   created : function (){},
   mounted : function (){
       // this.$refs.gallery_modal.addEventListener('show.bs.modal',this.modalclick);
   },
   methods : {
+    // kinds of feedback: 
+    // 1. this image does not have what I'm looking for (checkbox?)
+    // 2. 
+    get_class(index){
+      
+      let ldata = this.initial_imdata[index];
+      if (ldata.boxes == null){
+        return 'unknown'
+      } else if (ldata.boxes.length > 0) {
+        return 'accepted'
+      } else if (ldata.boxes.length === 0){
+        return 'rejected'
+      }
+    },
+    close_modal(index){ // closing modal emits a data edit event
+      // this.box_save(index);
+      this.selection  = null;
+    },
+    box_save(index, boxlist){
+      // let imdict = this.initial_imdata[index];
+      console.log('(gallery) saving boxes...', index, boxlist)
+      this.$emit('data_update', {idx:index, boxes:boxlist})
+    },
     onclick(index){
-        console.log('click callback')
-        this.selection = index;
-        // this.$refs.modal2.src = this.image_urls[this.selection];
-        if (this.with_modal){
-          this.$refs.modal2.active = true; //this.image_urls[this.selection];
-        }
-        // this.$refs.modal.show()
-        this.$emit('update:selection', index); 
-    }
+      this.selection = index;
+    },
+    // copyref(index){
+    //     let imdict = this.imdata[index];
+
+    //     console.log('click copyref');
+    //     const reflabels = imdict.refboxes;
+
+    //     if (imdict.boxes == null){
+    //       imdict.boxes = []
+    //     }
+
+    //     for (const obj of reflabels){
+    //       imdict.boxes.push(obj)  
+    //     }
+
+    //     this.$refs.annotator.load_current_box_data()
+    // }
   }
 }
 </script>

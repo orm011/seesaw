@@ -1,103 +1,92 @@
 <template>
-    <div class="annotator_div" ref="container">
-        <img class="annotator_image" :src="image_url" ref="image" @load="draw_initial_contents" />
-        <canvas class="annotator_canvas" ref="canvas" />
+    <div class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
+        <img :class="read_only ? 'annotator_image_small':'annotator_image'" :src="initial_imdata.url" ref="image" 
+                @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
+        <canvas class="annotator_canvas" ref="canvas" @keyup.esc="emit('esc')" tabindex='2' @click="canvas_click" 
+                @mouseover="hover(true)" @mouseleave="hover(false)" />
     </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
     eg, the $refs and other vue component object attributes) -->
 </template>
-<style scoped>
-.annotator_div {
-    margin:0px;
-    width:fit-content;
-    height:fit-content;
-}
-.annotator_image {
-    /* max-width:100%; */
-    /* max-height:100%; */
-    /* display:inline; */
-    position:absolute; top:0px; left:0px;
-    object-fit:scale-down; /* never rescale up */ 
-}
-.annotator_canvas {
-    /* border:0px solid #d3d3d3; */
-    /* max-width:100%;*/
-    /* max-height:100%; */
-    position:absolute; top:0px; left:0px;
-    display:none; 
-    /* for now not showing it to try to fix centering issue...*/
-}
-
-</style>
 <script>
 export default { 
   name: "m-annotator.vue", // used by ipyvue?
-  props: ['image_url', 'adata', 'read_only'],
+  props: ['initial_imdata', 'read_only'],
   data : function() {
-        let paper = new window.paper.PaperScope();
-        new paper.Tool(); // also implicitly adds tool to paper scope
-        return {height_ratio:null, width_ratio:null, paper:paper}
+        return {height_ratio:null, width_ratio:null, paper: null }
   },
   created : function (){
+      console.log('created annotator')
+  },
+  mounted : function() {
+        this.paper = new window.paper.PaperScope();
+        new paper.Tool(); // also implicitly adds tool to paper scope
+        console.log('mounted annotator')
   },
   methods : {
     rescale_box : function(box, height_scale, width_scale) {
-          let {xmin,xmax,ymin,ymax} = box;
-          return {xmin:xmin*width_scale, xmax:xmax*width_scale, ymin:ymin*height_scale, ymax:ymax*height_scale};
+          let {x1,x2,y1,y2} = box;
+          return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale};
     },
     save_current_box_data : function() {
         let paper = this.paper
         let boxes = (paper.project.getItems({className:'Path'})
-                          .map(x =>  {let b = x.bounds; return {xmin:b.left, xmax:b.right, ymin:b.top, ymax:b.bottom}})
+                          .map(x =>  {let b = x.bounds; return {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}})
                           .map(box => this.rescale_box(box, this.height_ratio, this.width_ratio)))
-        this.adata.boxes = boxes;
+        console.log('saving boxes', )
+        if (boxes.length == 0){
+            console.log('length 0 reverts to null right now')
+            this.$emit('box-save', null)
+        } else {
+            this.$emit('box-save', boxes)
+        }
     },
     load_current_box_data : function() {
       // assumes currently image on canvas is the one where we want to display boxes on
       let paper = this.paper;
       // console.log('about to iterate', this);
-      for (const boxdict of this.adata.boxes) {
-          let rdict = this.rescale_box(boxdict, 1./this.height_ratio, 1./this.width_ratio);
-          let paper_style = ['Rectangle', rdict.xmin, rdict.ymin, rdict.xmax - rdict.xmin, rdict.ymax - rdict.ymin];
-          let rect = paper.Rectangle.deserialize(paper_style)
-          let r = new paper.Path.Rectangle(rect);
-          r.strokeColor = 'red';
-          r.strokeWidth = 1;
-          r.data.state = null;
-          r.selected = false;
+
+      if (this.initial_imdata.boxes != null) {
+          console.log('drawing boxes', this.initial_imdata.boxes)
+        for (const boxdict of this.initial_imdata.boxes) {
+            let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
+            let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
+            let rect = paper.Rectangle.deserialize(paper_style)
+            let r = new paper.Path.Rectangle(rect);
+            r.strokeColor = 'green';
+            r.strokeWidth = 2;
+            r.data.state = null;
+            r.selected = false;
+            console.log('drew rect ', r)
+            }
+      }
+    },
+    hover : function (start) {
+        if (this.read_only) {
+            if (start) {
+                this.$refs.image.style.opacity = .5
+            } else {
+                this.$refs.image.style.opacity = 1.
+            }
         }
     },
+    canvas_click : function (e){
+        console.log('canvas click!', e);
+        this.$emit('cclick', e)
+    },
     draw_initial_contents : function() {
-        console.log('setting up', this)
+        console.log('(draw)setting up', this)
         let paper = this.paper;
         let img = this.$refs.image; 
-        let cnv = this.$refs.canvas; 
-
-        // let scale = Math.min(img.width/img.naturalWidth, img.height/img.naturalHeight);
-        // let img_height = Math.round(scale*img.height);
-        // let img_width = Math.round(scale*img.width);
+        let cnv = this.$refs.canvas;
 
         // size of element outside
         cnv.height = img.height;
         cnv.width = img.width;
-        // this.$refs.container.style.width=`${img.width} px`;
-        // this.$refs.container.style.height=`${img.height} px`;
-        // cnv.style.height = img_height + 'px';
-        // cnv.style.width = img_width + 'px';
 
         paper.setup(cnv);
-        // let raster = new paper.Raster(img);
-
-        // Move raster to view center
-        // raster.position = paper.view.center;
-        // raster.size = paper.view.bounds;
-        // raster.fitBounds(paper.view.bounds)
-        // paper.view.onResize = (e) => { // used for responsive resizing. would need to also resize the boxes...
-        //     // console.log('resized! new aspect ratio:', e.width, e.height, e.width/e.height);
-        // }
-        // raster.locked = true;
-        this.height_ratio =1. //img.height / raster.height;
-        this.width_ratio = 1.//img.width / raster.width;
+        this.height_ratio = img.height / img.naturalHeight
+        this.width_ratio = img.width / img.naturalWidth
         paper.view.draw();
         this.load_current_box_data();
 
@@ -112,8 +101,8 @@ export default {
       let tool = paper.tool;
       let makeRect = (from,to) => {
           let r = new paper.Path.Rectangle(from,to);
-          r.strokeColor = 'red';
-          r.strokeWidth = 1;
+          r.strokeColor = 'green';
+          r.strokeWidth = 2;
           r.data.state = null;
           r.selected = false;
           return r;
@@ -177,7 +166,7 @@ export default {
           let preselected = paper.project.getSelectedItems();
           if (preselected.length === 0){
               return;
-          } else if (e.key === 't') { // auto save upon deletion
+          } else if (e.key === 'd') { // auto save upon deletion
               preselected.forEach(r => r.remove());
               this.save_current_box_data();
           } else {
@@ -208,3 +197,36 @@ export default {
     }
 }
 </script>
+<style scoped>
+.annotator_div {
+    position:relative;
+    margin:0px;
+    /* width:fit-content;
+    height:fit-content; */
+    display:inline-block
+}
+.annotator_image {
+    /* max-width:100%; */
+    /* max-height:100%; */
+    /* display:inline; */
+    position:relative;
+    object-fit:none; /* never rescale up */ 
+}
+.annotator_image_small {
+  width: auto !important;
+  height: auto !important;
+  max-height: 200px;
+  /*max-width: 400px; */
+  object-fit: scale-down; /* never rescale up */ 
+}
+
+.annotator_canvas {
+    /* border:0px solid #d3d3d3; */
+    /* max-width:100%;*/
+    /* max-height:100%; */
+    position:absolute; top:0px; left:0px;
+    /* display:;  */
+    /* for now not showing it to try to fix centering issue...*/
+}
+
+</style>

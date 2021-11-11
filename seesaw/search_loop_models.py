@@ -1,5 +1,3 @@
-
-import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,6 +9,14 @@ import sys
 from torch.utils.data import TensorDataset
 from torch.utils.data import Subset
 from torch.utils.data import DataLoader
+
+import pandas as pd
+import numpy as np
+
+import os
+import pytorch_lightning as pl
+from .pairwise_rank_loss import compute_inversions
+
 
 class CustomInterrupt(pl.callbacks.Callback):
     def on_keyboard_interrupt(self, trainer, pl_module):
@@ -144,7 +150,7 @@ class LookupVec(pl.LightningModule):
     ):
         """
         Args:
-            input_dim: number of dimensions of the input (at least 1)
+        input_dim: number of dimensions of the input (at least 1)
         """
         super().__init__()
         self.save_hyperparameters()
@@ -156,12 +162,14 @@ class LookupVec(pl.LightningModule):
             t = torch.randn(1,input_dim)
             self.vec = nn.Parameter(t/t.norm())
 
+
         # self.loss = nn.CosineEmbeddingLoss(margin,reduction='none')
         self.rank_loss = nn.MarginRankingLoss(margin=margin, reduction='none')
 
     def forward(self, qvec):
-        return F.cosine_similarity(self.vec, qvec)
-    
+        return qvec @ self.vec.reshape(-1) # qvecs are already normalized
+        # return F.cosine_similarity(self.vec, qvec)
+
     def _batch_step(self, batch, batch_idx):
         X1, X2, y = batch
         sim1 = self(X1)
@@ -173,14 +181,14 @@ class LookupVec(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         d = self._batch_step(batch, batch_idx)
         loss = d['loss']
-        self.log("loss/train", loss, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+        # self.log("loss/train", loss, prog_bar=True, logger=True, on_step=True, on_epoch=False)
         return {'loss': loss}
     
     def validation_step(self, batch, batch_idx):
         d = self._batch_step(batch, batch_idx)
         loss = d['loss']
         
-        self.log('loss/val', loss, prog_bar=True, logger=True, on_step=False, on_epoch=True)
+        # self.log('loss/val', loss, prog_bar=True, logger=True, on_step=False, on_epoch=True)
         return {'y':d['y']}
     
     def validation_epoch_end(self, validation_step_outputs):
@@ -265,7 +273,15 @@ def make_tuple_ds(X, y, max_size):
         train_ds = Subset(train_ds, randsel)
     return train_ds
 
-def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logger=None,  max_epochs=4, gpus=0, precision=32):
+
+def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logger=None, margin=.0, max_epochs=4, gpus=0, precision=32):
+
+    ## for running on spc. 
+    if os.environ.get("SLURM_NTASKS", '') != '':
+        del os.environ["SLURM_NTASKS"]
+    if os.environ.get("SLURM_JOB_NAME", '') != '':
+        del os.environ["SLURM_JOB_NAME"]
+
     if not torch.is_tensor(X):
         X = torch.from_numpy(X)
     
@@ -273,8 +289,11 @@ def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logg
     assert (y <= 1).all()
 
     #train_ds = make_hard_neg_ds(X, y, max_size=max_examples, curr_vec=mod.vec.detach())
-    ridx,iis,jjs = hard_neg_tuples(mod.vec.detach().numpy(), X.numpy(), y, max_tups=max_examples)
-    train_ds = TensorDataset(X[ridx][iis],X[ridx][jjs], torch.ones(X[ridx][iis].shape[0]))
+    # ridx,iis,jjs = hard_neg_tuples(mod.vec.detach().numpy(), X.numpy(), y, max_tups=max_examples)
+    # train_ds = TensorDataset(X[ridx][iis],X[ridx][jjs], torch.ones(X[ridx][iis].shape[0]))
+    train_ds = hard_neg_tuples_faster(mod.vec.detach().numpy(), X.numpy(), y, max_tups=max_examples, margin=margin)
+    ## want a tensor with pos, neg, 1. ideally the highest scored negatives and lowest scored positives.
+
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
 
     if valX is not None:
@@ -286,6 +305,7 @@ def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logg
     else:
         val_loader = None
         es = []
+
 
     trainer = pl.Trainer(logger=None,
                          gpus=gpus, precision=precision, max_epochs=max_epochs,
@@ -300,15 +320,75 @@ def fit_rank2(*, mod, X, y, batch_size, max_examples, valX=None, valy=None, logg
 
 
 def adjust_vec(vec, Xt, yt, learning_rate, loss_margin, max_examples, minibatch_size):
+    ## cosine sim in produce
     vec = torch.from_numpy(vec).type(torch.float32)
     mod = LookupVec(Xt.shape[1], margin=loss_margin, optimizer=torch.optim.SGD, learning_rate=learning_rate, init_vec=vec)
     fit_rank2(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), 
-            max_examples=max_examples, batch_size=minibatch_size,max_epochs=1)
+            max_examples=max_examples, batch_size=minibatch_size,max_epochs=1, margin=loss_margin)
     newvec = mod.vec.detach().numpy().reshape(1,-1)
     return newvec 
 
 
-import numpy as np
+
+
+def max_inversions_given_max_tups(labs, inversions, max_tups):
+    orig_df = pd.DataFrame({'labs':labs, 'inversions':inversions})
+    ddf = orig_df.sort_values('inversions', ascending=False)
+
+    pdf = ddf[ddf.labs]
+    ndf = ddf[~ddf.labs]
+
+    ncutoff = pdf.shape[0]
+    pcutoff = ndf.shape[0]
+
+    def total_inversions(ncutoff,pcutoff):
+        if ncutoff <= pcutoff:
+            tot = np.minimum(ndf.inversions.values[:ncutoff], pcutoff).sum()
+        else:
+            tot = np.minimum(pdf.inversions.values[:pcutoff], ncutoff).sum()
+
+        return tot
+
+    curr_inv = total_inversions(ncutoff,pcutoff)
+
+    while (ncutoff*pcutoff > max_tups) and (ncutoff > 1 or pcutoff > 1):
+        tot1 = total_inversions(max(1,ncutoff-1), pcutoff)
+        tot2 = total_inversions(ncutoff, max(1,pcutoff-1))
+        if tot2 >= tot1:
+            pcutoff-=1
+        else:
+            ncutoff-=1
+
+    ncutoff = max(1,ncutoff)
+    pcutoff = max(1,pcutoff)
+
+    tot_inv = total_inversions(ncutoff, pcutoff)
+    tot_tup = ncutoff*pcutoff
+
+    pidx = pdf.index.values[:pcutoff]
+    nidx = ndf.index.values[:ncutoff]
+    return pidx, nidx, tot_inv, tot_tup
+
+def hard_neg_tuples_faster(v, Xt, yt, max_tups, margin):
+    """returns indices for the 'hardest' ntups
+    """
+    ### compute reversals for each vector
+    ### keep reversals about equal?
+    labs = (yt == 1.) # make boolean
+    scores = (Xt @ v.reshape(-1,1)).reshape(-1)
+    scores[labs] -= margin 
+    inversions = compute_inversions(labs, scores)
+    pidx, nidx, _, _ = max_inversions_given_max_tups(labs, inversions, max_tups)
+    pidx, nidx = np.meshgrid(pidx, nidx)
+    pidx = pidx.reshape(-1)
+    nidx = nidx.reshape(-1)
+    assert labs[pidx].all()
+    assert ~labs[nidx].any()
+    
+    dummy = torch.ones(size=(pidx.shape[0],1))
+    return TensorDataset(torch.from_numpy(Xt[pidx]), torch.from_numpy(Xt[nidx]), dummy)
+
+
 def hard_neg_tuples(v, Xt, yt, max_tups):
     """returns indices for the 'hardest' ntups
     """
@@ -335,8 +415,9 @@ def hard_neg_tuples(v, Xt, yt, max_tups):
     assert (ridx[piis] == pps).all()
     return ridx, piis, pjjs
 
-import cvxpy as cp
+#import cvxpy as cp
 def adjust_vec2(v, Xt, yt, *, max_examples, loss_margin=.1, C=.1, solver='SCS'):
+    import cvxpy as cp
     # y = evbin.query_ground_truth[cat][dbidxs].values
     # X = hdb.embedded[dbidxs]
     margin = loss_margin

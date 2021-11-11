@@ -15,8 +15,9 @@ import copy
 ## create a new pool every time because 
 # in case of interruption, actor pool state seems
 def tqdm_map(actors, actor_tup_function, tups, res=None):
-    assert res == [], 'provide input'
+    assert res is not None, 'provide way to save partial results'
     
+    initial_len = len(res)
     actor_pool = ActorPool(actors)
     for tup in tups:
         actor_pool.submit(actor_tup_function, tup)
@@ -27,7 +28,8 @@ def tqdm_map(actors, actor_tup_function, tups, res=None):
         ## copy to free up any references at the source
         res.append(copy.deepcopy(nxt))
         pbar.update(1)
-        if len(res) == len(tups):
+        if (len(res) - initial_len) == len(tups):
+            print('done with new tups')
             break
             
     pbar.close()

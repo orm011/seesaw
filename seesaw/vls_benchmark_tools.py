@@ -13,6 +13,12 @@ import numpy as np
 import sklearn.metrics
 import math
 from .util import *
+from .pairwise_rank_loss import VecState
+import pyroaring as pr
+import importlib
+from .dataset_manager import VectorIndex
+
+from .figures import ndcg_score_fn
 
 # ignore this comment
 
@@ -21,36 +27,6 @@ def vls_init_logger():
     logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
     logging.captureWarnings(True)
 
-def brief_formatter(num_sd):
-    assert num_sd > 0
-    def formatter(ftpt):
-        if math.isclose(ftpt, 0.):
-            return '0'
-        
-        if math.isclose(ftpt,1.):
-            return '1'
-
-        if ftpt < 1.:
-            exp = -math.floor(math.log10(abs(ftpt)))
-            fmt_string = '{:.0%df}' % (exp + num_sd - 1)
-            dec = fmt_string.format(ftpt)    
-        else:
-            fmt_string = '{:.02f}'
-            dec = fmt_string.format(ftpt)
-            
-        zstripped = dec.lstrip('0').rstrip('0')
-        return zstripped.rstrip('.')
-    return formatter
-
-brief_format = brief_formatter(1)
-
-def times_format(ftpt):
-    return brief_format(ftpt) + 'x'
-
-def make_labeler(fmt_func):
-    def fun(arrlike):
-        return list(map(fmt_func, arrlike))
-    return fun
 
 import numpy as np
 
@@ -181,123 +157,164 @@ def process_crops(crs, tx, embedding):
     embs = np.concatenate(emvecs)
     return embs
 
+import time
 
-def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batches, batch_size, minibatch_size, 
-              learning_rate, max_examples, num_epochs, loss_margin, 
-              tqdm_disabled:bool, granularity:str,
-               positive_vector_type, n_augment,
-               model_type='logistic', solver_opts={}, 
-               **kwargs):         
-    assert 'fine_grained' not in kwargs
-    assert isinstance(granularity, str)
-    assert positive_vector_type in ['image_only', 'image_and_vec', 'vec_only', None]
-    # gvec = ev.fine_grained_embedding
-    # gvec_meta = ev.fine_grained_meta
-    # min_box_size = 60 # in pixels. fov is 224 min. TODO: ground truth should ignore these.
-    min_box_size = 10
-    augment_n = n_augment # number of random augments 
-    ev0 = ev
-    frame = inspect.currentframe()
-    args, _, _, values = inspect.getargvalues(frame)
-    allargs = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'gvec', 'gvec_meta']}        
-
-    ev, class_idxs = get_class_ev(ev0, category, boxes=True)
-    dfds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
-    
-    rsz = resize_to_grid(224)
-    ds = TxDataset(dfds, tx=lambda tup : rsz(im=None, boxes=tup)[1])
-    imds = TxDataset(ev.image_dataset, tx = lambda im : rsz(im=im, boxes=None)[0])
-
-    if granularity == 'fine':
-        vec_meta = ev.fine_grained_meta
-        vecs = ev.fine_grained_embedding
-        vec_meta = vec_meta[vec_meta.zoom_level == 0]
-        vecs = vecs[vec_meta.index.values]
-        vec_meta.reset_index(drop=True)
-        hdb = FineEmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-            embedded_dataset=vecs, vector_meta=vec_meta)
-    elif granularity == 'multi':
-        vec_meta = ev.fine_grained_meta
-        vecs = ev.fine_grained_embedding
-        #index_path = './data/bdd_10k_allgrains_index.ann'
-        index_path = None
-        hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-            embedded_dataset=vecs, vector_meta=vec_meta, index_path=index_path)
-
-    elif granularity == 'coarse':
-        dbidxs = np.arange(len(ev)).astype('int')
-        vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
-        vecs = ev.embedded_dataset
-        hdb = EmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding,embedded_dataset=vecs)
-    else:
-        assert False
-
-    bfq = BoxFeedbackQuery(hdb, batch_size=batch_size, auto_fill_df=None)
-    rarr = ev.query_ground_truth[category]
-    print(allargs, kwargs)        
-            
-    if qstr == 'nolang':
-        init_vec=None
-        init_mode = 'random'
-    else:
-        init_vec = ev.embedding.from_string(string=qstr)
-        init_mode = 'dot'
-    
-    acc_pos = []
-    acc_neg = []
-    acc_indices = []
-    acc_results = []
-    acc_ranks = []
-    total = 0
-    acc_vecs = [np.zeros((0,512))]
-            
-    gt = ev.query_ground_truth[category].values
-    res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
-    if init_vec is not None:
-        init_vec = init_vec/np.linalg.norm(init_vec)
-        tvec = init_vec#/np.linalg.norm(init_vec)
-    else:
-        tvec = None
-
-    tmode = init_mode
-    clip_tx = T.Compose([
+_clip_tx = T.Compose([
                     T.ToTensor(), 
                     T.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
                     lambda x : x.type(torch.float16)
                     ])
 
-    for i in tqdm(range(n_batches), leave=False, disable=tqdm_disabled):
-        idxbatch = bfq.query_stateful(mode=tmode, vector=tvec, batch_size=batch_size)
-        acc_indices.append(idxbatch.copy()) # trying to figure out leak
-        acc_results.append(gt[idxbatch])
 
-        if interactive != 'plain':
-            if granularity in ['fine', 'multi']:
-                batchpos, batchneg = get_pos_negs_all_v2(idxbatch, ds, vec_meta)
+from dataclasses import dataclass,field
+## used only to make life easier
+@dataclass(frozen=True)
+class LoopParams:
+    interactive : str
+    warm_start : str
+    batch_size : int
+    minibatch_size : int
+    learning_rate : float
+    max_examples : int
+    loss_margin : float
+    tqdm_disabled : bool
+    granularity : str
+    positive_vector_type : str
+    num_epochs : int
+    n_augment : int
+    min_box_size : int = 10
+    model_type : int = 'logistic'
+    solver_opts : dict = None
+
+
+@dataclass
+class LoopState:
+    tvec : np.ndarray = None
+    tmod : str = None
+    acc_vecs : list = field(default_factory=list) #[np.zeros((0,512))]
+    latency_profile : list = field(default_factory=list)
+    acc_pos : list = field(default_factory=list)
+    acc_neg : list = field(default_factory=list)
+    vec_state : VecState = None
+
+class SeesawLoop:
+    bfq : BoxFeedbackQuery
+    params : LoopParams
+    state : LoopState
+    vecs : np.ndarray
+    vec_meta : pd.DataFrame
+
+    def __init__(self, ev : EvDataset, params : LoopParams):
+        self.ev = ev
+        self.params = params
+        self.state = LoopState()
+
+        ev = self.ev
+        p = self.params
+        s = self.state
+
+        if p.granularity == 'multi':
+            vec_meta = ev.fine_grained_meta
+            vecs = ev.fine_grained_embedding
+            hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
+                embedded_dataset=vecs, vector_meta=vec_meta, vec_index=ev.vec_index)
+        elif p.granularity == 'coarse':
+            dbidxs = np.arange(len(ev)).astype('int')
+            vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
+            vecs = ev.embedded_dataset
+            hdb = EmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding,embedded_dataset=vecs)
+        else:
+            assert False
+
+        bfq = BoxFeedbackQuery(hdb, batch_size=p.batch_size, auto_fill_df=None)
+        self.vec_meta = vec_meta
+        self.vecs = vecs
+        self.hdb = hdb
+        self.bfq = bfq
+
+    def set_vec(self, qstr : str):
+        ev = self.ev
+        p = self.params
+        s = self.state
+
+        if qstr == 'nolang':
+            s.tvec = None
+            s.tmode = 'random'
+        else:
+            init_vec = ev.embedding.from_string(string=qstr)
+            init_vec = init_vec/np.linalg.norm(init_vec)
+            s.tvec = init_vec
+            s.tmode = 'dot'
+            if p.model_type == 'multirank2':
+                s.vec_state = VecState(init_vec, margin=p.loss_margin, opt_class=torch.optim.SGD, 
+                opt_params={'lr':p.learning_rate})
+        
+        #res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
+
+    def next_batch(self):
+        """
+        gets next batch of image indices based on current vector
+        """
+        start_lookup = time.time()
+
+        s = self.state
+        p = self.params
+        lp = {'n_images':None, 'n_posvecs':None, 'n_negvecs':None,
+                                    'lookup':None, 'label':None, 'refine':None, }    
+        s.latency_profile.append(lp)
+
+        idxbatch, _ = self.bfq.query_stateful(mode=s.tmode, vector=s.tvec, batch_size=p.batch_size)
+        lp['n_images'] = idxbatch.shape[0]
+        lp['lookup'] = time.time() - start_lookup
+        return idxbatch
+
+    def refine(self, idxbatch : np.array, box_dict : dict):
+        """
+        update based on vector. box dict will have every index from idx batch, including empty dfs.
+        """
+        assert idxbatch.shape[0] == len(box_dict)
+
+        start_refine = time.time()
+
+        p = self.params
+        s = self.state
+        lp = s.latency_profile[-1]
+        
+        lp['label'] = start_refine - lp['lookup']
+
+        if p.interactive != 'plain':
+            if p.granularity in ['fine', 'multi']:
+                batchpos, batchneg = get_pos_negs_all_v2(idxbatch, box_dict, self.vec_meta)
+                lp['n_posvecs'] = len(batchpos)#.shape[0]
+                lp['n_negvecs'] = len(batchneg)#.shape[0]
                 ## we are currently ignoring these positives
-                acc_pos.append(batchpos)
-                acc_neg.append(batchneg)
+                s.acc_pos.append(batchpos)
+                s.acc_neg.append(batchneg)
 
-                pos = pr.BitMap.union(*acc_pos)
-                neg = pr.BitMap.union(*acc_neg)
+                pos = pr.BitMap.union(*s.acc_pos)
+                neg = pr.BitMap.union(*s.acc_neg)
 
-                if positive_vector_type in ['image_only', 'image_and_vec']:
+
+                if p.positive_vector_type == 'vec_only':
+                    allpos = self.vecs[pos]
+                elif p.positive_vector_type in ['image_only', 'image_and_vec']:
                     crs = []
                     for idx in idxbatch:
-                        boxes = ds[idx]
+                        boxes = box_dict[idx]
                         widths = (boxes.x2 - boxes.x1)
                         heights = (boxes.y2 - boxes.y1)
-                        boxes = boxes[(widths >= min_box_size) & (heights >= min_box_size)]
+                        boxes = boxes[(widths >= p.min_box_size) & (heights >= p.min_box_size)]
 
                         if boxes.shape[0] == 0:
                             continue
-                        # only read image if there is something
-                        im = imds[idx]
+
+                        # only read image if there was something
+                        im = self.ev.image_dataset[idx]
 
                         for b in boxes.itertuples():
-                            if augment_n > 1:
+                            if p.n_augment > 1:
                                 pcrs = randomly_extended_crop(im, b, scale_range=3., aspect_ratio_range=1., off_center_range=1., 
-                                        clearance=1.3, n=augment_n)
+                                        clearance=1.3, n=p.n_augment)
                                 for cr in pcrs:
                                     cr = T.RandomHorizontalFlip()(cr)
                                     crs.append(cr)
@@ -307,246 +324,271 @@ def run_loop6(*, ev :EvDataset, category, qstr, interactive, warm_start, n_batch
 
                                 for cr in pcrs:
                                     crs.append(cr)
-                
-                    tmp = process_crops(crs, clip_tx, ev.embedding)
-                    acc_vecs.append(tmp)
-                    impos = np.concatenate(acc_vecs)
+                                                  
+                    tmp = process_crops(crs, _clip_tx, self.vecs)
+                    s.acc_vecs.append(tmp)
+                    impos = np.concatenate(s.acc_vecs)
 
-                if positive_vector_type == 'image_only':
-                    allpos = impos  
-                if positive_vector_type == 'vec_only':
-                    allpos = vecs[pos]
-                elif positive_vector_type == 'image_and_vec':
-                    allpos = np.concatenate([impos, vecs[pos]])
+                    if p.positive_vector_type == 'image_only':
+                        allpos = impos  
+                    elif p.positive_vector_type == 'image_and_vec':
+                        allpos = np.concatenate([impos, self.vecs[pos]])
+                    else:
+                        assert False
+                else:
+                    assert False
 
-                Xt = np.concatenate([allpos, vecs[neg]])
+                Xt = np.concatenate([allpos, self.vecs[neg]])
                 yt = np.concatenate([np.ones(len(allpos)), np.zeros(len(neg))])
-
                 # not really valid. some boxes are area 0. they should be ignored.but they affect qgt
                 # if np.concatenate(acc_results).sum() > 0:
                 #    assert len(pos) > 0
             else:
-                Xt = vecs[idxbatch]
-                yt = gt[idxbatch]
+                Xt = self.vecs[idxbatch]
+                yt = np.array([box_dict[idx].shape[0] > 0 for idx in idxbatch])
+                # yt = gt[idxbatch]
+                lp['n_posvecs'] = (yt == 1).sum()#.shape[0]
+                lp['n_negvecs'] = (yt != 1).sum()
 
             if (yt.shape[0] > 0) and (yt.max() > yt.min()):
-                tmode = 'dot'
-                if interactive == 'sklearn':
+                s.tmode = 'dot'
+                if p.interactive == 'sklearn':
                     lr = sklearn.linear_model.LogisticRegression(class_weight='balanced')
                     lr.fit(Xt, yt)
-                    tvec = lr.coef_.reshape(1,-1)        
-                elif interactive == 'pytorch':
-                    p = yt.sum()/yt.shape[0]
-                    w = np.clip((1-p)/p, .1, 10.)
+                    s.tvec = lr.coef_.reshape(1,-1)        
+                elif p.interactive == 'pytorch':
+                    prob = yt.sum()/yt.shape[0]
+                    w = np.clip((1-prob)/prob, .1, 10.)
 
-                    if model_type == 'logistic':
-                        mod = PTLogisiticRegression(Xt.shape[1], learning_rate=learning_rate, C=0, 
+                    if p.model_type == 'logistic':
+                        mod = PTLogisiticRegression(Xt.shape[1], learning_ratep=p.learning_rate, C=0, 
                                                     positive_weight=w)
-                        if warm_start == 'warm':
-                            iv = torch.from_numpy(init_vec)
+                        if p.warm_start == 'warm':
+                            iv = torch.from_numpy(s.tvec)
                             iv = iv / iv.norm()
                             mod.linear.weight.data = iv.type(mod.linear.weight.dtype)
-                        elif warm_start == 'default':
+                        elif p.warm_start == 'default':
                             pass
 
-                        fit_reg(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=minibatch_size)
-                        tvec = mod.linear.weight.detach().numpy().reshape(1,-1)
-                    elif model_type in ['cosine', 'multirank']:
-                        for i in range(num_epochs):
-                            tvec = adjust_vec(tvec, Xt, yt, learning_rate=learning_rate, 
-                                                max_examples=max_examples, 
-                                                minibatch_size=minibatch_size,
-                                                loss_margin=loss_margin)
-                    elif model_type == 'solver':
-                        tvec = adjust_vec2(tvec, Xt, yt, **solver_opts)
+                        fit_reg(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=p.minibatch_size)
+                        s.tvec = mod.linear.weight.detach().numpy().reshape(1,-1)
+                    elif p.model_type in ['cosine', 'multirank']:
+                        for i in range(p.num_epochs):
+                            s.tvec = adjust_vec(s.tvec, Xt, yt, learning_rate=p.learning_rate, 
+                                                max_examples=p.max_examples, 
+                                                minibatch_size=p.minibatch_size,
+                                                loss_margin=p.loss_margin)
+                    elif p.model_type in ['multirank2']:
+                        npairs = yt.sum() * (1-yt).sum()
+                        max_iters = math.ceil(min(npairs, p.max_examples)//p.minibatch_size) * p.num_epochs
+                        print('max iters this round would have been', max_iters)
+                        #print(s.vec_state.)
+
+                        # vecs * niters = number of vector seen.
+                        # n vec seen <= 10000
+                        # niters <= 10000/vecs
+                        max_vec_seen = 10000
+                        n_iters = math.ceil(max_vec_seen/Xt.shape[0])
+                        n_steps = np.clip(n_iters, 20, 200)
+
+                        # print(f'steps for this iteration {n_steps}. num vecs: {Xt.shape[0]} ')
+                        # want iters * vecs to be const..
+                        # eg. dota. 1000*100*30
+
+                        for _ in range(n_steps):
+                            loss = s.vec_state.update(Xt, yt)
+                            if loss == 0: # gradient is 0 when loss is 0.
+                                print('loss is 0, breaking early')
+                                break
+
+                        s.tvec = s.vec_state.get_vec()
+                    elif p.model_type == 'solver':
+                        s.tvec = adjust_vec2(s.tvec, Xt, yt, **p.solver_opts)
                     else:
                         assert False, 'model type'
-
                 else:
                     assert False
             else:
                 # print('missing positives or negatives to do any training', yt.shape, yt.max(), yt.min())
                 pass
-            
-    res['indices'] = [class_idxs[r] for r in res['indices']]
-    tup = {**allargs, **kwargs}
-    return (tup, res)
 
+            lp['refine'] = time.time() - start_refine
 
-def ndcg_rank_score(ytrue, ordered_idxs):
-    '''
-        wraps sklearn.metrics.ndcg_score to grade a ranking given as an ordered array of k indices,
-        rather than as a score over the full dataset.
-    '''
-    ytrue = ytrue.astype('float')
-    # create a score that is consistent with the ranking.
-    ypred = np.zeros_like(ytrue)
-    fake_scores = np.arange(ordered_idxs.shape[0],0,-1)/ordered_idxs.shape[0]
-    assert (fake_scores > 0).all()
-    ypred[ordered_idxs] = fake_scores
-    return sklearn.metrics.ndcg_score(ytrue.reshape(1,-1), y_score=ypred.reshape(1,-1), k=ordered_idxs.shape[0])
+import random
+from .figures import compute_metrics
 
-def test_score_sanity():
-    ytrue = np.zeros(10000)
-    randorder = np.random.permutation(10000)
+def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qstr,
+                interactive, warm_start, batch_size, minibatch_size, 
+              learning_rate, max_examples, num_epochs, loss_margin, 
+              max_feedback=None, box_drop_prob=0.,
+               granularity:str, positive_vector_type, n_augment,min_box_size=10,
+               model_type='logistic', solver_opts={}, **kwargs):     
+    assert positive_vector_type in ['image_only', 'image_and_vec', 'vec_only', None]
+    ev0 = ev
+    frame = inspect.currentframe()
+    args, _, _, values = inspect.getargvalues(frame)
+    params = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'category', 'qstr', 'n_batches', 'max_feedback', 'box_drop_prob']} 
+    rtup = {**{'category':category, 'qstr':qstr}, **params, **kwargs}       
+
+    catgt = ev0.query_ground_truth[category]
+    class_idxs = catgt[~catgt.isna()].index.values
+    if class_idxs.shape[0] == 0:
+        print(f'No labelled frames for class "{category}" found ')
+        return (rtup, None)
+
+    ev, class_idxs = get_class_ev(ev0, category, boxes=True)
+    ds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
+    gt0 = ev.query_ground_truth[category]
+    gt = gt0.values
+
+    rtup['nbatches'] = n_batches
+    rtup['ntotal'] = gt.sum()
+    rtup['nimages'] = gt.shape[0]
+    rtup['nvecs'] = ev.fine_grained_meta.shape[0]
+
+    print('benchmark loop', rtup)
+    params = LoopParams(**params)
+
+    max_results = gt.sum()
+    assert max_results > 0
     
-    numpos = 100
-    posidxs = randorder[:numpos]
-    negidxs = randorder[numpos:]
-    numneg = negidxs.shape[0]
+    acc_indices = []
+    acc_results = []
 
-    ytrue[posidxs] = 1.
-    perfect_rank = np.argsort(-ytrue)
-    bad_rank = np.argsort(ytrue)
+    total_results = 0
+    loop = SeesawLoop(ev, params)
+    loop.set_vec(qstr=qstr)
+    start_time = time.time()
+    images_seen = pr.BitMap()
 
-    ## check score for a perfect result set is  1
-    ## regardless of whether the rank is computed when k < numpos or k >> numpos
-    assert np.isclose(ndcg_rank_score(ytrue,perfect_rank[:numpos//2]),1.)
-    assert np.isclose(ndcg_rank_score(ytrue,perfect_rank[:numpos]),1.)
-    assert np.isclose(ndcg_rank_score(ytrue,perfect_rank[:numpos*2]),1.)    
-    
-        ## check score for no results is 0    
-    assert np.isclose(ndcg_rank_score(ytrue,bad_rank[:-numpos]),0.)
+    for i in tqdm(range(n_batches),leave=False, disable=tqdm_disabled):
+        print(f'iter {i}')
+        if i >= 1:
+            curr_time = time.time()
+            print(f'previous iteration took {curr_time - start_time}s')
+            start_time = time.time()
 
-  
-    ## check score for same amount of results worsens if they are shifted    
-    gr = perfect_rank[:numpos//2]
-    br = bad_rank[:numpos//2]
-    rank1 = np.concatenate([gr,br])
-    rank2 = np.concatenate([br,gr])
-    assert ndcg_rank_score(ytrue, rank1) > .5, 'half of entries being relevant, but first half'
-    assert ndcg_rank_score(ytrue, rank2) < .5
-
-def test_score_rare():
-    n = 10000 # num items
-    randorder = np.random.permutation(n)
-
-    ## check in a case with only few positives
-    for numpos in [0,1,2]:
-        ytrue = np.zeros_like(randorder)
-        posidxs = randorder[:numpos]
-        negidxs = randorder[numpos:]
-        numneg = negidxs.shape[0]
-    
-        ytrue[posidxs] = 1.
-        perfect_rank = np.argsort(-ytrue)
-        bad_rank = np.argsort(ytrue)
-    
-        scores = []
-        k = 200
-        for i in range(k):
-            test_rank = bad_rank[:k].copy()
-            if len(posidxs) > 0:
-                test_rank[i] = posidxs[0]
-            sc = ndcg_rank_score(ytrue,test_rank)
-            scores.append(sc)
-        scores = np.array(scores)
-        if numpos == 0:
-            assert np.isclose(scores ,0).all()
-        else:
-            assert (scores > 0 ).all()
-
-test_score_sanity()
-test_score_rare()
-
-
-def compute_metrics(results, indices, gt):
-    hits = results
-    assert ~gt.isna().any()
-    ndcg_score = ndcg_rank_score(gt.values, indices)    
-    assert (gt.iloc[indices].values.astype('float') == hits.astype('float')).all()
-    
-    hpos= np.where(hits > 0)[0] # > 0 bc. nan.
-    if hpos.shape[0] > 0:
-        nfirst = hpos.min() + 1
-        rr = 1./nfirst
-    else:
-        nfirst = np.inf
-        rr = 1/nfirst
+        idxbatch = loop.next_batch()
         
-    nfound = (hits > 0).cumsum()
-    ntotal = (gt > 0).sum()
-    nframes = np.arange(hits.shape[0]) + 1
-    precision = nfound/nframes
-    recall = nfound/ntotal
-    total_prec = (precision*hits).cumsum() # see Evaluation of ranked retrieval results page 158
-    average_precision = total_prec/ntotal
-    
-    return dict(ndcg_score=ndcg_score, ntotal=ntotal, nfound=nfound[-1], 
-                ndatabase=gt.shape[0], abundance=(gt > 0).sum()/gt.shape[0], nframes=hits.shape[0],
-                nfirst = nfirst, reciprocal_rank=rr,
-               precision=precision[-1], recall=recall[-1], average_precision=average_precision[-1])
+        # ran out of batches
+        if idxbatch.shape[0] == 0:
+            break
 
+        #images_seen.update(idxbatch)
+        acc_indices.append(idxbatch)
+        acc_results.append(gt[idxbatch])
+        total_results += gt[idxbatch].sum()
 
+        if total_results == max_results:
+            print(f'Found all {total_results} possible results for {category} after {i} batches. stopping...')
+            break
 
-def process_tups(evs, benchresults, keys, at_N):
-    tups = []
-    ## lvis: qgt has 0,1 and nan. 0 are confirmed negative. 1 are confirmed positive.
-    for k in keys:#['lvis','dota','objectnet', 'coco', 'bdd' ]:#,'bdd','ava', 'coco']:
-        val = benchresults[k]
-        ev = evs[k]
-    #     qgt = benchgt[k]
-        for tup,exp in val:
-            hits = np.concatenate(exp['results'])
-            indices = np.concatenate(exp['indices'])
-            index_set = pr.BitMap(indices)
-            assert len(index_set) == indices.shape[0], 'check no repeated indices'
-            #ranks = np.concatenate(exp['ranks'])
-            #non_nan = ~np.isnan(ranks)
-            gtfull = ev.query_ground_truth[tup['category']].clip(0,1)
-            gt = gtfull[~gtfull.isna()]
-            idx_map = dict(zip(gt.index,np.arange(gt.shape[0]).astype('int')))
-            local_idx = np.array([idx_map[idx] for idx in indices])
-            metrics = compute_metrics(hits[:at_N], local_idx[:at_N], gt)
-    #         if tup['category'] == 'snowy weather':
-    #             break
-
-            output_tup = {**tup, **metrics}
-            #output_tup['unique_ranks'] = np.unique(ranks[non_nan]).shape[0]
-            output_tup['dataset'] = k
-            tups.append(output_tup)
-            
-    return pd.DataFrame(tups)
-
-def side_by_side_comparison(stats, baseline_variant, metric):
-    v1 = stats
-    metrics = list(set(['nfound', 'nfirst'] + [metric]))
-
-    v1 = v1[['dataset', 'category', 'variant', 'ntotal', 'abundance'] + metrics]
-    v2 = stats[stats.variant == baseline_variant]
-    rename_dict = {}
-    for m in metrics:
-        rename_dict[metric] = f'base_{metric}'
+        if i + 1 == n_batches:
+            print(f'n batches. ending...')
+            break 
         
-    rename_dict['base_variant'] = baseline_variant
+        box_dict = {}
+        for idx in idxbatch:
+            bxs = ds[idx]
+            rnd = np.random.rand(bxs.shape[0])
+            bxs = bxs[rnd >= box_drop_prob]
+            box_dict[idx] = bxs
+
+        gt2 = np.array([box_dict[idx].shape[0] > 0 for idx in idxbatch]).astype('float')
+        # if (gt2 != gt[idxbatch]).all():
+        #     print('Warning: gt data and box data seem to disagree. ')
+
+        if max_feedback is None or (i+1)*batch_size <= max_feedback:
+            loop.refine(idxbatch=idxbatch, box_dict=box_dict)
+
+    res = {}
+    hits = np.concatenate(acc_results)
+    indices = np.concatenate(acc_indices)
+
+    assert hits.shape[0] == indices.shape[0]
+    index_set = pr.BitMap(indices)
+    assert len(index_set) == indices.shape[0], 'check no repeated indices'
+    res['hits'] = np.where(hits)[0]
+    res['total_seen'] = indices.shape[0]
+    res['latency_profile'] = pd.DataFrame.from_records(loop.state.latency_profile)
+
+    return (rtup, res)
+
+def run_on_actor(br, tup):
+    return br.run_loop.remote(tup)
+
+from .progress_bar import tqdm_map
+
+#from .dataset_manager import RemoteVectorIndex
+import os
+
+class BenchRunner(object):
+    def __init__(self, evs):
+        print('initing benchrunner env...')
+        print(evs)
+        revs = {}
+        for (k,evref) in evs.items():
+            if isinstance(evref, ray.ObjectRef): # remote
+                ev = ray.get(evref)
+                revs[k] = ev
+            else: # local
+                revs[k] = evref
+        self.evs = revs
+
+        vecdir = os.environ.get("VECTORDIR", None)
+        assert vecdir is not None
+        for k,ev in evs.items():
+            if k=='lvis':
+                vector_path = f'{vecdir}/coco.annoy'
+            else:
+                vector_path = f'{vecdir}/{k}.annoy'
+
+            assert os.path.exists(vector_path), vector_path
+            vi = VectorIndex(load_path=vector_path, copy_to_tmpdir=False, prefault=True)
+            self.evs[k].vec_index = vi # use vector store directly instead
+
+        vls_init_logger()
+        print('loaded all evs...')
+
+    def ready(self):
+        return True
     
-    v2 = v2[['dataset', 'category'] + metrics]
-    v2['base'] = v2[metric]
-    v2 = v2.rename(mapper=rename_dict, axis=1)
-    
-    sbs = v1.merge(v2, right_on=['dataset', 'category'], left_on=['dataset', 'category'])
-    sbs = sbs.assign(ratio=sbs[metric]/sbs['base'])
-    sbs = sbs.assign(delta=sbs[metric] - sbs['base'])
-    return sbs
+    def run_loop(self, tup):
+        import seesaw
+        importlib.reload(seesaw)
 
-def better_same_worse(stats, variant, baseline_variant='plain', metric='ndcg_score', reltol=1.1,
-                     summary=True):
-    sbs = side_by_side_comparison(stats, baseline_variant='plain', metric='ndcg_score')
-    invtol = 1/reltol
-    sbs = sbs.assign(better=sbs.ndcg_score > reltol*sbs.base, worse=sbs.ndcg_score < invtol*sbs.base,
-                    same=sbs.ndcg_score.between(invtol*sbs.base, reltol*sbs.base))
-    bsw = sbs[sbs.variant == variant].groupby('dataset')[['better', 'same', 'worse']].sum()
-    if summary:
-        return bsw
-    else:
-        return sbs
+        start = time.time()
+        print(f'getting ev for {tup["dataset"]}...')
+        ev = self.evs[tup['dataset']]
+        print(f'got ev {ev} after {time.time() - start}')
+        ## for repeated benchmarking we want to reload without having to recreate these classes
+        # importlib.reload(importlib.import_module('seesaw'))
+        # importlib.reload(importlib.import_module(benchmark_loop.__module__))
+        res = seesaw.benchmark_loop(ev=ev, **tup)
+        print(f'Finished running after {time.time() - start}')
+        return res
 
+RemoteBenchRunner = ray.remote(BenchRunner)
 
-import datetime
-import pickle
-def dump_results(benchresults):
-    now = datetime.datetime.now()
-    nowstr = now.strftime("%Y-%m-%d_%H:%M:%S")
-    fname = './data/vls_bench_{}.pkl'.format(nowstr)
-    pickle.dump(benchresults, open(fname,'wb'))
-    print(fname)
+def make_bench_actors(evs, num_actors, resources=dict(num_cpus=4, memory=15*(2**30))):
+    evref = ray.put(evs)
+    actors = []
+    try:
+        for i in range(num_actors):
+            a = RemoteBenchRunner.options(**resources).remote(evs=evref)
+            actors.append(a)
+    except Exception as e:
+        for a in actors:
+            ray.kill(a)
+        raise e
+
+    return actors
+
+def parallel_run(*, evs, actors, tups, benchresults):
+    print('new run')
+    if len(actors) > 0:
+        tqdm_map(actors, run_on_actor, tups, benchresults)
+    else:    
+        for tup in tqdm(tups):
+            pexp = BenchRunner(evs).run_loop(tup)
+            benchresults.append(pexp)

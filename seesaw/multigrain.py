@@ -1,3 +1,9 @@
+import ray
+from ray.data.extensions import TensorArray, TensorDtype
+
+import torchvision
+from torchvision import transforms as T
+
 import numpy as np
 import pandas as pd
 from .dataset_tools import *
@@ -9,11 +15,17 @@ from .embeddings import make_clip_transform, ImTransform, XEmbedding
 from .vloop_dataset_loaders import get_class_ev
 from .dataset_search_terms import  *
 import pyroaring as pr
+from operator import itemgetter
+import PIL
 
-def postprocess_results(acc):
+
+def _postprocess_results(acc):
     flat_acc = {'iis':[], 'jjs':[], 'dbidx':[], 'vecs':[], 'zoom_factor':[], 'zoom_level':[]}
     flat_vecs = []
-    for acc0,sf,dbidx,zl in acc:
+
+    #{'accs':accs, 'sf':sf, 'dbidx':dbidx, 'zoom_level':zoom_level}
+    for item in acc:
+        acc0,sf,dbidx,zl = itemgetter('accs', 'sf', 'dbidx', 'zoom_level')(item)
         acc0 = acc0.squeeze(0)
         acc0 = acc0.transpose((1,2,0))
 
@@ -33,7 +45,6 @@ def postprocess_results(acc):
         flat_acc['zoom_factor'].append(zf)
         flat_acc['zoom_level'].append(zl)
 
-
     flat = {}
     for k,v in flat_acc.items():
         flat[k] = np.concatenate(v)
@@ -42,7 +53,12 @@ def postprocess_results(acc):
     del flat['vecs']
 
     vec_meta = pd.DataFrame(flat)
-    return vec_meta, vecs
+    vecs = vecs.astype('float32')
+    vecs = vecs/(np.linalg.norm(vecs, axis=-1, keepdims=True) + 1e-6)
+    vec_meta = vec_meta.assign(file_path=item['file_path'])
+
+    vec_meta = vec_meta.assign(vectors=TensorArray(vecs))
+    return vec_meta
 
 def preprocess_ds(localxclip, ds, debug=False):
     txds = TxDataset(ds, tx=pyramid_tx(non_resized_transform(224)))
@@ -58,7 +74,7 @@ def preprocess_ds(localxclip, ds, debug=False):
             accs= localxclip.from_image(preprocessed_image=im, pooled=False)
             acc.append((accs, sf, dbidx, zoom_level))
 
-    return postprocess_results(acc)
+    return _postprocess_results(acc)
 
 def pyramid_centered(im,i,j):
     cy=(i+1)*112.
@@ -71,7 +87,7 @@ def pyramid_centered(im,i,j):
         crs.append(im.crop(tup))
     return crs
 
-def zoom_out(im, factor=.5, abs_min=224):
+def zoom_out(im : PIL.Image, factor=.5, abs_min=224):
     """
         returns image one zoom level out, and the scale factor used
     """
@@ -90,17 +106,39 @@ def zoom_out(im, factor=.5, abs_min=224):
     assert min(im1.size) >= abs_min
     return im1, target_factor
 
-def pyramid(im, factor=.5, abs_min=224):
+
+def rescale(im, scale, min_size):
+    (w,h) = im.size
+    target_w = max(math.floor(w*scale),min_size)
+    target_h = max(math.floor(h*scale),min_size)
+    return im.resize(size=(target_w, target_h), resample=PIL.Image.BILINEAR)
+
+def pyramid(im, factor=.71, abs_min=224):
+    ## if im size is less tha the minimum, expand image to fit minimum
+    ## try following: orig size and abs min size give you bounds
+    assert factor < 1.
+    factor = 1./factor
+    size = min(im.size)
+    end_size = abs_min
+    start_size = max(size, abs_min)
+
+    start_scale = start_size/size
+    end_scale = end_size/size
+
+    ## adjust start scale
+    ntimes = math.ceil(math.log(start_scale/end_scale)/math.log(factor))
+    start_size = math.ceil(math.exp(ntimes*math.log(factor) + math.log(abs_min)))
+    start_scale = start_size/size
+    factors = np.geomspace(start=start_scale, stop=end_scale, num=ntimes+1, endpoint=True).tolist()
     ims = []
-    factors = [1.]
-    while True:
-        im, sf = zoom_out(im)
-        ims.append(im)
-        factors.append(sf*factors[-1])
-        if min(im.size) == abs_min:
-            break
-            
-    return ims, factors[1:]
+    for sf in factors:
+        imout = rescale(im, scale=sf, min_size=abs_min)
+        ims.append(imout)
+
+    assert len(ims) > 0
+    assert min(ims[0].size) >= abs_min
+    assert min(ims[-1].size) == abs_min
+    return ims, factors
 
 def trim_edge(target_divisor=112):
     def fun(im1):
@@ -112,12 +150,44 @@ def trim_edge(target_divisor=112):
         
     return fun
 
+class TrimEdge:
+    def __init__(self, target_divisor=112):
+        self.target_divisor = target_divisor
+
+    def __call__(self, im1):
+        w1,h1 = im1.size
+        spare_h = h1 % self.target_divisor
+        spare_w = w1 % self.target_divisor
+        im1 = im1.crop((0,0,w1-spare_w, h1-spare_h))
+        return im1
+
+def torgb(image):
+    return image.convert('RGB')
+
+def tofloat16(x):
+    return x.type(torch.float16)
+
 def non_resized_transform(base_size):
-    return ImTransform(visual_xforms=[trim_edge(base_size//2), lambda image: image.convert("RGB")],
+    return ImTransform(visual_xforms=[torgb],
                        tensor_xforms=[T.ToTensor(),
                                       T.Normalize((0.48145466, 0.4578275, 0.40821073), 
                                                 (0.26862954, 0.26130258, 0.27577711)),
-                                        lambda x : x.type(torch.float16)])
+                                                tofloat16])
+
+
+class PyramidTx:
+    def __init__(self, tx, factor, min_size):
+        self.tx = tx
+        self.factor = factor
+        self.min_size = min_size
+
+    def __call__(self, im):
+        ims,sfs= pyramid(im, factor=self.factor, abs_min=self.min_size)
+        ppims = []
+        for im in ims:
+            ppims.append(self.tx(im))
+
+        return ppims, sfs
 
 def pyramid_tx(tx):
     def fn(im):
@@ -173,28 +243,25 @@ def augment_score2(db,tup,qvec,vec_meta,vecs, rw_coarse=1.):
     return fsc
 
 def get_boxes(vec_meta):
+    if 'x1' in vec_meta.columns:
+        return vec_meta[['x1', 'x2', 'y1', 'y2']]
+    
     y1 = vec_meta.iis*112
     y2 = y1 + 224
     x1 = vec_meta.jjs*112
     x2 = x1 + 224
     factor = vec_meta.zoom_factor
     boxes = vec_meta.assign(**{'x1':x1*factor, 'x2':x2*factor, 'y1':y1*factor, 'y2':y2*factor})[['x1','y1','x2','y2']]
+    boxes = boxes.astype('float32') ## multiplication makes this type double but this is too much.
     return boxes
 
 def makedb(evs, dataset, category):
         ev,_ = get_class_ev(evs[dataset], category=category)
         return ev, AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, embedded_dataset=ev.fine_grained_embedding,
-               vector_meta=ev.fine_grained_meta)
-
-def try_augment(localxclip, evs, dataset, category, cutoff=40, rel_weight_coarse=1.):
-    ev,db = makedb(evs, dataset, category)
-    qvec = localxclip.from_raw(search_terms[dataset].get(category,category))
-    qvec = qvec/np.linalg.norm(qvec)
-    idxs = db.query(vector=qvec, topk=10, shortlist_size=cutoff, rel_weight_coarse=rel_weight_coarse)
-    return db.raw.show_images(idxs, ev.query_ground_truth[category][idxs])
+               vector_meta=ev.fine_grained_meta, vec_index=ev.vec_index)
 
 
-def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
+def get_pos_negs_all_v2(dbidxs, box_dict, vec_meta):
     idxs = pr.BitMap(dbidxs)
     relvecs = vec_meta[vec_meta.dbidx.isin(idxs)]
     
@@ -203,7 +270,7 @@ def get_pos_negs_all_v2(dbidxs, ds, vec_meta):
     for idx in dbidxs:
         acc_vecs = relvecs[relvecs.dbidx == idx]
         acc_boxes = get_boxes(acc_vecs)
-        label_boxes = ds[idx]
+        label_boxes = box_dict[idx]
         ious = box_iou(label_boxes, acc_boxes)
         total_iou = ious.sum(axis=0) 
         negatives = total_iou == 0
@@ -231,6 +298,8 @@ from annoy import AnnoyIndex
 import random
 import os
 
+import ray
+
 def build_index(vecs, file_name):
     t = AnnoyIndex(512, 'dot') 
     for i in range(len(vecs)):
@@ -245,22 +314,16 @@ def build_index(vecs, file_name):
 class AugmentedDB(object):
     """implements a two stage lookup
     """
-    def __init__(self, raw_dataset : torch.utils.data.Dataset,
+    def __init__(self, *, raw_dataset : torch.utils.data.Dataset,
                  embedding : XEmbedding,
                  embedded_dataset : np.ndarray,
-                 vector_meta : pd.DataFrame, 
-                 index_path : str = None):
+                 vector_meta : pd.DataFrame,
+                 vec_index =  None):
         self.raw = raw_dataset
         self.embedding = embedding
         self.embedded = embedded_dataset
         self.vector_meta = vector_meta
-
-        if index_path is not None:
-            self.vec_index = AnnoyIndex(512, 'dot')
-            self.vec_index.load(index_path)
-            assert self.vec_index.n_items() == len(self.embedded)
-        else:
-            self.vec_index = None
+        self.vec_index = vec_index
 
         all_indices = pr.BitMap()
         assert len(self.raw) == vector_meta.dbidx.unique().shape[0]
@@ -272,7 +335,7 @@ class AugmentedDB(object):
     def __len__(self):
         return len(self.raw)
 
-    def _query_prelim(self, *, vector, topk,  zoom_level, exclude=None):
+    def _query_prelim(self, *, vector, topk,  zoom_level, exclude=None, startk=None):
         if exclude is None:
             exclude = pr.BitMap([])
 
@@ -280,7 +343,8 @@ class AugmentedDB(object):
         vec_meta = self.vector_meta
         
         if len(included_dbidx) == 0:
-            return np.array([])
+            print('no dbidx included')
+            return [], [],[]
 
         if len(included_dbidx) <= topk:
             topk = len(included_dbidx)
@@ -289,19 +353,47 @@ class AugmentedDB(object):
         ## but library does not allow this...
         ## guess how much we need... and check
         
-        def get_nns_by_vector_approx():
+        def get_nns_with_pynn_index():
             i = 0
-            try_n = (len(exclude) + topk)*10
+            try_n = (len(exclude) + topk)*10 # guess of how many to use
             while True:
                 if i > 1:
                     print('warning, we are looping too much. adjust initial params?')
 
-                search_k = int(np.clip(try_n * 100, 50000, 500000)) 
+                idxs, scores = self.vec_index.query(vector.reshape(1,-1), k=try_n, epsilon=.2)
+                idxs = np.array(idxs).astype('int').reshape(-1)
+                scores = np.array(scores).reshape(-1) 
+                # search_k = int(np.clip(try_n * 100, 50000, 500000)) 
+                # search_k is a very important param for accuracy do not reduce below 30k unless you have a 
+                # really good reason. the upper limit is 
+                # idxs, scores = self.vec_index.get_nns_by_vector(vector.reshape(-1), n=try_n, 
+                #                                                 search_k=search_k,
+                #                                                 include_distances=True)
+                #breakpoint()
+                found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
+                if len(found_idxs.difference(exclude)) >= topk:
+                    break
+                
+                try_n = try_n*2 # double guess
+                i+=1
+
+            return idxs, scores
+
+
+        def get_nns_by_vector_approx():
+            i = 0
+            try_n = (len(exclude) + topk)*3
+            while True:
+                if i > 1:
+                    print('warning, we are looping too much. adjust initial params?')
+
+                #search_k = int(np.clip(try_n * 100, 50000, 500000)) 
                 # search_k is a very important param for accuracy do not reduce below 30k unless you have a 
                 # really good reason. the upper limit is 
                 idxs, scores = self.vec_index.get_nns_by_vector(vector.reshape(-1), n=try_n, 
-                                                                search_k=search_k,
+                 #                                               search_k=search_k,
                                                                 include_distances=True)
+
 
                 found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
                 if len(found_idxs.difference(exclude)) >= topk:
@@ -312,13 +404,33 @@ class AugmentedDB(object):
 
             return np.array(idxs).astype('int'), np.array(scores)
 
+
+        def get_nns(startk, topk):
+            i = 0
+            deltak = topk*100
+            while True:
+                if i > 1:
+                    print('warning, we are looping too much. adjust initial params?')
+
+                idxs,scores = self.vec_index.query(vector, top_k=startk + deltak)
+                found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
+
+                newidxs = found_idxs.difference(exclude)
+                if len(newidxs) >= topk:
+                    break
+                
+                deltak = deltak*2
+                i+=1
+
+            return idxs, scores
+
         def get_nns_by_vector_exact():
             scores = self.embedded @ vector.reshape(-1)
             scorepos = np.argsort(-scores)
             return scorepos, scores[scorepos]
 
         if self.vec_index is not None:
-            idxs, scores = get_nns_by_vector_approx()
+            idxs, scores  = get_nns(startk, topk)
         else:
             idxs, scores = get_nns_by_vector_exact()
 
@@ -326,23 +438,32 @@ class AugmentedDB(object):
         topscores = vec_meta[['dbidx']].iloc[idxs]
         topscores = topscores.assign(score=scores)
         allscores = topscores
-        topscores = topscores[~topscores.dbidx.isin(exclude)]
-        scoresbydbidx = topscores.groupby('dbidx').score.max().sort_values(ascending=False)
+        
+        newtopscores = topscores[~topscores.dbidx.isin(exclude)]
+        scoresbydbidx = newtopscores.groupby('dbidx').score.max().sort_values(ascending=False)
         score_cutoff = scoresbydbidx.iloc[topk-1] # kth largest score
-        topscores = topscores[topscores.score >=  score_cutoff]
-        candidates =  pr.BitMap(topscores.dbidx)
+        newtopscores = newtopscores[newtopscores.score >=  score_cutoff]
+
+        # newtopscores = newtopscores.sort_values(ascending=False)
+        nextstartk = (allscores.score >= score_cutoff).sum()
+        nextstartk  = math.ceil(startk*.8 + nextstartk*.2) # average to estimate next
+        candidates =  pr.BitMap(newtopscores.dbidx)
         assert len(candidates) >= topk
         assert candidates.intersection_cardinality(exclude) == 0
-        return topscores.index.values, candidates, allscores
+        return newtopscores.index.values, candidates, allscores, nextstartk
         
-    def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1, **kwargs):
+    def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1, startk=None, **kwargs):
 #        print('ignoring extra args:', kwargs)
         if shortlist_size is None:
             shortlist_size = topk*5
         
+        if startk is None:
+            startk = len(exclude)*10
+
         db = self
         qvec=vector
-        meta_idx, candidate_id, allscores = self._query_prelim(vector=qvec, topk=shortlist_size, zoom_level=None, exclude=exclude)
+        meta_idx, candidate_id, allscores, nextstartk = self._query_prelim(vector=qvec, topk=shortlist_size, 
+                                            zoom_level=None, exclude=exclude, startk=startk)
 
         fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(candidate_id)]
         fullmeta = fullmeta.assign(**get_boxes(fullmeta))
@@ -365,9 +486,5 @@ class AugmentedDB(object):
 
             dbscores[i] = np.max(boxscs)
 
-        # final = scmeta.assign(aug_score=np.array(scs))
-        # agg = final.groupby('dbidx').aug_score.max().reset_index().sort_values('aug_score', ascending=False)
         topkidx = np.argsort(-dbscores)[:topk]
-        return dbidxs[topkidx].astype('int'), allscores # return fullmeta 
-        # idxs = agg.dbidx.iloc[:topk]
-        # return idxs
+        return dbidxs[topkidx].astype('int'), nextstartk # return fullmeta 

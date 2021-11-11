@@ -23,7 +23,7 @@ RUN echo 'conda activate seesaw' >> ~/.bashrc
 
 # pre-download clip model
 # RUN --mount=type=cache,target=/root/.cache/clip  # this version did not work, stuff was gone at runtime 
-RUN python -c "import clip; _ = clip.load('ViT-B/32', device='cpu', jit=False)" && ls /root/.cache/clip
+RUN python -c "import clip; clip.clip._download(url=clip.clip._MODELS['ViT-B/32'], root='/root/.cache/clip')" && ls /root/.cache/clip
 
 # install ipython kernel
 RUN python -m ipykernel install --user --name seesaw --display-name "Python (seesaw)"
@@ -48,10 +48,20 @@ VOLUME notebooks
 # expose also API server, ray dashboard and jupyter notebook
 EXPOSE 5000 8265 8888
 
+RUN pip install jupyter_contrib_nbextensions 
+RUN jupyter contrib nbextension install --system --symlink
+RUN jupyter nbextension enable execute_time/ExecuteTime
+RUN apt-get install -y tree rsync
+
+
+##################
 ## do this as late as possible within this file, everything after will be redone every time
+##################
+
 COPY . repo
 RUN rm -rf repo/.git
 VOLUME repo
 
 ## install seesaw and check import works
 RUN conda activate seesaw && pip install -e repo && python -c 'import seesaw'
+
