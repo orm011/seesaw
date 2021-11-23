@@ -166,22 +166,22 @@ class BoxFeedbackQuery(InteractiveQuery):
         self.roi_vecs = [np.zeros((0, db.embedded.shape[1]))]
         self.auto_fill_df = auto_fill_df
 
-def make_image_panel(bfq, idxbatch):
-    from .ui import widgets
+# def make_image_panel(bfq, idxbatch):
+#     # from .ui import widgets
 
-    dat = get_panel_data(bfq, bfq.label_db, idxbatch)
+#     dat = get_panel_data(bfq, bfq.label_db, idxbatch)
 
-    ldata = dat['ldata']
-    if bfq.auto_fill_df is not None:
-        gt_ldata = auto_fill_boxes(bfq.auto_fill_df, ldata)
-        ## only use boxes for things we have not added ourselves...
-        ## (ie don't overwrite db)
-        for rdb, rref in zip(ldata, gt_ldata):
-            if rdb['dbidx'] not in bfq.label_db:
-                rdb['boxes'] = rref['boxes']
+#     ldata = dat['ldata']
+#     if bfq.auto_fill_df is not None:
+#         gt_ldata = auto_fill_boxes(bfq.auto_fill_df, ldata)
+#         ## only use boxes for things we have not added ourselves...
+#         ## (ie don't overwrite db)
+#         for rdb, rref in zip(ldata, gt_ldata):
+#             if rdb['dbidx'] not in bfq.label_db:
+#                 rdb['boxes'] = rref['boxes']
 
-    pn = widgets.MImageGallery(**dat)
-    return pn
+#     pn = widgets.MImageGallery(**dat)
+#     return pn
 
 
 def update_rois(bfq, ldata, pad_factor, augment_n):

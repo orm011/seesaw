@@ -9,7 +9,7 @@
       </div>
     </div>
     </div>
-    <m-modal v-if="selection != null" ref='modal' v-on:close='close_modal(selection)' tabindex='0' >
+    <m-modal v-if="selection != null" ref='modal' v-on:close='close_modal()' tabindex='0' >
       <div class='row'>
         <m-annotator  ref='annotator' :initial_imdata="initial_imdata[selection]" :key="index*10000 + (initial_imdata[selection].boxes == null ? 0 :
          initial_imdata[selection].boxes.length)"  :read_only="false"  tabindex='1' v-on:box-save="box_save(selection, $event)" />
@@ -36,8 +36,9 @@ import MModal from './m-modal.vue';
 
 
  export default {
+  name : 'm-image-gallery',
   components: { 'm-annotator':MAnnotator, 'm-modal':MModal },
-  props: { initial_imdata:{type:Array, default:[]}, refmode:Boolean },
+  props: { initial_imdata:{type:Array, default: () => []}, refmode:Boolean },
   data : function() { return { selection:null }},
   created : function (){},
   mounted : function (){
@@ -58,7 +59,7 @@ import MModal from './m-modal.vue';
         return 'rejected'
       }
     },
-    close_modal(index){ // closing modal emits a data edit event
+    close_modal(){ // closing modal emits a data edit event
       // this.box_save(index);
       this.selection  = null;
     },

@@ -3,7 +3,6 @@ from .cross_modal_db import EmbeddingDB
 import json
 import pandas as pd
 import os
-from .ui.widgets import MImageGallery
 from .fine_grained_embedding import *
 import inspect, os, copy
 from .dataset_tools import ExplicitPathDataset

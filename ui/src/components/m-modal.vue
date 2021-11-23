@@ -9,6 +9,7 @@
 </template>
 <script>
 export default {
+    name : 'm-modal',
     data : function(){return {active:true}},
     mounted : function () {
     },

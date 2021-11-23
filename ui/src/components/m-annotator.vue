@@ -9,8 +9,11 @@
     eg, the $refs and other vue component object attributes) -->
 </template>
 <script>
+
+import paper from 'paper/dist/paper-core';
+
 export default { 
-  name: "m-annotator.vue", // used by ipyvue?
+  name: "m-annotator", // used by ipyvue?
   props: ['initial_imdata', 'read_only'],
   data : function() {
         return {height_ratio:null, width_ratio:null, paper: null }
@@ -19,7 +22,7 @@ export default {
       console.log('created annotator')
   },
   mounted : function() {
-        this.paper = new window.paper.PaperScope();
+        this.paper = new paper.PaperScope();
         new paper.Tool(); // also implicitly adds tool to paper scope
         console.log('mounted annotator')
   },

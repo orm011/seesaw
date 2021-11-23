@@ -73,11 +73,10 @@
  </div>
 </template>
 <script>
-import MImageGallery from './m-image-gallery.vue';
-import MAnnotator from './m-annotator.vue';
+import MImageGallery from './components/m-image-gallery.vue';
 
 export default {
-    components : {'m-annotator':MAnnotator, 'm-image-gallery':MImageGallery},
+    components : {'m-image-gallery':MImageGallery},
     props: {},
     data () { return {  
                 gdata:[],  // list of lists of {'url': str, 'dbidx': int, 'boxes':null|List, 'refboxes':null|List}
