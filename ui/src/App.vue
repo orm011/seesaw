@@ -33,9 +33,13 @@
         <div class='row'>
           <span>Total results found: {{total_annotations()}}</span>
         </div>
-        <div class='row'>
+        <!-- <div class='row'>
           <button class="btn btn-dark btn-block" @click="save()"> Save </button>
+        </div> -->
+        <div class='row'>
+          <button class="btn btn-dark btn-block" @click="reset(current_dataset)"> Reset </button>
         </div>
+
         <!-- <div class='row'>
         <ul class="nav flex-column">
           <li v-for="(dataset_name,idx) in datasets" :key="idx" class="nav-item">

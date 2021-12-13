@@ -2,13 +2,12 @@
 set -euxo pipefail 
 
 (wget --quiet localhost:9000 && echo 'nginx already running') || (echo 'starting nginx...' && nginx -c ./conf/seesaw.spc.conf)
-
 DIR=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 cd $DIR
 
-echo 'starting head node'
+# echo 'starting head node'
 # export TMPDIR="/state/partition1/slurm_tmp/`LLstat | grep Jupyter | awk '{ print $1 }'`.0.0"
-. start_worker.bash --head "--num-cpus=40 --num-gpus=2" 
+#. start_worker.bash --head "--num-cpus=40 --num-gpus=2" 
 
 python init_model_actor.py --namespace seesaw &
 
@@ -25,6 +24,8 @@ HEAD="`hostname`:6379"
 # done
 # sleep 5 # give time for secondary nodes to start
 wait # for model actor and ray serve
-python init_data_actors.py --load_ground_truth --load_coarse_embedding --namespace seesaw --datasets objectnet bdd coco dota lvis
+#python init_data_actors.py --load_ground_truth --load_coarse_embedding --namespace seesaw --datasets panama_frames3
+python init_data_actors.py  --namespace seesaw --datasets panama_frames3
+
 echo 'DONE. inited data actors'
 sleep infinity

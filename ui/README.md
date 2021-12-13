@@ -1,4 +1,8 @@
 # ui
+To build/develop this one:
+* install node (from website)
+* npm install yarn
+
 
 ## Project setup
 ```
@@ -10,15 +14,17 @@ yarn install
 yarn serve
 ```
 
+
 ### Compiles and minifies for production
 ```
 yarn build
+```
+
+```
+ yarn build --mode development 
 ```
 
 ### Lints and fixes files
 ```
 yarn lint
 ```
-
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).
