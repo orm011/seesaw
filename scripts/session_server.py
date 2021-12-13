@@ -44,6 +44,8 @@ print('started.')
 def get_image_paths(dataset_name, ev, idxs):
     return [ f'/data/{dataset_name}/images/{ev.image_dataset.paths[int(i)]}' for i in idxs]
 
+import shutil
+
 class SessionState:
     current_dataset : str
     ev : EvDataset
@@ -65,8 +67,12 @@ class SessionState:
         else:
             dname = dataset_name
         vipath = f'{vectordir}/{dname}.annoy'
-        assert os.path.exists(vipath), vipath
-        self.ev.vec_index = VectorIndex(load_path=vipath, prefault=True)
+
+        if os.path.exists(vipath):
+            self.ev.vec_index = VectorIndex(load_path=vipath, prefault=True)
+        else:
+            print('index path not found, using slow filesystem')
+            self.ev.vec_index = VectorIndex(load_path=self.ev.vec_index_path, prefault=True)
 
         self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=3, 
                 minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
@@ -89,19 +95,27 @@ class SessionState:
         
         dat = {'gdata':gdata}
         dat['current_dataset'] = self.current_dataset
-        dat['reference_categories'] = self.ev.query_ground_truth.columns.values.tolist()
+        if self.ev.query_ground_truth is not None:
+            dat['reference_categories'] = self.ev.query_ground_truth.columns.values.tolist()
+        else:
+            dat['reference_categories'] = []
+
         return dat
 
     def get_panel_data(self, *, idxbatch):
         reslabs = []
-        bx = self.ev.box_data
         urls = get_image_paths(self.current_dataset, self.ev, idxbatch)
 
         for (url, dbidx) in zip(urls, idxbatch):
             dbidx = int(dbidx)
-            rows = bx[bx.dbidx == dbidx]
-            rows = rows[['x1', 'x2', 'y1', 'y2', 'category']]
-            refboxes = rows.to_dict(orient='records')
+
+            if self.ev.box_data is not None:
+                bx = self.ev.box_data
+                rows = bx[bx.dbidx == dbidx]
+                rows = rows[['x1', 'x2', 'y1', 'y2', 'category']]
+                refboxes = rows.to_dict(orient='records')
+            else:
+                refboxes = []
 
             boxes = self.ldata_db.get(dbidx,None) # None means no annotations yet (undef), empty means no boxes.
             elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, refboxes=refboxes)
@@ -156,15 +170,12 @@ class ResetReq(BaseModel):
     dataset: str
 
 
-
-
-
 @serve.deployment(name="seesaw_deployment", ray_actor_options={"num_cpus": 32}, route_prefix='/')
 @serve.ingress(app)
 class WebSeesaw:
-    def __init__(self):
+    def __init__(self, vectordir):
         self.gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
-        self.datasets = ['objectnet', 'dota', 'lvis','coco', 'bdd']
+        self.datasets = ['panama_frames3']#objectnet', 'dota', 'lvis','coco', 'bdd']
         ## initialize to first one
         self.evs = {}
         print('loading data refs')
@@ -172,7 +183,7 @@ class WebSeesaw:
             ev = self._get_ev(dsname)
             self.evs[dsname] = ev
         print('done loading')
-        vectordir = os.environ.get('VECTORDIR', None)
+        vectordir = vectordir
         assert vectordir is not None
         self.vectordir = vectordir
         self.xclip = ModelService(ray.get_actor('clip#actor'))
@@ -269,8 +280,9 @@ class WebSeesaw:
         ### save state with time id
 
 
+vectordir = os.environ.get('VECTORDIR', None)
 
 # pylint: disable=maybe-no-member
-WebSeesaw.deploy()
+WebSeesaw.deploy(vectordir)
 while True: # wait.
     input()

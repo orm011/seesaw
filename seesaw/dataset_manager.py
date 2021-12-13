@@ -27,7 +27,6 @@ import math
 import pyarrow
 from pyarrow import parquet as pq
 import shutil
-
 import io
 
 
@@ -157,7 +156,11 @@ class BatchInferModel:
                 vectors = self.model(preprocessed_image=im.unsqueeze(0).to(self.device)).to('cpu').numpy()
                 tup['accs'] = vectors
                 res.append(tup)
-        return postprocess_results(res)
+
+        if len(res) == 0:
+            return []
+        else:
+            return [postprocess_results(res)]
 
 #mcc = mini_coco(None)
 def worker_function(wid, dataset,slice_size,indices, cpus_per_proc, vector_root, jit_path):
@@ -197,19 +200,29 @@ class Preprocessor:
 
         def full_preproc(tup):
             ray_tup = fix_meta(tup)
-            image = PIL.Image.open(io.BytesIO(ray_tup['binary']))
-            ray_tup['image'] = image
+            try:
+                image = PIL.Image.open(io.BytesIO(ray_tup['binary']))
+            except PIL.UnidentifiedImageError:
+                print(f'error parsing binary {ray_tup["file_path"]}')
+                ## some images are corrupted / not copied properly
+                ## it is easier to handle that softly
+                image = None
+
             del ray_tup['binary']
-            return preprocess(ray_tup, factor=pyramid_factor)
+            if image is  None:
+                return [] # empty list ok?
+            else:
+                ray_tup['image'] = image
+                return preprocess(ray_tup, factor=pyramid_factor)
 
         def preproc_batch(b):
             return [full_preproc(tup) for tup in b]
 
-        dl = ray_dataset.pipeline(parallelism=20).map_batches(preproc_batch, batch_size=20)
+        dl = ray_dataset.window(blocks_per_window=20).map_batches(preproc_batch, batch_size=20)
         res = []
         for batch in dl.iter_rows():
             batch_res = self.bim(batch)
-            res.append(batch_res)
+            res.extend(batch_res)
         # dl = DataLoader(txds, num_workers=1, shuffle=False,
         #                 batch_size=1, collate_fn=iden)
         # res = []
@@ -268,47 +281,6 @@ class SeesawDatasetManager:
     def __repr__(self):
         return f'{self.__class__.__name__}({self.dataset_name})'
         
-    def preprocess(self, model_path,num_subproc=-1, force=False):
-        ''' Will run a preprocess pipeline and store the output
-            -1: use all gpus
-            0: use one gpu process and preprocessing all in the local process 
-        '''
-        dataset = self.get_pytorch_dataset()
-        jit_path=model_path
-        vector_root = self.vector_path()
-        if os.path.exists(vector_root):
-            i = 0
-            while True:
-                i+=1
-                backup_name = f'{vector_root}.bak.{i:03d}'
-                if os.path.exists(backup_name):
-                    continue
-                else:
-                    os.rename(vector_root, backup_name)
-                    break
-        
-        os.makedirs(vector_root, exist_ok=False)
-
-        if num_subproc == -1:
-            num_subproc = torch.cuda.device_count()
-        
-        jobs = []
-        if num_subproc == 0:
-            worker_function(0, dataset, slice_size=len(dataset), 
-                indices=np.arange(len(dataset)), cpus_per_proc=0, vector_root=vector_root, jit_path=jit_path)
-        else:
-            indices = np.random.permutation(len(dataset))
-            slice_size = int(math.ceil(indices.shape[0]/num_subproc))
-            cpus_per_proc = min(os.cpu_count()//num_subproc,4) if num_subproc > 0 else 0
-
-            for i in range(num_subproc):
-                p = mp.Process(target=worker_function, args=(i,dataset, slice_size, indices, cpus_per_proc, vector_root, jit_path))
-                jobs.append(p)
-                p.start()
-
-            for p in jobs:
-                p.join()
-
     def preprocess2(self, model_path, archive_path=None, archive_prefix='', pyramid_factor=.5):
         dataset = self.get_pytorch_dataset()
         jit_path=model_path
@@ -327,15 +299,8 @@ class SeesawDatasetManager:
         os.makedirs(vector_root, exist_ok=False)
         sds = self
 
-
-        if archive_path is not None:
-            assert archive_path.endswith('.tar')
-            file_system = fsspec.get_filesystem_class('tar')(archive_path)
-            read_paths = (file_system.root_marker + archive_prefix + '/' + sds.paths).tolist()
-        else:
-            real_prefix=f'{os.path.realpath(sds.image_root)}/'
-            file_system = fsspec.get_filesystem_class('file')
-            read_paths = ((real_prefix + sds.paths)).tolist()
+        real_prefix=f'{os.path.realpath(sds.image_root)}/'
+        read_paths = ((real_prefix + sds.paths)).tolist()
             
         read_paths = [os.path.normpath(p) for p in read_paths]
 
@@ -422,7 +387,7 @@ class SeesawDatasetManager:
                 return df.assign(dbidx=df.file_path.map(lambda path : idmap[path]))
 
             ds = ray.data.read_parquet(self.vector_path(), columns=['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
-            df = pd.concat(ray.get(ds.to_pandas()), axis=0, ignore_index=True)
+            df = pd.concat(ray.get(ds.to_pandas_refs()), axis=0, ignore_index=True)
             df = assign_ids(df)
             df = df.sort_values(['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2']).reset_index(drop=True)
             df = df.assign(order_col=df.index.values)
@@ -437,7 +402,7 @@ class SeesawDatasetManager:
         print('loading fine embedding...')
         assert os.path.exists(cached_meta_path)
         ds = ray.data.read_parquet(cached_meta_path, columns=['dbidx', 'zoom_level', 'max_zoom_level', 'order_col','x1', 'y1', 'x2', 'y2','vectors'])
-        df = pd.concat(ray.get(ds.to_pandas()),ignore_index=True)
+        df = pd.concat(ray.get(ds.to_pandas_refs()),ignore_index=True)
         assert df.order_col.is_monotonic_increasing, 'sanity check'
         fine_grained_meta = df[['dbidx', 'order_col', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
         fine_grained_embedding = df['vectors'].values.to_numpy()
@@ -456,7 +421,7 @@ class SeesawDatasetManager:
             coarse_df = pd.read_parquet(coarse_meta_path)
             assert coarse_df.dbidx.is_monotonic_increasing, 'sanity check'
             embedded_dataset = coarse_df['vectors'].values.to_numpy()
-            assert embedded_dataset.shape[0] == self.paths.shape[0]
+            # assert embedded_dataset.shape[0] == self.paths.shape[0], corrupted images are not in embeddding but yes in files
         else:
             embedded_dataset = None
 
@@ -480,6 +445,7 @@ class SeesawDatasetManager:
             embedding=None,#model used for embedding 
             fine_grained_embedding=fine_grained_embedding,
             fine_grained_meta=fine_grained_meta, 
+            vec_index_path=self.index_path(),
             vec_index=vec_index)
 
 
@@ -587,6 +553,9 @@ class GlobalDataManager:
             paths = list_image_paths(image_src)
             
         df = pd.DataFrame({'file_path':paths})
+
+        ## use file name order to keep things intuitive
+        df = df.sort_values('file_path').reset_index(drop=True)
         df.to_parquet(f'{dspath}/file_meta.parquet')
         return self.get_dataset(dataset_name)
             

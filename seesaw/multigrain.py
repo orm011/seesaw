@@ -326,7 +326,7 @@ class AugmentedDB(object):
         self.vec_index = vec_index
 
         all_indices = pr.BitMap()
-        assert len(self.raw) == vector_meta.dbidx.unique().shape[0]
+        assert len(self.raw) >= vector_meta.dbidx.unique().shape[0]
         assert embedded_dataset.shape[0] == vector_meta.shape[0]
         all_indices.add_range(0, len(self.raw))
         self.all_indices = pr.FrozenBitMap(all_indices)

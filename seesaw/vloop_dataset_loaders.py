@@ -19,8 +19,10 @@ class EvDataset(object):
     fine_grained_embedding : np.ndarray
     fine_grained_meta : pd.DataFrame
     imge_dataset : ExplicitPathDataset
+    vec_index_path : str
+
     def __init__(self, *, root, paths, embedded_dataset, query_ground_truth, box_data, embedding, 
-                fine_grained_embedding=None, fine_grained_meta=None, vec_index=None):
+                fine_grained_embedding=None, fine_grained_meta=None, vec_index_path=None, vec_index=None):
         """
         meant to be cheap to run, we use it to make subsets.
             do any global changes outside, eg in make_evdataset.
