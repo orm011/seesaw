@@ -172,7 +172,8 @@ def non_resized_transform(base_size):
                        tensor_xforms=[T.ToTensor(),
                                       T.Normalize((0.48145466, 0.4578275, 0.40821073), 
                                                 (0.26862954, 0.26130258, 0.27577711)),
-                                                tofloat16])
+                                                #tofloat16
+                                                ])
 
 
 class PyramidTx:

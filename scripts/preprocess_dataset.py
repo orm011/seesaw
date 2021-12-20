@@ -11,7 +11,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_src', type=str, default=None, help='If cloning a dataset before preprocessing, name for source dataset')    
     parser.add_argument('--seesaw_root', type=str, help='Seesaw root folder where dataset will live')
     parser.add_argument('--dataset_name', type=str, help='String identifier for newly created dataset (will also be used as folder name)')
-    parser.add_argument('--model_path', type=str, help='path to use for jitted model')
+    parser.add_argument('--model_path', type=str, help='path for model')
     # parser.add_argument('--image_archive', type=str, default=None, help='alternative path to images using an archive file')
     # parser.add_argument('--image_archive_prefix', type=str, default='', help='common prefix to use within archive')
 

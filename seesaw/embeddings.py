@@ -381,6 +381,28 @@ def make_clip_transform(n_px, square_crop=False):
 #                                        lambda x : x.type(torch.float16)])
 
 
+import transformers
+
+class HGWrapper(XEmbedding):
+    def __init__(self, path, device):
+        model = transformers.CLIPModel.from_pretrained(path).to(device)
+        self.tokenizer = transformers.CLIPTokenizer.from_pretrained(path)
+        self.model = model.eval()
+
+    def ready(self):
+        return True
+
+    def from_string(self, *, string=None, str_vec=None, numpy=True):
+        if str_vec is not None:
+            return str_vec
+        else:
+            with torch.no_grad():
+                toks = self.tokenizer(string, return_tensors='pt').to(self.model.device)
+                features = self.model.get_text_features(**toks)
+                return features.detach().cpu().numpy().reshape(1,-1)
+
+    def from_image(self, *, preprocessed_image=None, image=None, img_vec=None, numpy=True, pooled=True):
+        raise NotImplementedError('use batch script for this')
 
 class CLIPWrapper(XEmbedding):
     def __init__(self, device, jit=False):

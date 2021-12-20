@@ -6,8 +6,7 @@ DIR=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 cd $DIR
 
 # echo 'starting head node'
-# export TMPDIR="/state/partition1/slurm_tmp/`LLstat | grep Jupyter | awk '{ print $1 }'`.0.0"
-#. start_worker.bash --head "--num-cpus=40 --num-gpus=2" 
+. start_worker.bash --head "--num-cpus=40 --num-gpus=2" 
 
 python init_model_actor.py --namespace seesaw &
 
@@ -25,7 +24,7 @@ HEAD="`hostname`:6379"
 # sleep 5 # give time for secondary nodes to start
 wait # for model actor and ray serve
 #python init_data_actors.py --load_ground_truth --load_coarse_embedding --namespace seesaw --datasets panama_frames3
-python init_data_actors.py  --namespace seesaw --datasets panama_frames3
+python init_data_actors.py  --namespace seesaw --datasets panama_frames3 panama_frames_finetune4 bird_guide bird_guide_finetuned
 
 echo 'DONE. inited data actors'
 sleep infinity

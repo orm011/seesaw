@@ -1,11 +1,12 @@
-import clip
 import pytorch_lightning as pl
 import os
 import multiprocessing as mp
 
-import clip, torch
+import torch
 import PIL
 from operator import itemgetter
+
+import transformers
 
 from .multigrain import * #SlidingWindow,PyramidTx,non_resized_transform
 from .embeddings import * 
@@ -83,18 +84,42 @@ def trace_emb_jit(output_path):
     print(out.dtype)
     jitmod.save(output_path)
 
+def clip_loader(variant="ViT-B/32"):
+    def fun(device, jit_path=None):
+        if jit_path == None:
+            model, _ = clip.load(variant, device=device, jit=False)
+            ker = NormalizedEmbedding(model.visual)
+        else:
+            ker = torch.jit.load(jit_path, map_location=device)
+
+        return ker
+    return fun
+
+class HGFaceWrapper(nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, images):
+        return self.model.get_image_features(images)
+
+def huggingface_loader(variant="./models/clip-vit-base-patch32"):
+    ## output must be extracted and then normalized
+    def fun(device, jit_path=None):
+        model = transformers.CLIPModel.from_pretrained(variant)
+        return HGFaceWrapper(model)
+
+    return fun
+
 class ImageEmbedding(nn.Module):
     def __init__(self, device, jit_path=None):
         super().__init__()
         self.device = device            
 
-        if jit_path == None:
-            model, _ = clip.load("ViT-B/32", device=device, jit=False)
-            ker = NormalizedEmbedding(model.visual)
-        else:
-            ker = torch.jit.load(jit_path, map_location=device)
+        # if loader_function is None:
+        #     loader_function = clip_loader()
+        ker = huggingface_loader(variant=jit_path)(device)
 
-        
         kernel_size = 224 # changes with variant        
         self.model = SlidingWindow(ker, kernel_size=kernel_size, stride=kernel_size//2,center=True).to(self.device)
 
@@ -670,6 +695,7 @@ def build_nndescent_idx(vecs, output_path, n_trees):
     pickle.dump(ret, file=open(output_path, 'wb'))
     return difftime
 
+import shutil
 import annoy
 class VectorIndex:
     def __init__(self, *, load_path, copy_to_tmpdir=False, prefault=False):
@@ -678,12 +704,14 @@ class VectorIndex:
         if copy_to_tmpdir:
             tmpdir = os.environ.get('TMPDIR')
             assert tmpdir is not None, 'need a tmpdir for copying'
-            fname = load_path.replace('/', '_')
-            tmp_load_path = f'{tmpdir}/{fname}'
-            print(f'copying file {load_path} to {tmp_load_path} for faster mmap...')
-            shutil.copy2(load_path, tmp_load_path)
-            print('done copying...')
-            actual_load_path = tmp_load_path
+            cache_base = tmpdir + "/seesaw_cached/"
+            #!rsync -Rrv /home/gridsan/omoll/./xmodexp/notebooks/models/clip-vit-base-patch32 /state/partition1/user/omoll/base/
+            # os.system(f'rsync -Rrv {load_path} {cache_base}')
+            # cache_path = cache_base load_path.split('.')[-1]
+            # print(f'copying file {load_path} to {} for faster mmap...')
+            # shutil.copy2(load_path, tmp_load_path)
+            # print('done copying...')
+            # actual_load_path = tmp_load_path
         else:
             print('loading directly')
             actual_load_path = load_path

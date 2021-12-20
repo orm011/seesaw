@@ -46,9 +46,14 @@ if __name__ == '__main__':
 
     ray.init('auto', namespace=args.namespace)
 
-    model_actor = ray.get_actor('clip#actor')
-    #['objectnet', 'bdd', 'coco', 'dota', 'lvis']
-    xclip = ModelService(model_actor)
+
+    def get_model(dsname):
+        d = {'panama_frames_finetune4':'birdclip', 'bird_guide_finetuned':'birdclip', 'bird_guide_224_finetuned':'birdclip'}
+        s = d.get(dsname, 'clip')
+        name =  f'{s}#actor'
+        model_actor = ray.get_actor(name)
+        xclip = ModelService(model_actor)
+        return xclip
 
     gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
     ds_names = args.datasets
@@ -57,7 +62,7 @@ if __name__ == '__main__':
     handles = []
     for k in ds_names:
         def loader():
-            return load_ev(gdm=gdm, dsname=k, xclip=xclip, 
+            return load_ev(gdm=gdm, dsname=k, xclip=get_model(k), 
                     load_ground_truth=args.load_ground_truth, 
                     load_coarse=args.load_coarse_embedding)
 
@@ -65,6 +70,6 @@ if __name__ == '__main__':
         dbs.append(dbactor)
         handles.append(dbactor.ready.remote())
 
-    handles.append(model_actor.ready.remote())
+    # handles.append(model_actor.ready.remote())
     ray.get(handles)
     print('db loaded and model ready...')

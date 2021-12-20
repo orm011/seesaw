@@ -175,7 +175,9 @@ class ResetReq(BaseModel):
 class WebSeesaw:
     def __init__(self, vectordir):
         self.gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
-        self.datasets = ['panama_frames3']#objectnet', 'dota', 'lvis','coco', 'bdd']
+        self.datasets = ['panama_frames3', 'panama_frames_finetune4',]
+        # 'bird_guide_224', 'bird_guide_224_finetuned']
+        #objectnet', 'dota', 'lvis','coco', 'bdd']
         ## initialize to first one
         self.evs = {}
         print('loading data refs')
@@ -281,7 +283,7 @@ class WebSeesaw:
 
 
 vectordir = os.environ.get('VECTORDIR', None)
-
+assert vectordir is not None
 # pylint: disable=maybe-no-member
 WebSeesaw.deploy(vectordir)
 while True: # wait.
