@@ -1,8 +1,8 @@
 <template>
 <!-- mostly based on https://www.w3schools.com/howto/howto_css_modal_images.asp -->
-<div :class="`modal ${active ? 'modal-active': ''}` " tabindex="0" >
+<div :class="`my-modal ${active ? 'my-modal-active': ''}` " tabindex="0" >
   <span class="close" @click='close'>&times;</span>
-  <div class="modal-content" tabindex='1'>
+  <div class="my-modal-content" tabindex='1'>
     <slot></slot>
  </div>
 </div>
@@ -28,9 +28,10 @@ export default {
 </script>
 <style scoped>
 /* The Modal (background) */
-.modal {
+.my-modal {
   display: none; /* Hidden by default */
   position: fixed; /* Stay in place */
+  text-align: center;
   z-index: 1021; /* Sit on top of left menu, which is at 100, and top bar, which is at 1020 */
   padding-top: 100px; /* Location of the box */
   left: 0;
@@ -42,12 +43,14 @@ export default {
   background-color: rgba(0,0,0,0.9); /* Black w/ opacity */
 }
 
-.modal-active {
+
+.my-modal-active {
   display: block;
 }
 
+
 /* Modal Content (image) */
-.modal-content {
+.my-modal-content {
   margin: auto;
   display: block;
   width: fit-content;

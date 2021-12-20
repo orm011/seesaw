@@ -61,6 +61,7 @@ import MModal from './m-modal.vue';
     },
     close_modal(){ // closing modal emits a data edit event
       // this.box_save(index);
+      this.$refs.annotator.save_current_box_data();
       this.selection  = null;
     },
     box_save(index, boxlist){

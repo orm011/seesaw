@@ -1,7 +1,7 @@
 <template>
     <div class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
         <img :class="read_only ? 'annotator_image_small':'annotator_image'" :src="initial_imdata.url" ref="image" 
-                @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
+                @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" style="display: none;" />
         <canvas class="annotator_canvas" ref="canvas" @keyup.esc="emit('esc')" tabindex='2' @click="canvas_click" 
                 @mouseover="hover(true)" @mouseleave="hover(false)" />
     </div>
@@ -77,19 +77,34 @@ export default {
         console.log('canvas click!', e);
         this.$emit('cclick', e)
     },
+
+
     draw_initial_contents : function() {
         console.log('(draw)setting up', this)
         let paper = this.paper;
         let img = this.$refs.image; 
         let cnv = this.$refs.canvas;
-
+        let container = this.$refs.container;
+        
+        let height = img.height;
+        let width = img.width;
+        // when the image has no max size, the container div 
+        // ends up with a size of 0, and centering the element
+        // does not seem to work
+        container.style.setProperty('width', width + 'px')
+        container.style.setProperty('height', height + 'px')
         // size of element outside
-        cnv.height = img.height;
-        cnv.width = img.width;
+        cnv.height = height;
+        cnv.width = width;
 
+        img.style.setProperty('display', 'block')
+        // call some code to draw activation array 
+        // on top of canvas 
+        // ctx
+        // ctx = f(cnv)
         paper.setup(cnv);
-        this.height_ratio = img.height / img.naturalHeight
-        this.width_ratio = img.width / img.naturalWidth
+        this.height_ratio = height / img.naturalHeight
+        this.width_ratio = width / img.naturalWidth
         paper.view.draw();
         this.load_current_box_data();
 
@@ -162,7 +177,7 @@ export default {
       }
 
       tool.onMouseUp = () => {
-          this.save_current_box_data(); // auto save upon finishing changes
+        //   this.save_current_box_data(); // auto save upon finishing changes
       };
 
       tool.onKeyUp = (e) => {
@@ -171,7 +186,7 @@ export default {
               return;
           } else if (e.key === 'd') { // auto save upon deletion
               preselected.forEach(r => r.remove());
-              this.save_current_box_data();
+            // this.save_current_box_data();
           } else {
               return;
           }
@@ -204,20 +219,31 @@ export default {
 .annotator_div {
     position:relative;
     margin:0px;
-    /* width:fit-content;
-    height:fit-content; */
-    display:inline-block
+    border:0px;
+    padding:0px;
+    /* width:fit-content; set dynamically after image is loaded */
+    /* height:fit-content; */
+    /* display:inline-block;*/  /* let this decision be done elsewhere, just like with an image */
 }
+
+
 .annotator_image {
     /* max-width:100%; */
     /* max-height:100%; */
-    /* display:inline; */
-    position:relative;
+    position:absolute;
+    top:0px;
+    left:0px;
+    margin:0px;
+    border:0px;
+    padding:0px;
     object-fit:none; /* never rescale up */ 
 }
 .annotator_image_small {
   width: auto !important;
   height: auto !important;
+  margin:0px;
+  border:0px;
+  padding:0px;
   max-height: 200px;
   /*max-width: 400px; */
   object-fit: scale-down; /* never rescale up */ 
@@ -227,7 +253,12 @@ export default {
     /* border:0px solid #d3d3d3; */
     /* max-width:100%;*/
     /* max-height:100%; */
-    position:absolute; top:0px; left:0px;
+    position:absolute; 
+    top:0px; 
+    left:0px;
+    margin:0px;
+    border:0px;
+    padding:0px;
     /* display:;  */
     /* for now not showing it to try to fix centering issue...*/
 }
