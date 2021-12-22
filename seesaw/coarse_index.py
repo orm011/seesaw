@@ -17,14 +17,10 @@ from sklearn.linear_model import LogisticRegression
 import typing
 import torch.utils.data
 from .embeddings import XEmbedding
+from .query_interface import AccessMethod
 
-#from .ui.widgets import MImageGallery
 
-# def show_images(db, idxs):
-#     db.get_
-#     MImageGallery()
-
-class EmbeddingDB(object):
+class CoarseIndex(AccessMethod):
     """Structure holding a dataset,
      together with precomputed embeddings
      and (optionally) data structure
@@ -43,7 +39,7 @@ class EmbeddingDB(object):
     def __len__(self):
         return len(self.raw)
 
-    def query(self, *, topk, mode, cluster_id=None, vector=None, exclude=None, return_scores=False, startk=None):
+    def query(self, *, topk, mode, vector=None, exclude=None, startk=None):
         if exclude is None:
             exclude = pr.BitMap([])        
         included = pr.BitMap(self.all_indices).difference(exclude)
@@ -53,26 +49,12 @@ class EmbeddingDB(object):
         if len(included) <= topk:
             topk = len(included)
 
-        if vector is None:
-            assert mode == 'random'
-        elif vector is not None:
-            assert mode in ['nearest', 'dot']
-        else:
-            assert False
-            
+        assert mode == 'dot'
         vecs = self.embedded[included]        
-
-        if mode == 'nearest':
-            scores = sklearn.metrics.pairwise.cosine_similarity(vector, vecs)
-            scores = scores.reshape(-1)
-        elif mode == 'dot':
-            scores = vecs @ vector.reshape(-1)
-        elif mode == 'random':
+        if vector is None:
             scores = np.random.randn(vecs.shape[0])
-        elif mode == 'model':
-            with torch.no_grad():
-                scores = model.forward(torch.from_numpy(self.embedded[included].astype('float32')))
-                scores = scores.numpy()[:,1]      
+        else:
+            scores = vecs @ vector.reshape(-1)
 
         maxpos = np.argsort(-scores)[:topk]
         dbidxs = np.array(included)[maxpos]

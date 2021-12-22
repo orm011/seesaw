@@ -1,5 +1,4 @@
 from .embeddings import *
-from .cross_modal_db import EmbeddingDB
 import json
 import pandas as pd
 import os

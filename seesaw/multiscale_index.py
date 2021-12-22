@@ -18,7 +18,6 @@ import pyroaring as pr
 from operator import itemgetter
 import PIL
 
-
 def _postprocess_results(acc):
     flat_acc = {'iis':[], 'jjs':[], 'dbidx':[], 'vecs':[], 'zoom_factor':[], 'zoom_level':[]}
     flat_vecs = []
@@ -258,7 +257,7 @@ def get_boxes(vec_meta):
 
 def makedb(evs, dataset, category):
         ev,_ = get_class_ev(evs[dataset], category=category)
-        return ev, AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, embedded_dataset=ev.fine_grained_embedding,
+        return ev, MultiscaleIndex(raw_dataset=ev.image_dataset, embedding=ev.embedding, embedded_dataset=ev.fine_grained_embedding,
                vector_meta=ev.fine_grained_meta, vec_index=ev.vec_index)
 
 
@@ -311,8 +310,9 @@ def build_index(vecs, file_name):
     u.load(file_name) # verify can load.
     return u
 
+from .query_interface import AccessMethod
 
-class AugmentedDB(object):
+class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup
     """
     def __init__(self, *, raw_dataset : torch.utils.data.Dataset,
@@ -332,6 +332,10 @@ class AugmentedDB(object):
         all_indices.add_range(0, len(self.raw))
         self.all_indices = pr.FrozenBitMap(all_indices)
 
+    def string2vec(self, string : str):
+        init_vec = self.embedding.from_string(string=string)
+        init_vec = init_vec/np.linalg.norm(init_vec)
+        return init_vec
     
     def __len__(self):
         return len(self.raw)
@@ -453,10 +457,9 @@ class AugmentedDB(object):
         assert candidates.intersection_cardinality(exclude) == 0
         return newtopscores.index.values, candidates, allscores, nextstartk
         
-    def query(self, *, vector, topk, mode='dot', exclude=None, shortlist_size=None, rel_weight_coarse=1, startk=None, **kwargs):
+    def query(self, *, vector, topk, exclude=None, rel_weight_coarse=1, startk=None, **kwargs):
 #        print('ignoring extra args:', kwargs)
-        if shortlist_size is None:
-            shortlist_size = topk*5
+        shortlist_size = topk*5
         
         if startk is None:
             startk = len(exclude)*10

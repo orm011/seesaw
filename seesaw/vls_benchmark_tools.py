@@ -6,8 +6,8 @@ import inspect
 from .dataset_tools import *
 from .vloop_dataset_loaders import EvDataset, get_class_ev
 from .fine_grained_embedding import *
-from .multigrain import *
-from .cross_modal_db import EmbeddingDB
+from .multiscale_index import *
+from .coarse_index import CoarseIndex
 from .search_loop_models import adjust_vec, adjust_vec2
 import numpy as np
 import sklearn.metrics
@@ -186,6 +186,7 @@ class LoopParams:
     model_type : int = 'logistic'
     solver_opts : dict = None
 
+from .query_interface import AccessMethod
 
 @dataclass
 class LoopState:
@@ -197,6 +198,25 @@ class LoopState:
     acc_neg : list = field(default_factory=list)
     vec_state : VecState = None
 
+
+
+def make_acccess_method(ev, p : LoopParams):
+    if p.granularity == 'multi':
+        vec_meta = ev.fine_grained_meta
+        vecs = ev.fine_grained_embedding
+        hdb = MultiscaleIndex(embedding=ev.embedding, embedded_dataset=vecs, vector_meta=vec_meta, vec_index=ev.vec_index)
+    elif p.granularity == 'coarse':
+        dbidxs = np.arange(len(ev)).astype('int')
+        vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
+        vecs = ev.embedded_dataset
+        hdb = CoarseIndex(sembedding=ev.embedding,embedded_dataset=vecs)
+    else:
+        assert False
+
+    return hdb
+
+
+
 class SeesawLoop:
     bfq : BoxFeedbackQuery
     params : LoopParams
@@ -204,36 +224,20 @@ class SeesawLoop:
     vecs : np.ndarray
     vec_meta : pd.DataFrame
 
-    def __init__(self, ev : EvDataset, params : LoopParams):
-        self.ev = ev
+    def __init__(self, hdb : AccessMethod, params : LoopParams):
         self.params = params
         self.state = LoopState()
 
-        ev = self.ev
         p = self.params
         s = self.state
 
-        if p.granularity == 'multi':
-            vec_meta = ev.fine_grained_meta
-            vecs = ev.fine_grained_embedding
-            hdb = AugmentedDB(raw_dataset=ev.image_dataset, embedding=ev.embedding, 
-                embedded_dataset=vecs, vector_meta=vec_meta, vec_index=ev.vec_index)
-        elif p.granularity == 'coarse':
-            dbidxs = np.arange(len(ev)).astype('int')
-            vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
-            vecs = ev.embedded_dataset
-            hdb = EmbeddingDB(raw_dataset=ev.image_dataset, embedding=ev.embedding,embedded_dataset=vecs)
-        else:
-            assert False
-
         bfq = BoxFeedbackQuery(hdb, batch_size=p.batch_size, auto_fill_df=None)
-        self.vec_meta = vec_meta
-        self.vecs = vecs
+        # self.vec_meta = vec_meta
+        # self.vecs = vecs
         self.hdb = hdb
         self.bfq = bfq
 
     def set_vec(self, qstr : str):
-        ev = self.ev
         p = self.params
         s = self.state
 
@@ -241,8 +245,7 @@ class SeesawLoop:
             s.tvec = None
             s.tmode = 'random'
         else:
-            init_vec = ev.embedding.from_string(string=qstr)
-            init_vec = init_vec/np.linalg.norm(init_vec)
+            init_vec = self.hdb.string2vec(string=qstr)
             s.tvec = init_vec
             s.tmode = 'dot'
             if p.model_type == 'multirank2':
@@ -294,47 +297,8 @@ class SeesawLoop:
                 pos = pr.BitMap.union(*s.acc_pos)
                 neg = pr.BitMap.union(*s.acc_neg)
 
-
                 if p.positive_vector_type == 'vec_only':
                     allpos = self.vecs[pos]
-                elif p.positive_vector_type in ['image_only', 'image_and_vec']:
-                    crs = []
-                    for idx in idxbatch:
-                        boxes = box_dict[idx]
-                        widths = (boxes.x2 - boxes.x1)
-                        heights = (boxes.y2 - boxes.y1)
-                        boxes = boxes[(widths >= p.min_box_size) & (heights >= p.min_box_size)]
-
-                        if boxes.shape[0] == 0:
-                            continue
-
-                        # only read image if there was something
-                        im = self.ev.image_dataset[idx]
-
-                        for b in boxes.itertuples():
-                            if p.n_augment > 1:
-                                pcrs = randomly_extended_crop(im, b, scale_range=3., aspect_ratio_range=1., off_center_range=1., 
-                                        clearance=1.3, n=p.n_augment)
-                                for cr in pcrs:
-                                    cr = T.RandomHorizontalFlip()(cr)
-                                    crs.append(cr)
-                            else:
-                                pcrs = randomly_extended_crop(im, b, scale_range=1., aspect_ratio_range=1., off_center_range=0., 
-                                        clearance=1.5, n=1)
-
-                                for cr in pcrs:
-                                    crs.append(cr)
-                                                  
-                    tmp = process_crops(crs, _clip_tx, self.vecs)
-                    s.acc_vecs.append(tmp)
-                    impos = np.concatenate(s.acc_vecs)
-
-                    if p.positive_vector_type == 'image_only':
-                        allpos = impos  
-                    elif p.positive_vector_type == 'image_and_vec':
-                        allpos = np.concatenate([impos, self.vecs[pos]])
-                    else:
-                        assert False
                 else:
                     assert False
 
