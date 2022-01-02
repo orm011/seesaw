@@ -8,7 +8,6 @@ import torch, torchvision
 import pyroaring as pr
 # from .dataset_tools import DataFrameDataset
 from .dataset_tools import TxDataset
-from .cross_modal_db import EmbeddingDB
 import torchvision.models
 import torch.nn as nn
 import torchvision.transforms as T
@@ -98,7 +97,7 @@ def augment(rois, n=5):
 import pyroaring as pr
 
 class InteractiveQuery(object):
-    def __init__(self, db: EmbeddingDB, batch_size: int):
+    def __init__(self, db: CoarseIndex, batch_size: int):
         self.db = db
         self.seen = pr.BitMap()
         self.query_history = []
