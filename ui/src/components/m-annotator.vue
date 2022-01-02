@@ -1,7 +1,7 @@
 <template>
     <div class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
         <img :class="read_only ? 'annotator_image_small':'annotator_image'" :src="initial_imdata.url" ref="image" 
-                @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" style="display: none;" />
+                @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
         <canvas class="annotator_canvas" ref="canvas" @keyup.esc="emit('esc')" tabindex='2' @click="canvas_click" 
                 @mouseover="hover(true)" @mouseleave="hover(false)" />
     </div>
@@ -71,13 +71,13 @@ export default {
             } else {
                 this.$refs.image.style.opacity = 1.
             }
-        }
+        } 
     },
+
     canvas_click : function (e){
         console.log('canvas click!', e);
         this.$emit('cclick', e)
     },
-
 
     draw_initial_contents : function() {
         console.log('(draw)setting up', this)
@@ -91,6 +91,7 @@ export default {
         // when the image has no max size, the container div 
         // ends up with a size of 0, and centering the element
         // does not seem to work
+        console.log('drawing canvas', img.height, img.width, img)
         container.style.setProperty('width', width + 'px')
         container.style.setProperty('height', height + 'px')
         // size of element outside
@@ -230,6 +231,7 @@ export default {
 .annotator_image {
     /* max-width:100%; */
     /* max-height:100%; */
+    display: none;
     position:absolute;
     top:0px;
     left:0px;
