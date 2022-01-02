@@ -1,3 +1,4 @@
+from seesaw.seesaw_session import make_acccess_method
 import ray
 
 import fastapi
@@ -7,7 +8,6 @@ import typing
 import pydantic
 from typing import Optional, List
 from pydantic import BaseModel
-from devtools import debug
 
 import numpy as np
 import pandas as pd
@@ -80,7 +80,8 @@ class SessionState:
                  num_epochs=2, n_augment=None, min_box_size=10, model_type='multirank2', 
                  solver_opts={'C': 0.1, 'max_examples': 225, 'loss_margin': 0.05})
 
-        self.loop = SeesawLoop(ev, params=self.params)
+        self.hdb = make_acccess_method(ev, self.params)
+        self.loop = SeesawLoop(self.hdb, params=self.params)
 
     def step(self):
         idxbatch = self.loop.next_batch()

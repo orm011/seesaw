@@ -1,8 +1,7 @@
 import argparse
-
-import seesaw
-from seesaw import GlobalDataManager
 import ray    
+
+from seesaw import GlobalDataManager
 
 if __name__ == '__main__':
     print('running script...')

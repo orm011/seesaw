@@ -1,5 +1,4 @@
-import ray
-from ray.data.extensions import TensorArray, TensorDtype
+from ray.data.extensions import TensorArray
 
 import torchvision
 from torchvision import transforms as T
@@ -11,12 +10,18 @@ from torch.utils.data import DataLoader
 import math
 from tqdm.auto import tqdm
 import torch
+from .query_interface import *
+
 from .embeddings import make_clip_transform, ImTransform, XEmbedding
 from .vloop_dataset_loaders import get_class_ev
 from .dataset_search_terms import  *
 import pyroaring as pr
 from operator import itemgetter
 import PIL
+
+import math
+import annoy
+
 
 def _postprocess_results(acc):
     flat_acc = {'iis':[], 'jjs':[], 'dbidx':[], 'vecs':[], 'zoom_factor':[], 'zoom_level':[]}
@@ -257,7 +262,7 @@ def get_boxes(vec_meta):
 
 def makedb(evs, dataset, category):
         ev,_ = get_class_ev(evs[dataset], category=category)
-        return ev, MultiscaleIndex(raw_dataset=ev.image_dataset, embedding=ev.embedding, embedded_dataset=ev.fine_grained_embedding,
+        return ev, MultiscaleIndex(images=ev.image_dataset, embedding=ev.embedding, vectors=ev.fine_grained_embedding,
                vector_meta=ev.fine_grained_meta, vec_index=ev.vec_index)
 
 
@@ -292,44 +297,36 @@ def get_pos_negs_all_v2(dbidxs, box_dict, vec_meta):
     negidxs = pr.BitMap(np.concatenate(neg))
     return posidxs, negidxs
 
-import math
-import annoy
-from annoy import AnnoyIndex
-import random
-import os
-
-import ray
-
 def build_index(vecs, file_name):
-    t = AnnoyIndex(512, 'dot') 
+    t = annoy.AnnoyIndex(512, 'dot') 
     for i in range(len(vecs)):
         t.add_item(i, vecs[i])
     t.build(n_trees=100) # tested 100 on bdd, works well, could do more.
     t.save(file_name)
-    u = AnnoyIndex(512, 'dot')
+    u = annoy.AnnoyIndex(512, 'dot')
     u.load(file_name) # verify can load.
     return u
-
-from .query_interface import AccessMethod
 
 class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup
     """
-    def __init__(self, *, raw_dataset : torch.utils.data.Dataset,
+    def __init__(self, *,
+                 images : torch.utils.data.Dataset,
                  embedding : XEmbedding,
-                 embedded_dataset : np.ndarray,
+                 vectors : np.ndarray,
                  vector_meta : pd.DataFrame,
                  vec_index =  None):
-        self.raw = raw_dataset
+
+        self.images = images
         self.embedding = embedding
-        self.embedded = embedded_dataset
+        self.vectors = vectors
         self.vector_meta = vector_meta
         self.vec_index = vec_index
 
         all_indices = pr.BitMap()
-        assert len(self.raw) >= vector_meta.dbidx.unique().shape[0]
-        assert embedded_dataset.shape[0] == vector_meta.shape[0]
-        all_indices.add_range(0, len(self.raw))
+        assert len(self.images) >= vector_meta.dbidx.unique().shape[0]
+        assert vectors.shape[0] == vector_meta.shape[0]
+        all_indices.add_range(0, len(self.images))
         self.all_indices = pr.FrozenBitMap(all_indices)
 
     def string2vec(self, string : str):
@@ -338,7 +335,7 @@ class MultiscaleIndex(AccessMethod):
         return init_vec
     
     def __len__(self):
-        return len(self.raw)
+        return len(self.images)
 
     def _query_prelim(self, *, vector, topk,  zoom_level, exclude=None, startk=None):
         if exclude is None:
@@ -430,7 +427,7 @@ class MultiscaleIndex(AccessMethod):
             return idxs, scores
 
         def get_nns_by_vector_exact():
-            scores = self.embedded @ vector.reshape(-1)
+            scores = self.vectors @ vector.reshape(-1)
             scorepos = np.argsort(-scores)
             return scorepos, scores[scorepos]
 
@@ -482,7 +479,7 @@ class MultiscaleIndex(AccessMethod):
         for i,(dbidx,frame_vec_meta) in enumerate(scmeta.groupby('dbidx')):
             dbidxs[i] = dbidx
             relmeta = fullmeta[fullmeta.dbidx == dbidx] # get metadata for all boxes in frame.
-            relvecs = db.embedded[relmeta.index.values]
+            relvecs = db.vectors[relmeta.index.values]
             boxscs = np.zeros(frame_vec_meta.shape[0])
             for j in range(frame_vec_meta.shape[0]):
                 tup = frame_vec_meta.iloc[j:j+1]
@@ -492,3 +489,31 @@ class MultiscaleIndex(AccessMethod):
 
         topkidx = np.argsort(-dbscores)[:topk]
         return dbidxs[topkidx].astype('int'), nextstartk # return fullmeta 
+
+    def new_query(self):
+        return BoxFeedbackQuery(self)
+
+class BoxFeedbackQuery(InteractiveQuery):
+    def __init__(self, db):
+        super().__init__(db)
+        self.acc_pos = []
+        self.acc_neg = []
+
+    def getXy(self, idxbatch, box_dict):
+        batchpos, batchneg = get_pos_negs_all_v2(idxbatch, box_dict, self.db.vector_meta)
+ 
+        ## we are currently ignoring these positives
+        self.acc_pos.append(batchpos)
+        self.acc_neg.append(batchneg)
+
+        pos = pr.BitMap.union(*self.acc_pos)
+        neg = pr.BitMap.union(*self.acc_neg)
+
+        allpos = self.db.vectors[pos]
+        Xt = np.concatenate([allpos, self.db.vectors[neg]])
+        yt = np.concatenate([np.ones(len(allpos)), np.zeros(len(neg))])
+
+        return Xt,yt
+        # not really valid. some boxes are area 0. they should be ignored.but they affect qgt
+        # if np.concatenate(acc_results).sum() > 0:
+        #    assert len(pos) > 0

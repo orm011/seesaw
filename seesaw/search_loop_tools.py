@@ -96,33 +96,7 @@ def augment(rois, n=5):
 
 import pyroaring as pr
 
-class InteractiveQuery(object):
-    def __init__(self, db: CoarseIndex, batch_size: int):
-        self.db = db
-        self.seen = pr.BitMap()
-        self.query_history = []
-        self.acc_idxs = []
-        self.batch_size = batch_size
-        self.startk = 0
 
-    def query_stateful(self, *args, **kwargs):
-        '''
-        :param kwargs: forwards arguments to db query method but
-         also keeping track of already seen results. also
-         keeps track of query history.
-        :return:
-        '''
-        batch_size = kwargs.get('batch_size',self.batch_size)
-        if 'batch_size' in kwargs:
-            del kwargs['batch_size']
-            
-        idxs, nextstartk = self.db.query(*args, topk=batch_size, **kwargs, exclude=self.seen, startk=self.startk)
-        # assert nextstartk >= self.startk nor really true: if vector changes a lot, 
-        self.startk = nextstartk
-        self.query_history.append((args, kwargs))
-        self.seen.update(idxs)
-        self.acc_idxs.append(idxs)
-        return idxs, nextstartk
 
 
 def get_panel_data(q, label_db, next_idxs):
@@ -156,14 +130,7 @@ def update_db(label_db, ldata):
         r = rec['boxes']
         label_db[rec['dbidx']] = r
 
-class BoxFeedbackQuery(InteractiveQuery):
-    def __init__(self, db, batch_size, auto_fill_df=None):
-        super().__init__(db, batch_size)
-        self.label_db = {}
-        self.rois = [[]]
-        self.augmented_rois = [[]]
-        self.roi_vecs = [np.zeros((0, db.embedded.shape[1]))]
-        self.auto_fill_df = auto_fill_df
+
 
 # def make_image_panel(bfq, idxbatch):
 #     # from .ui import widgets
@@ -214,50 +181,3 @@ def binary_panel_data(ldata):
     dbidx = np.array([d['dbidx'] for d in ldata])
     pred = np.array([len(d['boxes']) > 0 for d in ldata])
     return dbidx, pred
-
-def dispatch_query(bfq, prev_vec, variant, positive_area, cluster_id=None, batch_size=None):
-    posidx = pr.BitMap([k for (k, v) in bfq.label_db.items() if (v is not None and len(v) > 0)])
-    negidx = pr.BitMap([k for (k, v) in bfq.label_db.items() if (v is not None and len(v) == 0)])
-    
-    def get_args():
-        next_vec = prev_vec
-        if variant == 'similarity':
-            if len(posidx) == 0:
-                return 'nearest', next_vec
-            if positive_area == 'full':
-                acc_pos = bfq.db.embedded[posidx]
-            elif positive_area == 'crop':
-                acc_pos = np.concatenate(bfq.roi_vecs)
-            else:
-                assert False
-            next_vec = acc_pos.mean(axis=0).reshape(1, -1)
-            return 'nearest', next_vec
-        elif variant == 'model':
-            if len(posidx) == 0 or len(negidx) == 0:
-                return 'nearest', next_vec
-            if positive_area == 'full':
-                Xpos = bfq.db.embedded[posidx]
-            elif positive_area == 'crop':
-                Xpos = np.concatenate(bfq.roi_vecs)
-            else:
-                assert False
-            ypos = np.ones(Xpos.shape[0])
-            Xneg = bfq.db.embedded[negidx]
-            yneg = np.zeros(Xneg.shape[0])
-            X = np.concatenate([Xpos, Xneg])
-            y = np.concatenate([ypos, yneg])
-            lr = LogisticRegression()
-            lr.fit(X, y)
-            next_vec = lr.coef_
-            return 'dot', next_vec
-            
-        elif variant == 'text':
-            return 'nearest', next_vec
-        elif variant == 'random':
-            return 'random', None
-        else:
-            assert False
-
-    mode, next_vec = get_args()
-    idxbatch = bfq.query_stateful(vector=next_vec, mode=mode, cluster_id=cluster_id, batch_size=batch_size)
-    return idxbatch

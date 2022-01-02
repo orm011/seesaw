@@ -17,28 +17,25 @@ from sklearn.linear_model import LogisticRegression
 import typing
 import torch.utils.data
 from .embeddings import XEmbedding
-from .query_interface import AccessMethod
-
+from .query_interface import *
+import torch
 
 class CoarseIndex(AccessMethod):
     """Structure holding a dataset,
      together with precomputed embeddings
      and (optionally) data structure
     """
-    def __init__(self, raw_dataset : torch.utils.data.Dataset,
+    def __init__(self, images : torch.utils.data.Dataset,
                  embedding : XEmbedding,
-                 embedded_dataset : np.ndarray):
-        self.raw = raw_dataset
+                 vectors : np.ndarray):
+        self.images = images
         self.embedding = embedding
         all_indices = pr.BitMap()
-        all_indices.add_range(0, len(self.raw))
+        all_indices.add_range(0, len(self.images))
         self.all_indices = pr.FrozenBitMap(all_indices)
-        self.embedded = embedded_dataset 
-        assert len(self.raw) == self.embedded.shape[0]
+        self.vectors = vectors
+        assert len(self.images) >= self.vectors.shape[0]
     
-    def __len__(self):
-        return len(self.raw)
-
     def query(self, *, topk, mode, vector=None, exclude=None, startk=None):
         if exclude is None:
             exclude = pr.BitMap([])        
@@ -50,7 +47,7 @@ class CoarseIndex(AccessMethod):
             topk = len(included)
 
         assert mode == 'dot'
-        vecs = self.embedded[included]        
+        vecs = self.vectors[included]        
         if vector is None:
             scores = np.random.randn(vecs.shape[0])
         else:
@@ -68,3 +65,15 @@ class CoarseIndex(AccessMethod):
         assert sret.intersection_cardinality(exclude) == 0  # honor exclude request
 
         return ret, len(exclude) + ret.shape[0]
+
+    def new_query(self):
+        return CoarseQuery(self)
+
+class CoarseQuery(InteractiveQuery):
+    def __init__(self, db):
+        super().__init__(db)
+
+    def getXy(self, idxbatch, box_dict):
+        Xt = self.db.vecs[idxbatch]
+        yt = np.array([box_dict[idx].shape[0] > 0 for idx in idxbatch])
+        return Xt,yt
