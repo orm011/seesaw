@@ -3,7 +3,7 @@ import sys
 import time
 import torch
 
-from seesaw import CLIPWrapper, HGWrapper
+from seesaw import  HGWrapper
 import argparse
 
 if __name__ == '__main__':

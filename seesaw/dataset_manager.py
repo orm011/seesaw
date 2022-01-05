@@ -668,7 +668,6 @@ import random
 import os
 import sys
 import time
-import pynndescent
 
 def build_annoy_idx(*, vecs, output_path, n_trees):
     start = time.time()
@@ -684,6 +683,8 @@ def build_annoy_idx(*, vecs, output_path, n_trees):
 
 
 def build_nndescent_idx(vecs, output_path, n_trees):
+    import pynndescent
+
     start = time.time()
     ret = pynndescent.NNDescent(vecs.copy(), metric='dot', n_neighbors=100, n_trees=n_trees,
                                 diversify_prob=.5, pruning_degree_multiplier=2., low_memory=False)
@@ -696,7 +697,6 @@ def build_nndescent_idx(vecs, output_path, n_trees):
     return difftime
 
 import shutil
-import annoy
 class VectorIndex:
     def __init__(self, *, load_path, copy_to_tmpdir=False, prefault=False):
         t = annoy.AnnoyIndex(512, 'dot')

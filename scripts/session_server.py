@@ -176,7 +176,7 @@ class ResetReq(BaseModel):
 class WebSeesaw:
     def __init__(self, vectordir):
         self.gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
-        self.datasets = ['panama_frames3', 'panama_frames_finetune4',]
+        self.datasets = ['bird_guide_finetuned']#['panama_frames3', 'panama_frames_finetune4',]
         # 'bird_guide_224', 'bird_guide_224_finetuned']
         #objectnet', 'dota', 'lvis','coco', 'bdd']
         ## initialize to first one

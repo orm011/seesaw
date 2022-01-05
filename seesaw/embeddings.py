@@ -11,7 +11,7 @@ import sklearn
 import torchvision.transforms as T
 import pyroaring as pr
 import typing
-import clip
+# import clip
 import ray
 # from sentence_transformers import SentenceTransformer
 from .cross_modal_embedding import TextImageCrossModal

@@ -51,14 +51,10 @@ class LoopState:
 
 def make_acccess_method(ev, p : LoopParams):
     if p.granularity == 'multi':
-        vec_meta = ev.fine_grained_meta
-        vecs = ev.fine_grained_embedding
-        hdb = MultiscaleIndex(images=ev.image_dataset, embedding=ev.embedding, vectors=vecs, vector_meta=vec_meta, vec_index=ev.vec_index)
+        hdb = MultiscaleIndex(images=ev.image_dataset, embedding=ev.embedding, 
+            vectors=ev.fine_grained_embedding, vector_meta=ev.fine_grained_meta, vec_index=ev.vec_index)
     elif p.granularity == 'coarse':
-        dbidxs = np.arange(len(ev)).astype('int')
-        vec_meta = pd.DataFrame({'iis': np.zeros_like(dbidxs), 'jjs':np.zeros_like(dbidxs), 'dbidx':dbidxs})
-        vecs = ev.embedded_dataset
-        hdb = CoarseIndex(images=ev.image_dataset, embedding=ev.embedding,vectors=vecs)
+        hdb = CoarseIndex(images=ev.image_dataset, embedding=ev.embedding,vectors=ev.embedded_dataset)
     else:
         assert False
 

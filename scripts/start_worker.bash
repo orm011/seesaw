@@ -17,7 +17,7 @@ mkdir -p $VECTORDIR
 # bc lustre file system is high latency, 
 # copy to shm.
 #for ds in objectnet coco bdd dota panama_frames3; 
-for ds in panama_frames3 panama_frames_finetune4
+for ds in bird_guide_finetuned panama_frames3 panama_frames_finetune4
 do
     echo ds
     stat /home/gridsan/omoll/seesaw_root/data/${ds}/meta/vectors.annoy

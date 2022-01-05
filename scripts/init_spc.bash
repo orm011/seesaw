@@ -24,7 +24,7 @@ HEAD="`hostname`:6379"
 # sleep 5 # give time for secondary nodes to start
 wait # for model actor and ray serve
 #python init_data_actors.py --load_ground_truth --load_coarse_embedding --namespace seesaw --datasets panama_frames3
-python init_data_actors.py  --namespace seesaw --datasets panama_frames3 panama_frames_finetune4 bird_guide bird_guide_finetuned
+python init_data_actors.py  --namespace seesaw --datasets bird_guide_finetuned
 
 echo 'DONE. inited data actors'
 sleep infinity
