@@ -53,7 +53,9 @@ class SessionState:
     acc_indices : list
     ldata_db : dict
 
-    def __init__(self, dataset_name, ev, vectordir):
+    def __init__(self, gdm : GlobalDataManager, dataset_name, ev):
+        self.gdm = gdm
+        self.dataset = self.gdm.get_dataset(dataset_name)
         self.current_dataset = dataset_name
         self.ev = ev
         self.acc_indices = []
@@ -61,19 +63,9 @@ class SessionState:
         self.init_q = None
         self.timing = []
 
-        assert vectordir is not None
-        if dataset_name == 'lvis':
-            dname = 'coco'
-        else:
-            dname = dataset_name
-        vipath = f'{vectordir}/{dname}.annoy'
-
-        if os.path.exists(vipath):
-            self.ev.vec_index = VectorIndex(load_path=vipath, prefault=True)
-        else:
-            print('index path not found, using slow filesystem')
-            self.ev.vec_index = VectorIndex(load_path=self.ev.vec_index_path, prefault=True)
-
+        vec_path = self.dataset.vector_path()[len(self.gdm.root):] + '.annoy'
+        print('vec_path', vec_path)
+        self.ev.vec_index = VectorIndex(base_dir=gdm.root, load_path=vec_path, copy_to_tmpdir=True, prefault=True)
         self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=3, 
                 minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
                 tqdm_disabled=True, granularity='multi', positive_vector_type='vec_only', 
@@ -174,9 +166,10 @@ class ResetReq(BaseModel):
 @serve.deployment(name="seesaw_deployment", ray_actor_options={"num_cpus": 32}, route_prefix='/')
 @serve.ingress(app)
 class WebSeesaw:
-    def __init__(self, vectordir):
+    def __init__(self):
+        
         self.gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
-        self.datasets = ['bird_guide_finetuned']#['panama_frames3', 'panama_frames_finetune4',]
+        self.datasets = ['panama_frames_finetune4'] #['bird_guide_224_finetuned']#['panama_frames3', 'panama_frames_finetune4',]
         # 'bird_guide_224', 'bird_guide_224_finetuned']
         #objectnet', 'dota', 'lvis','coco', 'bdd']
         ## initialize to first one
@@ -185,21 +178,19 @@ class WebSeesaw:
         for dsname in self.datasets:
             ev = self._get_ev(dsname)
             self.evs[dsname] = ev
-        print('done loading')
-        vectordir = vectordir
-        assert vectordir is not None
-        self.vectordir = vectordir
         self.xclip = ModelService(ray.get_actor('clip#actor'))
         self._reset_dataset(self.datasets[0])
 
     def _get_ev(self, dataset_name):
+        print(f'getting ev {dataset_name}')
         actor = ray.get_actor(f'{dataset_name}#actor')
         ev = ray.get(ray.get(actor.get_ev.remote()))
         return ev
 
     def _reset_dataset(self, dataset_name):
         ev = self.evs[dataset_name]
-        self.state = SessionState(dataset_name, ev, vectordir=self.vectordir)
+        print ('session state')
+        self.state = SessionState(gdm=self.gdm, dataset_name=dataset_name, ev=ev)
 
     def _getstate(self):
         s = self.state.get_state()
@@ -283,9 +274,6 @@ class WebSeesaw:
         ### save state with time id
 
 
-vectordir = os.environ.get('VECTORDIR', None)
-assert vectordir is not None
-# pylint: disable=maybe-no-member
-WebSeesaw.deploy(vectordir)
+WebSeesaw.deploy()
 while True: # wait.
     input()

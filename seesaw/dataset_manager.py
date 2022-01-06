@@ -1,3 +1,4 @@
+from seesaw.definitions import DATA_CACHE_DIR, parallel_copy
 import pytorch_lightning as pl
 import os
 import multiprocessing as mp
@@ -698,28 +699,16 @@ def build_nndescent_idx(vecs, output_path, n_trees):
 
 import shutil
 class VectorIndex:
-    def __init__(self, *, load_path, copy_to_tmpdir=False, prefault=False):
+    def __init__(self, *, base_dir, load_path, copy_to_tmpdir : bool, prefault=False):
         t = annoy.AnnoyIndex(512, 'dot')
         self.vec_index = t
         if copy_to_tmpdir:
-            tmpdir = os.environ.get('TMPDIR')
-            assert tmpdir is not None, 'need a tmpdir for copying'
-            cache_base = tmpdir + "/seesaw_cached/"
-            #!rsync -Rrv /home/gridsan/omoll/./xmodexp/notebooks/models/clip-vit-base-patch32 /state/partition1/user/omoll/base/
-            # os.system(f'rsync -Rrv {load_path} {cache_base}')
-            # cache_path = cache_base load_path.split('.')[-1]
-            # print(f'copying file {load_path} to {} for faster mmap...')
-            # shutil.copy2(load_path, tmp_load_path)
-            # print('done copying...')
-            # actual_load_path = tmp_load_path
+            print('cacheing first', base_dir, DATA_CACHE_DIR, load_path)
+            actual_load_path = parallel_copy(base_dir=base_dir, cache_dir=DATA_CACHE_DIR, rel_path=load_path)
         else:
             print('loading directly')
-            actual_load_path = load_path
+            actual_load_path = f'{base_dir}/{load_path}'
 
-        if prefault:
-            print('prefaulting vector store...')
-        else:
-            print('not prefaulting ')
         t.load(actual_load_path, prefault=prefault)
         print('done loading')
 

@@ -287,17 +287,9 @@ class BenchRunner(object):
                 revs[k] = evref
         self.evs = revs
 
-        vecdir = os.environ.get("VECTORDIR", None)
-        assert vecdir is not None
-        for k,ev in evs.items():
-            if k=='lvis':
-                vector_path = f'{vecdir}/coco.annoy'
-            else:
-                vector_path = f'{vecdir}/{k}.annoy'
-
-            assert os.path.exists(vector_path), vector_path
-            vi = VectorIndex(load_path=vector_path, copy_to_tmpdir=False, prefault=True)
-            self.evs[k].vec_index = vi # use vector store directly instead
+        assert os.path.exists(vector_path), vector_path
+        vi = VectorIndex(load_path=vector_path, copy_to_tmpdir=True, prefault=True)
+        self.evs[k].vec_index = vi # use vector store directly instead
 
         vls_init_logger()
         print('loaded all evs...')
