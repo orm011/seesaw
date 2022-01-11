@@ -1,3 +1,5 @@
+from seesaw.dataset_manager import GlobalDataManager
+from types import prepare_class
 from ray.data.extensions import TensorArray
 
 import torchvision
@@ -12,15 +14,18 @@ from tqdm.auto import tqdm
 import torch
 from .query_interface import *
 
-from .embeddings import make_clip_transform, ImTransform, XEmbedding
+from .embeddings import ModelService, make_clip_transform, ImTransform, XEmbedding
 from .vloop_dataset_loaders import get_class_ev
 from .dataset_search_terms import  *
 import pyroaring as pr
 from operator import itemgetter
 import PIL
-
+from .dataset_manager import VectorIndex
 import math
 import annoy
+
+import os
+import ray
 
 
 def _postprocess_results(acc):
@@ -329,6 +334,30 @@ class MultiscaleIndex(AccessMethod):
         all_indices.add_range(0, len(self.images))
         self.all_indices = pr.FrozenBitMap(all_indices)
 
+    @staticmethod
+    def from_path(gdm : GlobalDataManager, dataset_name : str, index_subpath : str, model_name :str):
+        dm = gdm.get_dataset(dataset_name)
+        images = dm.get_pytorch_dataset()
+        embedding = gdm.get_model_actor(model_name)
+        
+        cached_meta_path= f'{gdm.root}/{index_subpath}/vectors.sorted.cached'
+        vec_index_path = f'{index_subpath}/vectors.annoy'
+
+        vec_index = VectorIndex(base_dir=gdm.root, load_path=vec_index_path, copy_to_tmpdir=True, prefault=True)
+
+        assert os.path.exists(cached_meta_path)
+        ds = ray.data.read_parquet(cached_meta_path, columns=['dbidx', 'zoom_level', 'max_zoom_level', 'order_col','x1', 'y1', 'x2', 'y2','vectors'])
+        df = pd.concat(ray.get(ds.to_pandas_refs()),ignore_index=True)
+        assert df.order_col.is_monotonic_increasing, 'sanity check'
+        fine_grained_meta = df[['dbidx', 'order_col', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
+        fine_grained_embedding = df['vectors'].values.to_numpy()
+
+        return MultiscaleIndex(images=images, 
+                                embedding=embedding, 
+                                vectors=fine_grained_embedding, 
+                                vector_meta=fine_grained_meta, 
+                                vec_index=vec_index)
+
     def string2vec(self, string : str):
         init_vec = self.embedding.from_string(string=string)
         init_vec = init_vec/np.linalg.norm(init_vec)
@@ -492,6 +521,9 @@ class MultiscaleIndex(AccessMethod):
 
     def new_query(self):
         return BoxFeedbackQuery(self)
+
+    def vector_table(self):
+        pass
 
 class BoxFeedbackQuery(InteractiveQuery):
     def __init__(self, db):

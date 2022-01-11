@@ -1,18 +1,18 @@
 #! /bin/bash
 set -euxo pipefail 
 
-(wget --quiet localhost:9000 && echo 'nginx already running') || (echo 'starting nginx...' && nginx -c ./conf/seesaw.spc.conf)
+nginx -s stop || echo 'starting nginx....'
+nginx -c ./conf/seesaw.spc.conf
+
 DIR=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 cd $DIR
 
 # echo 'starting head node'
+ray stop || echo 'starting ray head node...'
 . start_worker.bash --head "--num-cpus=40 --num-gpus=2" 
-
-python init_model_actor.py --namespace seesaw &
 
 ## start serve process
 python -c 'import ray; from ray import serve; ray.init("auto", namespace="seesaw"); serve.start(detached=True)' &
-
 
 HEAD="`hostname`:6379"
 
@@ -23,8 +23,4 @@ HEAD="`hostname`:6379"
 # done
 # sleep 5 # give time for secondary nodes to start
 wait # for model actor and ray serve
-#python init_data_actors.py --load_ground_truth --load_coarse_embedding --namespace seesaw --datasets panama_frames3
-python init_data_actors.py  --namespace seesaw --datasets panama_frames_finetune4 bird_guide_224_finetuned
-
-echo 'DONE. inited data actors'
 sleep infinity

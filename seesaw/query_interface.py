@@ -1,5 +1,12 @@
 import numpy as np
 import pyroaring as pr
+import importlib
+
+def get_constructor(cons_name : str):
+    pieces = cons_name.split('.', maxsplit=-1)
+    index_mod = importlib.import_module('.'.join(pieces[:-1]))
+    constructor = getattr(index_mod, pieces[-1])
+    return constructor
 
 # instead of EvDataset
 # ev.embedding.embed_str: abstract away string emb.
@@ -16,6 +23,19 @@ class AccessMethod:
 
     def new_query(self):
         raise NotImplementedError('implement me')
+
+    def vector_table(self):
+        raise NotImplementedError('implement me')
+
+    @staticmethod
+    def from_path(gdm, dataset_name : str, index_subpath : str, model_name :str):
+        raise NotImplementedError('implement me')
+
+    @staticmethod
+    def restore(gdm, type_name : str, dataset_name : str, data_path : str, model_name : str):
+        c = get_constructor(type_name)
+        return c.from_path(gdm, dataset_name, data_path, model_name)
+
 
 class InteractiveQuery(object):
     """

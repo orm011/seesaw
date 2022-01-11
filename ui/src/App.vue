@@ -21,8 +21,8 @@
           <label>Current Database:</label>
           </div>
           <div class='row'>
-          <select v-model="current_dataset" v-on:change="reset(current_dataset)">
-            <option v-for="(dsname,idx) in datasets" :key="idx" :value="dsname">{{dsname}}</option>
+          <select v-model="client_data.current_dataset" v-on:change="reset(client_data.current_dataset)">
+            <option v-for="(dsname,idx) in client_data.datasets" :key="idx" :value="dsname">{{dsname}}</option>
           </select>
           </div>
           </div>
@@ -37,7 +37,7 @@
           <button class="btn btn-dark btn-block" @click="save()"> Save </button>
         </div> -->
         <div class='row'>
-          <button class="btn btn-dark btn-block" @click="reset(current_dataset)"> Reset </button>
+          <button class="btn btn-dark btn-block" @click="reset(client_data.current_dataset)"> Reset </button>
         </div>
 
         <!-- <div class='row'>
@@ -59,9 +59,9 @@
       </div>
     </nav>
     <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
-        <div class="row" v-for="(imdata,idx) in gdata" :key="idx">
-          <div v-if="timing.length > 0" class="row">
-            <span>Search refinement took {{timing[idx].toFixed(2)}} seconds</span>
+        <div class="row" v-for="(imdata,idx) in client_data.gdata" :key="idx">
+          <div v-if="client_data.timing.length > 0" class="row">
+            <span>Search refinement took {{client_data.timing[idx].toFixed(2)}} seconds</span>
           </div>
           <div class="row">
           <m-image-gallery ref="galleries" v-if="imdata.length > 0" :initial_imdata="filter_boxes(imdata, current_category)"
@@ -69,7 +69,7 @@
           </div>
           <div class="row space"/>
         </div>
-        <div class="row" v-if="gdata.length > 0">
+        <div class="row" v-if="client_data.gdata.length > 0">
               <button @click="next()" class="btn btn-dark btn-block">More...</button>
         </div>
     </main>
@@ -82,30 +82,23 @@ import MImageGallery from './components/m-image-gallery.vue';
 export default {
     components : {'m-image-gallery':MImageGallery},
     props: {},
-    data () { return {  
-                gdata:[],  // list of lists of {'url': str, 'dbidx': int, 'boxes':null|List, 'refboxes':null|List}
-                timing:[],
+    data () { return { 
+                client_data : { gdata : [] },
+                current_category : null,
                 selection: null, 
-                datasets:[''], 
-                current_dataset:'', 
-                reference_categories:[],
-                current_category:'', 
                 text_query:null,
                 refmode : false,
               }
             },
+
     mounted (){
         fetch('/api/getstate', {cache: "reload"})
             .then(response => response.json())
-            .then(data => (this.gdata = data.gdata,
-                  this.datasets = data.datasets, 
-                  this.reference_categories = data.reference_categories,
-                  this.current_dataset = data.current_dataset )
-            )
+            .then(this._update_client_data)
     },
     methods : {
         total_images() {
-            return this.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
+            return this.client_data.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
         },
         total_annotations(){
             let annot_per_list = function(l){
@@ -119,7 +112,7 @@ export default {
               }
               return total;
             };
-            return this.gdata.map(annot_per_list).reduce((a,b)=>a+b, 0)
+            return this.client_data.gdata.map(annot_per_list).reduce((a,b)=>a+b, 0)
         },
         filter_boxes(imdata, category){
           let out = []
@@ -132,13 +125,23 @@ export default {
         },
         data_update(gdata_idx, ev){
           console.log('data_update')
-          this.gdata[gdata_idx][ev.idx].boxes =  ev.boxes
+          this.client_data.gdata[gdata_idx][ev.idx].boxes =  ev.boxes
         },
         copy_ref(gdata_idx, panel_idx){
-          let refboxes = this.gdata[gdata_idx][panel_idx].refboxes;
+          let refboxes = this.client_data.gdata[gdata_idx][panel_idx].refboxes;
           let frefboxes = refboxes.filter((b) => b.category === this.current_category || this.current_category === '')
           let newboxes = frefboxes.length == 0 ? null : frefboxes
-          this.gdata[gdata_idx][panel_idx].boxes = newboxes
+          this.client_data.gdata[gdata_idx][panel_idx].boxes = newboxes
+        },
+        _update_client_data(data, reset = false){
+          console.log('current data', this.client_data);
+          console.log('update client data', data, reset);
+          this.client_data = data.client_data;
+          this.selection = null;
+
+          if (reset){
+            this.text_query = null;
+          }
         },
         reset(dsname){
           console.log(this);
@@ -152,43 +155,36 @@ export default {
                 body: JSON.stringify(reqdata)
             })
             .then(response => response.json())
-            .then(data => (this.gdata = data.gdata, 
-            this.datasets=data.datasets, 
-            this.refine_text = '', 
-            this.current_dataset=data.current_dataset, 
-            this.reference_categories = data.reference_categories,
-            this.current_category = '',
-            this.text_query = null,
-            this.selection = null))
+            .then(data => this._update_client_data(data, true))
         },
         text(text_query){
             fetch(`/api/text?key=${encodeURIComponent(text_query)}`,   
                 {method: 'POST', 
                 headers: {'Content-Type': 'application/json'}, 
                 body: JSON.stringify({})}
-                )
+            )
             .then(response => response.json())
-            .then(data => (this.timing.push(data.time), this.gdata = data.client_data.gdata, this.selection = null))
+            .then(this._update_client_data)
         },
         next(){
           console.log(' this' , this);
-          let body = { client_data : this.$data };
+          let body = { client_data : this.$data.client_data };
 
             fetch(`/api/next`, {method:'POST',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify(body) // body data type must match "Content-Type" header
                             })
             .then(response => response.json())
-            .then(data => (this.timing.push(data.time), this.gdata = data.client_data.gdata, this.selection = null))
+            .then(this._update_client_data)
         },
         save(){
-          let body = { client_data : this.$data};
+          let body = { client_data : this.$data.client_data};
           fetch(`/api/save`, {method:'POST',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify(body) // body data type must match "Content-Type" header
                             })
             .then(response => response.json())
-            .then(data => (this.gdata = data.gdata, this.selection = null))
+            .then(this._update_client_data)
         }
     }
 }

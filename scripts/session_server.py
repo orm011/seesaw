@@ -1,211 +1,80 @@
-from seesaw.seesaw_session import make_acccess_method
 import ray
-
-import fastapi
 from fastapi import FastAPI
 
-import typing
-import pydantic
 from typing import Optional, List
 from pydantic import BaseModel
 
 import numpy as np
 import pandas as pd
-from seesaw import EvDataset, SeesawLoop, LoopParams, ModelService, GlobalDataManager, VectorIndex
+
+from seesaw import GlobalDataManager
+from seesaw.server_session_state import SessionState, Imdata, Box
 
 import pickle
-
-import starlette
-from starlette.middleware import Middleware
-from starlette.middleware.base import BaseHTTPMiddleware
-
-class CustomHeaderMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        print('request: ', request)
-        print('data: ', request.data)
-        response = await call_next(request)
-        print('response: ', response)
-        return response
-
-# 'middlewares':[Middleware(CustomHeaderMiddleware)]
-
+import time
+import os
 
 app = FastAPI()
 
 ray.init('auto', namespace="seesaw")
-print('connected to ray.')
 from ray import serve
 
 print('starting ray.serve...')
 ## can be started in detached mode beforehand to enable fast restart
 serve.start(http_options={'port':8000}) ##  the documented ways of specifying this are currently failing...
-print('started.')
-
-def get_image_paths(dataset_name, ev, idxs):
-    return [ f'/data/{dataset_name}/images/{ev.image_dataset.paths[int(i)]}' for i in idxs]
-
-import shutil
-
-class SessionState:
-    current_dataset : str
-    ev : EvDataset
-    loop : SeesawLoop
-    acc_indices : list
-    ldata_db : dict
-
-    def __init__(self, gdm : GlobalDataManager, dataset_name, ev):
-        self.gdm = gdm
-        self.dataset = self.gdm.get_dataset(dataset_name)
-        self.current_dataset = dataset_name
-        self.ev = ev
-        self.acc_indices = []
-        self.ldata_db = {}
-        self.init_q = None
-        self.timing = []
-
-        vec_path = self.dataset.vector_path()[len(self.gdm.root):] + '.annoy'
-        print('vec_path', vec_path)
-        self.ev.vec_index = VectorIndex(base_dir=gdm.root, load_path=vec_path, copy_to_tmpdir=True, prefault=True)
-        self.params = LoopParams(interactive='pytorch', warm_start='warm', batch_size=3, 
-                minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
-                tqdm_disabled=True, granularity='multi', positive_vector_type='vec_only', 
-                 num_epochs=2, n_augment=None, min_box_size=10, model_type='multirank2', 
-                 solver_opts={'C': 0.1, 'max_examples': 225, 'loss_margin': 0.05})
-
-        self.hdb = make_acccess_method(ev, self.params)
-        self.loop = SeesawLoop(self.hdb, params=self.params)
-
-    def step(self):
-        idxbatch = self.loop.next_batch()
-        self.acc_indices.append(idxbatch)
-        return idxbatch
-        
-    def get_state(self):
-        gdata = []
-        for indices in self.acc_indices:
-            imdata = self.get_panel_data(idxbatch=indices)
-            gdata.append(imdata)
-        
-        dat = {'gdata':gdata}
-        dat['current_dataset'] = self.current_dataset
-        if self.ev.query_ground_truth is not None:
-            dat['reference_categories'] = self.ev.query_ground_truth.columns.values.tolist()
-        else:
-            dat['reference_categories'] = []
-
-        return dat
-
-    def get_panel_data(self, *, idxbatch):
-        reslabs = []
-        urls = get_image_paths(self.current_dataset, self.ev, idxbatch)
-
-        for (url, dbidx) in zip(urls, idxbatch):
-            dbidx = int(dbidx)
-
-            if self.ev.box_data is not None:
-                bx = self.ev.box_data
-                rows = bx[bx.dbidx == dbidx]
-                rows = rows[['x1', 'x2', 'y1', 'y2', 'category']]
-                refboxes = rows.to_dict(orient='records')
-            else:
-                refboxes = []
-
-            boxes = self.ldata_db.get(dbidx,None) # None means no annotations yet (undef), empty means no boxes.
-            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, refboxes=refboxes)
-            reslabs.append(elt)
-        return reslabs
-
-    def update_labeldb(self, gdata):
-        for ldata in gdata:
-            for imdata in ldata:
-                if imdata.boxes is not None:
-                    self.ldata_db[imdata.dbidx] = [b.dict() for b in imdata.boxes]
-                else:
-                    if imdata.dbidx in self.ldata_db:
-                        del self.ldata_db[imdata.dbidx]
-
-    def summary(self):
-        return {}
-
-class Box(BaseModel):
-    x1 : float
-    y1 : float
-    x2 : float
-    y2 : float
-    category : Optional[str] # used for sending ground truth data only, so we can filter by category on the client.
-
-class Imdata(BaseModel):
-    url : str
-    dbidx : int
-    boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
-    refboxes : Optional[List[Box]]
 
 class ClientData(BaseModel): # Using this as a response for every state transition.
     gdata : List[List[Imdata]]
     datasets : List[str]
+    indices : List[str]
     current_dataset : str
+    current_index : str
     reference_categories : List[str]
+    timing : List[float]
 
 class NextReq(BaseModel):
     client_data : ClientData
 
 class Res(BaseModel):
-    time :float
     client_data : ClientData
 
 class SaveReq(BaseModel):
     client_data : ClientData
 
-import time
-import os
-
 class ResetReq(BaseModel):
     dataset: str
 
 
-@serve.deployment(name="seesaw_deployment", ray_actor_options={"num_cpus": 32}, route_prefix='/')
+@serve.deployment(name="seesaw_deployment", ray_actor_options={"num_cpus": 8}, route_prefix='/')
 @serve.ingress(app)
 class WebSeesaw:
     def __init__(self):
-        
-        self.gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/data')
-        self.datasets = ['panama_frames_finetune4'] #['bird_guide_224_finetuned']#['panama_frames3', 'panama_frames_finetune4',]
-        # 'bird_guide_224', 'bird_guide_224_finetuned']
-        #objectnet', 'dota', 'lvis','coco', 'bdd']
-        ## initialize to first one
-        self.evs = {}
-        print('loading data refs')
-        for dsname in self.datasets:
-            ev = self._get_ev(dsname)
-            self.evs[dsname] = ev
-        self.xclip = ModelService(ray.get_actor('clip#actor'))
+        self.gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root')
+        self.datasets = self.gdm.list_datasets()
+        self.indices = None #self.gdm.get_indices(self.datasets[0])
         self._reset_dataset(self.datasets[0])
 
-    def _get_ev(self, dataset_name):
-        print(f'getting ev {dataset_name}')
-        actor = ray.get_actor(f'{dataset_name}#actor')
-        ev = ray.get(ray.get(actor.get_ev.remote()))
-        return ev
-
-    def _reset_dataset(self, dataset_name):
-        ev = self.evs[dataset_name]
-        print ('session state')
-        self.state = SessionState(gdm=self.gdm, dataset_name=dataset_name, ev=ev)
+    def _reset_dataset(self, dataset_name, index_name=None):
+        self.indices = self.gdm.list_indices(dataset_name)
+        self.state = SessionState(gdm=self.gdm, dataset_name=dataset_name, index_name=self.indices[0])
 
     def _getstate(self):
         s = self.state.get_state()
         s['datasets'] = self.datasets
+        s['indices'] = self.indices
         return s
 
-    @app.get('/getstate', response_model=ClientData)
+    @app.get('/getstate', response_model=Res)
     def getstate(self):
-        return self._getstate()
+        res =  self._getstate()
+        return {'client_data':res}
 
-    @app.post('/reset', response_model=ClientData)
+    @app.post('/reset', response_model=Res)
     def reset(self, r : ResetReq):
         print(f'resetting state with freshly constructed one for {r.dataset}')
         self._reset_dataset(r.dataset)
-        return self._getstate()
+        res = self._getstate()
+        return {'client_data':res}
 
     def _step(self, cdata: ClientData):
         if cdata is not None: ## refinement code
@@ -234,21 +103,14 @@ class WebSeesaw:
 
     @app.post('/next', response_model=Res)
     def next(self, body : NextReq):
-        start = time.time()
         res = self._step(body.client_data)
-        delta = time.time() - start
-        self.state.timing.append({'oper':'next', 'start':start, 'processing':delta})
-        return {'time':delta, 'client_data':res}
+        return {'client_data':res}
 
     @app.post('/text', response_model=Res)
     def text(self, key : str):
-        start = time.time()
-        self.state.init_q = key
-        self.state.loop.set_vec(qstr=key)
-        res = self._step(None)
-        delta = time.time() - start
-        self.state.timing.append({'oper':'text', 'start':start, 'processing':delta})
-        return {'time':delta, 'client_data':res}
+        _ = self.state.text(key=key)
+        res = self._getstate()
+        return {'client_data':res}
 
     @app.post('/save', response_model=ClientData)
     def save(self, body : SaveReq):
@@ -275,5 +137,6 @@ class WebSeesaw:
 
 
 WebSeesaw.deploy()
+print('sessionserver is ready. visit it through http://localhost:9000')
 while True: # wait.
     input()

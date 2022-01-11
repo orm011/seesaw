@@ -1,3 +1,4 @@
+from seesaw.query_interface import AccessMethod
 from seesaw.definitions import DATA_CACHE_DIR, parallel_copy
 import pytorch_lightning as pl
 import os
@@ -9,7 +10,6 @@ from operator import itemgetter
 
 import transformers
 
-from .multigrain import * #SlidingWindow,PyramidTx,non_resized_transform
 from .embeddings import * 
 from .vloop_dataset_loaders import EvDataset
 
@@ -291,15 +291,15 @@ def extract_seesaw_meta(dataset, output_dir, output_name, num_workers, batch_siz
 #     mc.preprocess()
 
 class SeesawDatasetManager:
-    def __init__(self, root, dataset_name):
+    def __init__(self, root, dataset_name, dataset_path):
         ''' Assumes layout created by create_dataset
         '''
         self.dataset_name = dataset_name
-        self.dataset_root = f'{root}/{dataset_name}'
+        self.dataset_root = f'{root}/{dataset_path}'
         file_meta = pd.read_parquet(f'{self.dataset_root}/file_meta.parquet')
         self.file_meta = file_meta
         self.paths = file_meta['file_path'].values
-        self.image_root = f'{self.dataset_root}/images'
+        self.image_root = os.path.realpath(f'{self.dataset_root}/images/')
 
     def get_pytorch_dataset(self):
         return ExplicitPathDataset(root_dir=self.image_root, relative_path_list=self.paths)
@@ -379,7 +379,7 @@ class SeesawDatasetManager:
         qgt.to_parquet(f'{gt_root}/qgt.parquet')
 
     def vector_path(self):
-        return f'{self.dataset_root}/meta/vectors'
+        return f'{self.dataset_root}/indices/{self.index_name}/vectors'
 
     def ground_truth_path(self):
         gt_root = f'{self.dataset_root}/ground_truth/'
@@ -396,12 +396,11 @@ class SeesawDatasetManager:
         box_data, qgt = prep_ground_truth(self.paths, box_data, qgt)
         return box_data, qgt
 
-    def index_path(self):
-        return  f'{self.dataset_root}/meta/vectors.annoy'
-    
-    def load_evdataset(self, *, force_recompute=False, load_coarse=True, load_ground_truth=True) -> EvDataset:
-        cached_meta_path= f'{self.dataset_root}/meta/vectors.sorted.cached'
-        coarse_meta_path= f'{self.dataset_root}/meta/vectors.coarse.cached'
+
+    def load_evdataset(self, *, index_subpath, force_recompute=False, load_coarse=True, load_ground_truth=True) -> EvDataset:
+        cached_meta_path= f'{self.dataset_root}/{index_subpath}/vectors.sorted.cached'
+        coarse_meta_path= f'{self.dataset_root}/{index_subpath}/vectors.coarse.cached'
+        vec_index_path = f'{self.dataset_root}/indices/{self.index_name}/vectors.annoy'
 
         if not os.path.exists(cached_meta_path) or force_recompute:
             if os.path.exists(cached_meta_path):
@@ -546,18 +545,145 @@ Expected data layout for a seesaw root with a few datasets:
 │           ├── part_000.parquet
 │           └── part_001.parquet
 """
+import sqlite3
+def ensure_db(dbpath):
+    conn_uri = f'file:{dbpath}?nolock=1' # lustre makes locking fail, this should run only from manager though.
+    conn = sqlite3.connect(conn_uri, uri=True)
+    try:
+        cur = conn.cursor()
+        cur.execute('''CREATE TABLE IF NOT EXISTS models(
+                                            m_id INTEGER PRIMARY KEY,
+                                            m_created DATETIME default current_timestamp,
+                                            m_name TEXT UNIQUE,
+                                            m_path TEXT UNIQUE,
+                                            m_constructor TEXT,
+                                            m_origin_path TEXT 
+                                            )''')
+
+        cur.execute('''CREATE TABLE IF NOT EXISTS datasets(
+                                            d_id INTEGER PRIMARY KEY, 
+                                            d_created DATETIME default current_timestamp,
+                                            d_name TEXT UNIQUE,
+                                            d_path TEXT UNIQUE,
+                                            d_origin_path TEXT
+                                            )''')
+
+        cur.execute('''CREATE TABLE IF NOT EXISTS indices(
+                                            i_id INTEGER PRIMARY KEY,
+                                            i_created DATETIME default current_timestamp,
+                                            i_name TEXT,
+                                            i_constructor TEXT, 
+                                            i_path TEXT, 
+                                            d_id INTEGER,
+                                            m_id INTEGER,
+                                            FOREIGN KEY(d_id) REFERENCES datasets(d_id)
+                                            FOREIGN KEY(m_id) REFERENCES models(_id)
+                                            UNIQUE(d_id, i_name)
+                                            )''')
+        conn.commit()
+    finally:
+        conn.close()
+
+
+
+import importlib
 class GlobalDataManager:
     def __init__(self, root):
         if not os.path.exists(root):
-            print('creating new data folder')
+            print('creating new root folder')
             os.makedirs(root)
-        else:
-            assert os.path.isdir(root)
-            
+
         self.root = root
-        
+        self.data_root = f'{root}/data/'
+        self.model_root = f'{root}/models/'
+        self.index_root = f'{root}/indices/'
+
+        paths = [self.data_root, self.model_root, self.index_root]
+        for p in paths:
+            os.makedirs(p, exist_ok=True)
+
+        self.dbpath = f'{root}/meta.sqlite'
+        self.dburi = f'file:{self.dbpath}?nolock=1'
+        ensure_db(self.dbpath)
+
+    def _get_connection(self):
+        return sqlite3.connect(self.dburi, uri=True)
+
+    def _fetch(self, *args, **kwargs):
+        try:
+            conn = self._get_connection()
+            return conn.execute(*args, **kwargs).fetchall()
+        finally:
+            conn.close()
+
+    def _fetch_unique(self, *args, **kwargs):
+        tups = self._fetch(*args, **kwargs)
+        assert len(tups) == 1
+        return tups[0]    
+
+
     def list_datasets(self):
-        return [f for f in os.listdir(self.root) if not f.startswith('_')]
+        tups = self._fetch('''
+                    select d_name from datasets
+                    order by d_id
+        ''')
+        return [t[0] for t in tups]
+    
+    def list_indices(self, dataset_name):
+        tups = self._fetch('''
+            select i_name from indices, datasets
+                    where datasets.d_id == indices.d_id
+                    and datasets.d_name == ?
+                    order by i_id
+        ''', (dataset_name,))
+        return [t[0] for t in tups]
+
+
+    def get_index_construction_data(self, dataset_name, index_name):
+        return self._fetch_unique('''select i_constructor, i_path, m_name from indices,models,datasets 
+                        where d_name == ? and i_name == ? 
+                            and indices.d_id == datasets.d_id
+                            and indices.m_id == models.m_id
+                        ''', (dataset_name, index_name))
+
+    def load_index(self, dataset_name, index_name):
+        cons_name, data_path, model_name = self.get_index_construction_data(dataset_name, index_name)
+        return AccessMethod.restore(self, cons_name, dataset_name, data_path, model_name)
+
+    def _get_model_path(self, model_name : str) -> str :
+        return self._fetch_unique('''select m_path from models where m_name == ?''', (model_name,))[0]
+
+    def _create_model_actor(self, model_name : str, actor_name : str):
+        if not torch.cuda.is_available():
+            device = 'cpu'
+            num_gpus = 0
+            num_cpus = 4
+        else:
+            device = 'cuda:0'
+            num_gpus = .3
+            num_cpus = 2
+
+        m_path = self._get_model_path(model_name)
+        full_path = f'{self.root}/{m_path}'
+        print(full_path)
+
+        r = (ray.remote(HGWrapper)
+                .options(name=actor_name, num_gpus=num_gpus, num_cpus=num_cpus, lifetime='detached')
+                .remote(path=full_path, device=device))
+        
+        return r
+
+    def get_model_actor(self, model_name : str):
+        actor_name = 'model_manager#{model_name}'
+    
+        try:
+            return ModelService(ray.get_actor(name=actor_name))
+        except ValueError:
+            pass # handle this specific error due to actor not existing
+
+        return ModelService(self._create_model_actor(model_name, actor_name))
+
+        return [f for f in os.listdir(self.data_root) if not f.startswith('_')]
     
     def create_dataset(self, image_src, dataset_name, paths=[]) -> SeesawDatasetManager:
         '''
@@ -570,7 +696,7 @@ class GlobalDataManager:
         assert dataset_name not in self.list_datasets(), 'dataset with same name already exists'
         image_src = os.path.realpath(image_src)
         assert os.path.isdir(image_src)
-        dspath = f'{self.root}/{dataset_name}'
+        dspath = f'{self.data_root}/{dataset_name}'
         assert not os.path.exists(dspath), 'name already used'
         os.mkdir(dspath)
         image_path = f'{dspath}/images'
@@ -584,13 +710,18 @@ class GlobalDataManager:
         df = df.sort_values('file_path').reset_index(drop=True)
         df.to_parquet(f'{dspath}/file_meta.parquet')
         return self.get_dataset(dataset_name)
-            
+    
+    def _fetch_dataset_path(self, dataset_name):
+        d_path = self._fetch_unique(''' 
+                select d_path from datasets where d_name == ?
+        ''', (dataset_name,))[0]
+        return d_path
+
     def get_dataset(self, dataset_name) -> SeesawDatasetManager:
         assert dataset_name in self.list_datasets(), 'must create it first'
-        ## TODO: cache this representation
-        return SeesawDatasetManager(self.root, dataset_name)                
+        d_path = self._fetch_dataset_path(dataset_name)
+        return SeesawDatasetManager(self.root, dataset_name, d_path)
         
-
     def clone(self, ds = None, ds_name = None, clone_name : str = None) -> SeesawDatasetManager:
         assert ds is not None or ds_name is not None
         if ds is None:
@@ -605,7 +736,7 @@ class GlobalDataManager:
                     break
 
         assert clone_name is not None
-        shutil.copytree(src=ds.dataset_root, dst=f'{self.root}/{clone_name}', symlinks=True)
+        shutil.copytree(src=ds.dataset_root, dst=f'{self.data_root}/{clone_name}', symlinks=True)
         return self.get_dataset(clone_name)
 
     def clone_subset(self, ds=None, ds_name=None, 
