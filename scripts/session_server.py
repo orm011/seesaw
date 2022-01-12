@@ -1,14 +1,14 @@
 import ray
 from fastapi import FastAPI
 
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel
 
 import numpy as np
 import pandas as pd
 
 from seesaw import GlobalDataManager
-from seesaw.server_session_state import SessionState, Imdata, Box
+from seesaw.server_session_state import Session, Imdata, Box, SessionState
 
 import pickle
 import time
@@ -23,67 +23,58 @@ print('starting ray.serve...')
 ## can be started in detached mode beforehand to enable fast restart
 serve.start(http_options={'port':8000}) ##  the documented ways of specifying this are currently failing...
 
-class ClientData(BaseModel): # Using this as a response for every state transition.
-    gdata : List[List[Imdata]]
-    datasets : List[str]
-    indices : List[str]
-    current_dataset : str
-    current_index : str
-    reference_categories : List[str]
-    timing : List[float]
+class IndexSpec(BaseModel):
+    d_name:str 
+    i_name:str
+    m_name:Optional[str]
 
-class NextReq(BaseModel):
-    client_data : ClientData
+class AppState(BaseModel): # Using this as a response for every state transition.
+    indices : List[IndexSpec]
+    current_index : IndexSpec
+    session : SessionState
 
-class Res(BaseModel):
-    client_data : ClientData
-
-class SaveReq(BaseModel):
-    client_data : ClientData
+class SessionReq(BaseModel):
+    client_data : AppState
 
 class ResetReq(BaseModel):
-    dataset: str
-
+    index : IndexSpec
 
 @serve.deployment(name="seesaw_deployment", ray_actor_options={"num_cpus": 8}, route_prefix='/')
 @serve.ingress(app)
 class WebSeesaw:
     def __init__(self):
         self.gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root')
-        self.datasets = self.gdm.list_datasets()
-        self.indices = None #self.gdm.get_indices(self.datasets[0])
-        self._reset_dataset(self.datasets[0])
+        self.indices = self.gdm.list_indices()
+        self.current_index = self.indices[0]
+        self._reset_dataset(self.current_index)
 
-    def _reset_dataset(self, dataset_name, index_name=None):
-        self.indices = self.gdm.list_indices(dataset_name)
-        self.state = SessionState(gdm=self.gdm, dataset_name=dataset_name, index_name=self.indices[0])
+    def _reset_dataset(self, index_spec):
+        self.session = Session(gdm=self.gdm, dataset_name=index_spec['d_name'], index_name=index_spec['i_name'])
+        self.current_index = index_spec
 
     def _getstate(self):
-        s = self.state.get_state()
-        s['datasets'] = self.datasets
-        s['indices'] = self.indices
-        return s
+        return AppState(indices=self.indices, 
+                            current_index=self.current_index, 
+                            session=self.session.get_state())
 
-    @app.get('/getstate', response_model=Res)
+    @app.get('/getstate', response_model=AppState)
     def getstate(self):
-        res =  self._getstate()
-        return {'client_data':res}
+        return self._getstate()
 
-    @app.post('/reset', response_model=Res)
+    @app.post('/reset', response_model=AppState)
     def reset(self, r : ResetReq):
-        print(f'resetting state with freshly constructed one for {r.dataset}')
-        self._reset_dataset(r.dataset)
-        res = self._getstate()
-        return {'client_data':res}
+        print(f'resetting state with freshly constructed one for {r.index}')
+        self._reset_dataset(r.index.dict())
+        return self._getstate()
 
-    def _step(self, cdata: ClientData):
-        if cdata is not None: ## refinement code
-            self.state.update_labeldb(gdata=cdata.gdata)
+    def _step(self, state: SessionState):
+        if state is not None: ## refinement code
+            self.session.update_labeldb(gdata=state.gdata)
 
             box_dict = {}
             idxbatch = []
-            for elt in cdata.gdata[-1]:
-                boxes = self.state.ldata_db.get(elt.dbidx, None)
+            for elt in state.gdata[-1]:
+                boxes = self.session.ldata_db.get(elt.dbidx, None)
                 if boxes is not None:
                     df = pd.DataFrame(boxes, columns=['x1', 'x2', 'y1', 'y2']).astype('float32') # cols in case it is empty
                     df = df.assign(dbidx=elt.dbidx)
@@ -93,36 +84,33 @@ class WebSeesaw:
             if len(box_dict) > 0:
                 print('calling refine...')
                 ## should we provide the full box dict?
-                self.state.loop.refine(idxbatch=np.array(idxbatch), box_dict=box_dict)
+                self.session.loop.refine(idxbatch=np.array(idxbatch), box_dict=box_dict)
                 print('done refining...')
             else:
                 print('no new annotations, skipping refinement')
 
-        self.state.step()
+        self.session.step()
         return self._getstate()
 
-    @app.post('/next', response_model=Res)
-    def next(self, body : NextReq):
-        res = self._step(body.client_data)
-        return {'client_data':res}
+    @app.post('/next', response_model=AppState)
+    def next(self, body : SessionReq):
+        return self._step(body.client_data.session)
 
-    @app.post('/text', response_model=Res)
+    @app.post('/text', response_model=AppState)
     def text(self, key : str):
-        _ = self.state.text(key=key)
-        res = self._getstate()
-        return {'client_data':res}
+        _ = self.session.text(key=key)
+        return self._getstate()
 
-    @app.post('/save', response_model=ClientData)
-    def save(self, body : SaveReq):
+    @app.post('/save', response_model=AppState)
+    def save(self, body : SessionReq):
         print('save req')
-        cdata = body.client_data
-        self.state.update_labeldb(gdata=cdata.gdata)
+        self.session.update_labeldb(gdata=body.client_data.session.gdata)
 
-        summary = {'qstr':self.state.init_q, 
-        'ldata_db':self.state.ldata_db,
-        'dataset':self.state.current_dataset,
-        'indices':self.state.acc_indices,
-        'timing':self.state.timing
+        summary = {'qstr':self.session.init_q, 
+        'ldata_db':self.session.ldata_db,
+        'dataset':self.session.current_dataset,
+        'indices':self.session.acc_indices,
+        'timing':self.session.timing
         }
 
         base = os.path.realpath(os.curdir)

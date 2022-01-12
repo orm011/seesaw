@@ -21,8 +21,8 @@
           <label>Current Database:</label>
           </div>
           <div class='row'>
-          <select v-model="client_data.current_dataset" v-on:change="reset(client_data.current_dataset)">
-            <option v-for="(dsname,idx) in client_data.datasets" :key="idx" :value="dsname">{{dsname}}</option>
+          <select v-model="client_data.current_index" v-on:change="reset(client_data.current_index)">
+            <option v-for="(idxspec,idx) in client_data.indices" :key="idx" :value="idxspec">{{idxspec}}</option>
           </select>
           </div>
           </div>
@@ -37,13 +37,13 @@
           <button class="btn btn-dark btn-block" @click="save()"> Save </button>
         </div> -->
         <div class='row'>
-          <button class="btn btn-dark btn-block" @click="reset(client_data.current_dataset)"> Reset </button>
+          <button class="btn btn-dark btn-block" @click="reset(client_data.current_index)"> Reset </button>
         </div>
 
         <!-- <div class='row'>
         <ul class="nav flex-column">
-          <li v-for="(dataset_name,idx) in datasets" :key="idx" class="nav-item">
-            <a  :class="`nav-link ${(dataset_name === current_dataset) ? 'active' : ''}`" aria-current="page" href="#" 
+          <li v-for="(dataset_name,idx) in indices" :key="idx" class="nav-item">
+            <a  :class="`nav-link ${(dataset_name === current_index) ? 'active' : ''}`" aria-current="page" href="#" 
               @click="reset(dataset_name)">
               {{dataset_name}}
             </a>
@@ -59,9 +59,9 @@
       </div>
     </nav>
     <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
-        <div class="row" v-for="(imdata,idx) in client_data.gdata" :key="idx">
-          <div v-if="client_data.timing.length > 0" class="row">
-            <span>Search refinement took {{client_data.timing[idx].toFixed(2)}} seconds</span>
+        <div class="row" v-for="(imdata,idx) in client_data.session.gdata" :key="idx">
+          <div v-if="client_data.session.timing.length > 0" class="row">
+            <span>Search refinement took {{client_data.session.timing[idx].toFixed(2)}} seconds</span>
           </div>
           <div class="row">
           <m-image-gallery ref="galleries" v-if="imdata.length > 0" :initial_imdata="filter_boxes(imdata, current_category)"
@@ -69,21 +69,24 @@
           </div>
           <div class="row space"/>
         </div>
-        <div class="row" v-if="client_data.gdata.length > 0">
+        <div class="row" v-if="client_data.session.gdata.length > 0">
               <button @click="next()" class="btn btn-dark btn-block">More...</button>
         </div>
     </main>
     </div> 
  </div>
 </template>
-<script>
+<script >
 import MImageGallery from './components/m-image-gallery.vue';
 
 export default {
     components : {'m-image-gallery':MImageGallery},
     props: {},
     data () { return { 
-                client_data : { gdata : [] },
+                client_data : { session : { gdata : [] }, 
+                                current_index : {d_name:'', i_name:'', m_name:''}, 
+                                indices : [] 
+                              },
                 current_category : null,
                 selection: null, 
                 text_query:null,
@@ -98,7 +101,7 @@ export default {
     },
     methods : {
         total_images() {
-            return this.client_data.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
+            return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
         },
         total_annotations(){
             let annot_per_list = function(l){
@@ -112,7 +115,7 @@ export default {
               }
               return total;
             };
-            return this.client_data.gdata.map(annot_per_list).reduce((a,b)=>a+b, 0)
+            return this.client_data.session.gdata.map(annot_per_list).reduce((a,b)=>a+b, 0)
         },
         filter_boxes(imdata, category){
           let out = []
@@ -125,30 +128,27 @@ export default {
         },
         data_update(gdata_idx, ev){
           console.log('data_update')
-          this.client_data.gdata[gdata_idx][ev.idx].boxes =  ev.boxes
+          this.client_data.session.gdata[gdata_idx][ev.idx].boxes =  ev.boxes
         },
         copy_ref(gdata_idx, panel_idx){
-          let refboxes = this.client_data.gdata[gdata_idx][panel_idx].refboxes;
+          let refboxes = this.client_data.session.gdata[gdata_idx][panel_idx].refboxes;
           let frefboxes = refboxes.filter((b) => b.category === this.current_category || this.current_category === '')
           let newboxes = frefboxes.length == 0 ? null : frefboxes
-          this.client_data.gdata[gdata_idx][panel_idx].boxes = newboxes
+          this.client_data.session.gdata[gdata_idx][panel_idx].boxes = newboxes
         },
         _update_client_data(data, reset = false){
           console.log('current data', this.client_data);
           console.log('update client data', data, reset);
-          this.client_data = data.client_data;
+          this.client_data = data;
           this.selection = null;
 
           if (reset){
             this.text_query = null;
           }
         },
-        reset(dsname){
+        reset(index){
           console.log(this);
-          console.log(dsname)
-          let reqdata = {dataset:dsname};
-          console.log(reqdata);
-
+          let reqdata = {index:index};
             fetch(`/api/reset`,   
                 {method: 'POST', 
                 headers: {'Content-Type': 'application/json'},

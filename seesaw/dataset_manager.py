@@ -585,6 +585,7 @@ def ensure_db(dbpath):
         conn.close()
 
 
+import pandas as pd
 
 import importlib
 class GlobalDataManager:
@@ -609,10 +610,17 @@ class GlobalDataManager:
     def _get_connection(self):
         return sqlite3.connect(self.dburi, uri=True)
 
-    def _fetch(self, *args, **kwargs):
+    def _fetch(self, sql, *args, mode='plain', **kwargs):
         try:
             conn = self._get_connection()
-            return conn.execute(*args, **kwargs).fetchall()
+            if mode == 'dict':
+                conn.row_factory = sqlite3.Row
+                tups =  conn.execute(sql, *args, **kwargs).fetchall()
+                return [dict(tup) for tup in tups]
+            elif mode == 'plain':
+                return conn.execute(sql, *args, **kwargs).fetchall()
+            elif mode == 'df':
+                return pd.read_sql_query(sql, conn)
         finally:
             conn.close()
 
@@ -621,7 +629,6 @@ class GlobalDataManager:
         assert len(tups) == 1
         return tups[0]    
 
-
     def list_datasets(self):
         tups = self._fetch('''
                     select d_name from datasets
@@ -629,15 +636,15 @@ class GlobalDataManager:
         ''')
         return [t[0] for t in tups]
     
-    def list_indices(self, dataset_name):
-        tups = self._fetch('''
-            select i_name from indices, datasets
+    def list_indices(self):
+        df = self._fetch('''
+            select d_name, i_name, m_name from indices, datasets, models
                     where datasets.d_id == indices.d_id
-                    and datasets.d_name == ?
-                    order by i_id
-        ''', (dataset_name,))
-        return [t[0] for t in tups]
+                    and models.m_id == indices.m_id
+                    order by datasets.d_id, i_id
+        ''', mode='df')
 
+        return df.to_dict(orient='records')
 
     def get_index_construction_data(self, dataset_name, index_name):
         return self._fetch_unique('''select i_constructor, i_path, m_name from indices,models,datasets 

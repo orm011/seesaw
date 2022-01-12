@@ -24,8 +24,12 @@ class Imdata(BaseModel):
     boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
     refboxes : Optional[List[Box]]
 
+class SessionState(BaseModel):
+    gdata : List[List[Imdata]]
+    timing : List[float]
+    reference_categories : List[str]
 
-class SessionState:
+class Session:
     current_dataset : str
     current_index : str
     loop : SeesawLoop
@@ -36,8 +40,6 @@ class SessionState:
     def __init__(self, gdm : GlobalDataManager, dataset_name, index_name):
         self.gdm = gdm
         self.dataset = self.gdm.get_dataset(dataset_name)
-        self.current_dataset = self.dataset.dataset_name
-        self.current_index = index_name
         self.acc_indices = []
         self.ldata_db = {}
         self.init_q = None
@@ -75,14 +77,12 @@ class SessionState:
             gdata.append(imdata)
         
         dat = {'gdata':gdata}
-        dat['current_dataset'] = self.current_dataset
-        dat['current_index'] = self.current_index
         dat['timing']  = self.timing
         # if self.ev.query_ground_truth is not None:
         #     dat['reference_categories'] = self.ev.query_ground_truth.columns.values.tolist()
         # else:
         dat['reference_categories'] = []
-        return dat
+        return SessionState(**dat)
 
     def get_panel_data(self, *, idxbatch):
         reslabs = []
