@@ -168,8 +168,9 @@ _clip_tx = T.Compose([
 
 import random
 from .figures import compute_metrics
+from .server_session_state import Session
 
-def benchmark_loop(*, ev :EvDataset, n_batches, tqdm_disabled:bool, category, qstr,
+def benchmark_loop(*, session : Session,  n_batches, tqdm_disabled:bool, category, qstr,
                 interactive, warm_start, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
               max_feedback=None, box_drop_prob=0.,
