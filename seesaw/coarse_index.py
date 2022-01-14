@@ -17,11 +17,10 @@ class CoarseIndex(AccessMethod):
      together with precomputed embeddings
      and (optionally) data structure
     """
-    def __init__(self, images : torch.utils.data.Dataset,
+    def __init__(self, 
                  embedding : XEmbedding,
                  vectors : np.ndarray, 
                  vector_meta : pd.DataFrame):
-        self.images = images
         self.embedding = embedding
         self.vectors = vectors
         self.vector_meta = vector_meta
@@ -35,11 +34,8 @@ class CoarseIndex(AccessMethod):
         return init_vec
 
     @staticmethod
-    def from_path(gdm : GlobalDataManager, dataset_name : str, index_subpath : str, model_name :str):
-        dm = gdm.get_dataset(dataset_name)
-        images = dm.get_pytorch_dataset()
+    def from_path(gdm : GlobalDataManager, index_subpath : str, model_name :str):
         embedding = gdm.get_model_actor(model_name)
-        
         coarse_meta_path= f'{gdm.root}/{index_subpath}/vectors.coarse.cached'
 
         assert os.path.exists(coarse_meta_path)
@@ -47,7 +43,7 @@ class CoarseIndex(AccessMethod):
         assert coarse_df.dbidx.is_monotonic_increasing, 'sanity check'
         embedded_dataset = coarse_df['vectors'].values.to_numpy()
         vector_meta = coarse_df.drop('vectors', axis=1)
-        return CoarseIndex(images=images, embedding=embedding, vectors=embedded_dataset, vector_meta=vector_meta)
+        return CoarseIndex(embedding=embedding, vectors=embedded_dataset, vector_meta=vector_meta)
     
     def query(self, *, topk, mode, vector=None, exclude=None, startk=None):
         if exclude is None:
@@ -81,6 +77,11 @@ class CoarseIndex(AccessMethod):
 
     def new_query(self):
         return CoarseQuery(self)
+
+    def subset(self, indices : pr.BitMap):
+        mask = self.vector_meta.dbidx.isin(indices)
+        return CoarseIndex(embedding=self.embedding, vectors=self.vectors[mask], vector_meta = self.vector_meta[mask])
+
 
 class CoarseQuery(InteractiveQuery):
     def __init__(self, db : CoarseIndex):

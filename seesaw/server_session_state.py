@@ -70,7 +70,7 @@ class Session:
         self.loop.set_vec(qstr=key)
         return self.step()
 
-    def get_state(self):
+    def get_state(self) -> SessionState:
         gdata = []
         for indices in self.acc_indices:
             imdata = self.get_panel_data(idxbatch=indices)

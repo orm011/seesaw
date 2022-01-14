@@ -24,17 +24,17 @@ class AccessMethod:
     def new_query(self):
         raise NotImplementedError('implement me')
 
-    def vector_table(self):
+    def subset(self, indices : pr.BitMap):
         raise NotImplementedError('implement me')
 
     @staticmethod
-    def from_path(gdm, dataset_name : str, index_subpath : str, model_name :str):
+    def from_path(gdm, index_subpath : str, model_name :str):
         raise NotImplementedError('implement me')
 
     @staticmethod
-    def restore(gdm, type_name : str, dataset_name : str, data_path : str, model_name : str):
+    def restore(gdm, type_name : str,  data_path : str, model_name : str):
         c = get_constructor(type_name)
-        return c.from_path(gdm, dataset_name, data_path, model_name)
+        return c.from_path(gdm, data_path, model_name)
 
 
 class InteractiveQuery(object):

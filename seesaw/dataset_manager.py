@@ -655,7 +655,7 @@ class GlobalDataManager:
 
     def load_index(self, dataset_name, index_name):
         cons_name, data_path, model_name = self.get_index_construction_data(dataset_name, index_name)
-        return AccessMethod.restore(self, cons_name, dataset_name, data_path, model_name)
+        return AccessMethod.restore(self, cons_name, data_path, model_name)
 
     def _get_model_path(self, model_name : str) -> str :
         return self._fetch_unique('''select m_path from models where m_name == ?''', (model_name,))[0]

@@ -265,12 +265,6 @@ def get_boxes(vec_meta):
     boxes = boxes.astype('float32') ## multiplication makes this type double but this is too much.
     return boxes
 
-def makedb(evs, dataset, category):
-        ev,_ = get_class_ev(evs[dataset], category=category)
-        return ev, MultiscaleIndex(images=ev.image_dataset, embedding=ev.embedding, vectors=ev.fine_grained_embedding,
-               vector_meta=ev.fine_grained_meta, vec_index=ev.vec_index)
-
-
 def get_pos_negs_all_v2(dbidxs, box_dict, vec_meta):
     idxs = pr.BitMap(dbidxs)
     relvecs = vec_meta[vec_meta.dbidx.isin(idxs)]
@@ -316,28 +310,19 @@ class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup
     """
     def __init__(self, *,
-                 images : torch.utils.data.Dataset,
                  embedding : XEmbedding,
                  vectors : np.ndarray,
                  vector_meta : pd.DataFrame,
                  vec_index =  None):
 
-        self.images = images
         self.embedding = embedding
         self.vectors = vectors
         self.vector_meta = vector_meta
         self.vec_index = vec_index
-
-        all_indices = pr.BitMap()
-        assert len(self.images) >= vector_meta.dbidx.unique().shape[0]
-        assert vectors.shape[0] == vector_meta.shape[0]
-        all_indices.add_range(0, len(self.images))
-        self.all_indices = pr.FrozenBitMap(all_indices)
+        self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
 
     @staticmethod
-    def from_path(gdm : GlobalDataManager, dataset_name : str, index_subpath : str, model_name :str):
-        dm = gdm.get_dataset(dataset_name)
-        images = dm.get_pytorch_dataset()
+    def from_path(gdm : GlobalDataManager, index_subpath : str, model_name :str):
         embedding = gdm.get_model_actor(model_name)
         
         cached_meta_path= f'{gdm.root}/{index_subpath}/vectors.sorted.cached'
@@ -352,8 +337,7 @@ class MultiscaleIndex(AccessMethod):
         fine_grained_meta = df[['dbidx', 'order_col', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
         fine_grained_embedding = df['vectors'].values.to_numpy()
 
-        return MultiscaleIndex(images=images, 
-                                embedding=embedding, 
+        return MultiscaleIndex(embedding=embedding, 
                                 vectors=fine_grained_embedding, 
                                 vector_meta=fine_grained_meta, 
                                 vec_index=vec_index)
@@ -364,7 +348,7 @@ class MultiscaleIndex(AccessMethod):
         return init_vec
     
     def __len__(self):
-        return len(self.images)
+        return len(self.all_indices)
 
     def _query_prelim(self, *, vector, topk,  zoom_level, exclude=None, startk=None):
         if exclude is None:
@@ -383,59 +367,6 @@ class MultiscaleIndex(AccessMethod):
         ## want to return proposals only for images we have not seen yet...
         ## but library does not allow this...
         ## guess how much we need... and check
-        
-        def get_nns_with_pynn_index():
-            i = 0
-            try_n = (len(exclude) + topk)*10 # guess of how many to use
-            while True:
-                if i > 1:
-                    print('warning, we are looping too much. adjust initial params?')
-
-                idxs, scores = self.vec_index.query(vector.reshape(1,-1), k=try_n, epsilon=.2)
-                idxs = np.array(idxs).astype('int').reshape(-1)
-                scores = np.array(scores).reshape(-1) 
-                # search_k = int(np.clip(try_n * 100, 50000, 500000)) 
-                # search_k is a very important param for accuracy do not reduce below 30k unless you have a 
-                # really good reason. the upper limit is 
-                # idxs, scores = self.vec_index.get_nns_by_vector(vector.reshape(-1), n=try_n, 
-                #                                                 search_k=search_k,
-                #                                                 include_distances=True)
-                #breakpoint()
-                found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
-                if len(found_idxs.difference(exclude)) >= topk:
-                    break
-                
-                try_n = try_n*2 # double guess
-                i+=1
-
-            return idxs, scores
-
-
-        def get_nns_by_vector_approx():
-            i = 0
-            try_n = (len(exclude) + topk)*3
-            while True:
-                if i > 1:
-                    print('warning, we are looping too much. adjust initial params?')
-
-                #search_k = int(np.clip(try_n * 100, 50000, 500000)) 
-                # search_k is a very important param for accuracy do not reduce below 30k unless you have a 
-                # really good reason. the upper limit is 
-                idxs, scores = self.vec_index.get_nns_by_vector(vector.reshape(-1), n=try_n, 
-                 #                                               search_k=search_k,
-                                                                include_distances=True)
-
-
-                found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
-                if len(found_idxs.difference(exclude)) >= topk:
-                    break
-                
-                try_n = try_n*2
-                i+=1
-
-            return np.array(idxs).astype('int'), np.array(scores)
-
-
         def get_nns(startk, topk):
             i = 0
             deltak = topk*100
@@ -443,8 +374,8 @@ class MultiscaleIndex(AccessMethod):
                 if i > 1:
                     print('warning, we are looping too much. adjust initial params?')
 
-                idxs,scores = self.vec_index.query(vector, top_k=startk + deltak)
-                found_idxs = pr.BitMap(vec_meta.dbidx.values[idxs])
+                vec_idxs,scores = self.vec_index.query(vector, top_k=startk + deltak)
+                found_idxs = pr.BitMap(vec_meta.dbidx.values[vec_idxs])
 
                 newidxs = found_idxs.difference(exclude)
                 if len(newidxs) >= topk:
@@ -453,12 +384,12 @@ class MultiscaleIndex(AccessMethod):
                 deltak = deltak*2
                 i+=1
 
-            return idxs, scores
+            return vec_idxs, scores
 
         def get_nns_by_vector_exact():
             scores = self.vectors @ vector.reshape(-1)
-            scorepos = np.argsort(-scores)
-            return scorepos, scores[scorepos]
+            vec_idxs = np.argsort(-scores)
+            return vec_idxs, scores[vec_idxs]
 
         if self.vec_index is not None:
             idxs, scores  = get_nns(startk, topk)
@@ -522,8 +453,19 @@ class MultiscaleIndex(AccessMethod):
     def new_query(self):
         return BoxFeedbackQuery(self)
 
-    def vector_table(self):
-        pass
+    def subset(self, indices : pr.BitMap) -> AccessMethod:
+        mask = self.vector_meta.dbidx.isin(indices)
+        if mask.all():
+            return self
+        else:
+            if self.vec_index is not None:
+                print('warning: after subsetting we lose ability to use pre-built index')
+
+        vector_meta = self.vector_meta[mask]
+        vectors = self.vectors[mask]
+        return MultiscaleIndex(embedding=self.embedding, vectors=vectors, vector_meta = vector_meta, vec_index=None)
+        
+
 
 class BoxFeedbackQuery(InteractiveQuery):
     def __init__(self, db):
