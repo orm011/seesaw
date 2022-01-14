@@ -4,13 +4,12 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as T
+import torch
 import pyroaring as pr
 
-import sklearn
 import torch.utils.data
 from .embeddings import XEmbedding
 from .query_interface import *
-import torch
 from .dataset_manager import GlobalDataManager
 
 class CoarseIndex(AccessMethod):
@@ -84,10 +83,11 @@ class CoarseIndex(AccessMethod):
         return CoarseQuery(self)
 
 class CoarseQuery(InteractiveQuery):
-    def __init__(self, db):
+    def __init__(self, db : CoarseIndex):
         super().__init__(db)
 
     def getXy(self, idxbatch, box_dict):
-        Xt = self.db.vecs[idxbatch]
+        idxbatch = np.array([self.db.all_indices.rank(idx) - 1 for idx in idxbatch])
+        Xt = self.db.vectors[idxbatch]
         yt = np.array([box_dict[idx].shape[0] > 0 for idx in idxbatch])
         return Xt,yt
