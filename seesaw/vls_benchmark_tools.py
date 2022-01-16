@@ -170,14 +170,13 @@ import random
 from .figures import compute_metrics
 from .server_session_state import Session
 
-def benchmark_loop(*, session : Session,  n_batches, tqdm_disabled:bool, category, qstr,
+def benchmark_loop(*, hdb0 : AccessMethod, n_batches, tqdm_disabled:bool, category, qstr,
                 interactive, warm_start, batch_size, minibatch_size, 
               learning_rate, max_examples, num_epochs, loss_margin, 
               max_feedback=None, box_drop_prob=0.,
                granularity:str, positive_vector_type, n_augment,min_box_size=10,
                model_type='logistic', solver_opts={}, **kwargs):     
     assert positive_vector_type in ['image_only', 'image_and_vec', 'vec_only', None]
-    ev0 = ev
     frame = inspect.currentframe()
     args, _, _, values = inspect.getargvalues(frame)
     params = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'category', 'qstr', 'n_batches', 'max_feedback', 'box_drop_prob']} 
