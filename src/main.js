@@ -2,9 +2,5 @@ import Vue from 'vue'
 import App from './App.vue'
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-Vue.config.devtools = true; // chrome dev tools
-Vue.config.productionTip = false
-
-new Vue({
-  render: h => h(App),
-}).$mount('#app')
+let app = Vue.createApp(App);
+app.mount('#app')
