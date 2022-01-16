@@ -1,27 +1,57 @@
 <template>
   <div>
-    <div class='row'>
-    <div class="image-gallery" >
-      <div v-for="(data,index) in initial_imdata" :key="index*10000 + (data.boxes == null ? 0 : data.boxes.length)">
-        <!-- img is much more light weight to render, and the common case is no labels -->
-        <img v-if="data.boxes == null || data.boxes.length === 0" :src="data.url" @click="onclick(index)" :class="get_class(index)" />
-        <m-annotator v-else ref="annotators" :initial_imdata=data :read_only="true" v-on:cclick="onclick(index)" />
+    <div class="row">
+      <div class="image-gallery">
+        <div
+          v-for="(data,index) in initial_imdata"
+          :key="index*10000 + (data.boxes == null ? 0 : data.boxes.length)"
+        >
+          <!-- img is much more light weight to render, and the common case is no labels -->
+          <img
+            v-if="data.boxes == null || data.boxes.length === 0"
+            :src="data.url"
+            @click="onclick(index)"
+            :class="get_class(index)"
+          >
+          <m-annotator
+            v-else
+            ref="annotators"
+            :initial_imdata="data"
+            :read_only="true"
+            @cclick="onclick(index)"
+          />
+        </div>
       </div>
     </div>
-    </div>
-    <m-modal v-if="selection != null" ref='modal' v-on:close='close_modal()' tabindex='0' >
-      <div class='row'>
-        <m-annotator  ref='annotator' :initial_imdata="initial_imdata[selection]" :key="index*10000 + (initial_imdata[selection].boxes == null ? 0 :
-         initial_imdata[selection].boxes.length)"  :read_only="false"  tabindex='1' v-on:box-save="box_save(selection, $event)" />
+    <m-modal
+      v-if="selection != null"
+      ref="modal"
+      @close="close_modal()"
+      tabindex="0"
+    >
+      <div class="row">
+        <m-annotator
+          ref="annotator"
+          :initial_imdata="initial_imdata[selection]"
+          :key="index*10000 + (initial_imdata[selection].boxes == null ? 0 :
+            initial_imdata[selection].boxes.length)"
+          :read_only="false"
+          tabindex="1"
+          @box-save="box_save(selection, $event)"
+        />
       </div>
-        <!-- <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" 
+      <!-- <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" 
           data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" 
             aria-expanded="false" aria-label="Toggle navigation">
               <span class="navbar-toggler-icon"></span>
         </button> -->
-      <div class='row'>
-        <button v-if="refmode" class="btn btn-dark bton-block" @click="$emit('copy-ref', selection)"> 
-            Autofill ({{initial_imdata[selection].refboxes.length}} boxes)
+      <div class="row">
+        <button
+          v-if="refmode"
+          class="btn btn-dark bton-block"
+          @click="$emit('copy-ref', selection)"
+        > 
+          Autofill ({{ initial_imdata[selection].refboxes.length }} boxes)
         </button>
         <!-- <button v-if="refmode" class="btn btn-dark bton-block" @click="copyref(selection)"> 
             Mark not-relevant
@@ -36,7 +66,7 @@ import MModal from './m-modal.vue';
 
 
  export default {
-  name : 'm-image-gallery',
+  name : 'MImageGallery',
   components: { 'm-annotator':MAnnotator, 'm-modal':MModal },
   props: { initial_imdata:{type:Array, default: () => []}, refmode:Boolean },
   data : function() { return { selection:null }},

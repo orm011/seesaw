@@ -1,10 +1,28 @@
 <template>
-    <div class="annotator_div" ref="container" @keyup.esc="emit('esc')" tabindex='0'>
-        <img :class="read_only ? 'annotator_image_small':'annotator_image'" :src="initial_imdata.url" ref="image" 
-                @load="draw_initial_contents" tabindex='1' @keyup.esc="emit('esc')" />
-        <canvas class="annotator_canvas" ref="canvas" @keyup.esc="emit('esc')" tabindex='2' @click="canvas_click" 
-                @mouseover="hover(true)" @mouseleave="hover(false)" />
-    </div>
+  <div
+    class="annotator_div"
+    ref="container"
+    @keyup.esc="emit('esc')"
+    tabindex="0"
+  >
+    <img
+      :class="read_only ? 'annotator_image_small':'annotator_image'"
+      :src="initial_imdata.url"
+      ref="image" 
+      @load="draw_initial_contents"
+      tabindex="1"
+      @keyup.esc="emit('esc')"
+    >
+    <canvas
+      class="annotator_canvas"
+      ref="canvas"
+      @keyup.esc="emit('esc')"
+      tabindex="2"
+      @click="canvas_click" 
+      @mouseover="hover(true)"
+      @mouseleave="hover(false)"
+    />
+  </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
     eg, the $refs and other vue component object attributes) -->
 </template>
@@ -13,7 +31,7 @@
 import paper from 'paper/dist/paper-core';
 
 export default { 
-  name: "m-annotator", // used by ipyvue?
+  name: "MAnnotator", // used by ipyvue?
   props: ['initial_imdata', 'read_only'],
   data : function() {
         return {height_ratio:null, width_ratio:null, paper: null }

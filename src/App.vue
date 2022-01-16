@@ -1,46 +1,78 @@
 <template>
-<div>
-  <!-- adapted from https://github.com/twbs/bootstrap/blob/main/site/content/docs/5.0/examples/dashboard/index.html  -->
-  <header class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow">
-        <a class="navbar-brand col-md-3 col-lg-2 me-0 px-3" href="#">SeeSaw</a>
-        <input class="form-control form-control-dark w-auto" type="text" placeholder="Search" aria-label="Search" 
-          v-model="text_query" v-on:keydown.enter="text(text_query)"/>
-        <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" 
-        data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" 
-        aria-expanded="false" aria-label="Toggle navigation">
-          <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="navbar-nav col-lg-1 px-3"/>
-  </header>
-  <div class="container-fluid">
-    <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
-      <div class="position-sticky pt-3">
-        <div class='row'>
-          <div class="col">
-          <div class='row'>
-          <label>Current Database:</label>
+  <div>
+    <!-- adapted from https://github.com/twbs/bootstrap/blob/main/site/content/docs/5.0/examples/dashboard/index.html  -->
+    <header class="navbar navbar-dark sticky-top bg-dark flex-md-nowrap p-0 shadow">
+      <a
+        class="navbar-brand col-md-3 col-lg-2 me-0 px-3"
+        href="#"
+      >SeeSaw</a>
+      <input
+        class="form-control form-control-dark w-auto"
+        type="text"
+        placeholder="Search"
+        aria-label="Search" 
+        v-model="text_query"
+        @keydown.enter="text(text_query)"
+      >
+      <button
+        class="navbar-toggler position-absolute d-md-none collapsed"
+        type="button" 
+        data-bs-toggle="collapse"
+        data-bs-target="#sidebarMenu"
+        aria-controls="sidebarMenu" 
+        aria-expanded="false"
+        aria-label="Toggle navigation"
+      >
+        <span class="navbar-toggler-icon" />
+      </button>
+      <div class="navbar-nav col-lg-1 px-3" />
+    </header>
+    <div class="container-fluid">
+      <nav
+        id="sidebarMenu"
+        class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse"
+      >
+        <div class="position-sticky pt-3">
+          <div class="row">
+            <div class="col">
+              <div class="row">
+                <label>Current Database:</label>
+              </div>
+              <div class="row">
+                <select
+                  v-model="client_data.current_index"
+                  @change="reset(client_data.current_index)"
+                >
+                  <option
+                    v-for="(idxspec,idx) in client_data.indices"
+                    :key="idx"
+                    :value="idxspec"
+                  >
+                    {{ idxspec }}
+                  </option>
+                </select>
+              </div>
+            </div>
           </div>
-          <div class='row'>
-          <select v-model="client_data.current_index" v-on:change="reset(client_data.current_index)">
-            <option v-for="(idxspec,idx) in client_data.indices" :key="idx" :value="idxspec">{{idxspec}}</option>
-          </select>
+          <div class="row">
+            <span>Total images seen: {{ total_images() }}</span>
           </div>
+          <div class="row">
+            <span>Total results found: {{ total_annotations() }}</span>
           </div>
-        </div>
-        <div class='row'>
-          <span>Total images seen: {{total_images()}}</span>
-        </div>
-        <div class='row'>
-          <span>Total results found: {{total_annotations()}}</span>
-        </div>
-        <!-- <div class='row'>
+          <!-- <div class='row'>
           <button class="btn btn-dark btn-block" @click="save()"> Save </button>
         </div> -->
-        <div class='row'>
-          <button class="btn btn-dark btn-block" @click="reset(client_data.current_index)"> Reset </button>
-        </div>
+          <div class="row">
+            <button
+              class="btn btn-dark btn-block"
+              @click="reset(client_data.current_index)"
+            >
+              Reset
+            </button>
+          </div>
 
-        <!-- <div class='row'>
+          <!-- <div class='row'>
         <ul class="nav flex-column">
           <li v-for="(dataset_name,idx) in indices" :key="idx" class="nav-item">
             <a  :class="`nav-link ${(dataset_name === current_index) ? 'active' : ''}`" aria-current="page" href="#" 
@@ -50,31 +82,61 @@
           </li>
         </ul>
         </div> -->
-        <div v-if="refmode" class='row'>
-          <label for="reference category">(DEBUG) pick ground truth category:</label>
-          <select v-model="current_category">
-            <option v-for="(cat,idx) in ['', ...reference_categories]" :key="idx" :value="cat">{{cat}}</option>
-          </select>
+          <div
+            v-if="refmode"
+            class="row"
+          >
+            <label for="reference category">(DEBUG) pick ground truth category:</label>
+            <select v-model="current_category">
+              <option
+                v-for="(cat,idx) in ['', ...reference_categories]"
+                :key="idx"
+                :value="cat"
+              >
+                {{ cat }}
+              </option>
+            </select>
+          </div>
         </div>
-      </div>
-    </nav>
-    <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
-        <div class="row" v-for="(imdata,idx) in client_data.session.gdata" :key="idx">
-          <div v-if="client_data.session.timing.length > 0" class="row">
-            <span>Search refinement took {{client_data.session.timing[idx].toFixed(2)}} seconds</span>
+      </nav>
+      <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+        <div
+          class="row"
+          v-for="(imdata,idx) in client_data.session.gdata"
+          :key="idx"
+        >
+          <div
+            v-if="client_data.session.timing.length > 0"
+            class="row"
+          >
+            <span>Search refinement took {{ client_data.session.timing[idx].toFixed(2) }} seconds</span>
           </div>
           <div class="row">
-          <m-image-gallery ref="galleries" v-if="imdata.length > 0" :initial_imdata="filter_boxes(imdata, current_category)"
-              v-on:data_update="data_update(idx, $event)" :refmode="refmode" v-on:copy-ref="copy_ref(idx, $event)"/>
+            <m-image-gallery
+              ref="galleries"
+              v-if="imdata.length > 0"
+              :initial_imdata="filter_boxes(imdata, current_category)"
+              @data_update="data_update(idx, $event)"
+              :refmode="refmode"
+              @copy-ref="copy_ref(idx, $event)"
+            />
           </div>
-          <div class="row space"/>
+          <div class="row space" />
         </div>
-        <div class="row" v-if="client_data.session.gdata.length > 0">
-              <button @click="next()" class="btn btn-dark btn-block">More...</button>
+        <div
+          class="row"
+          v-if="client_data.session.gdata.length > 0"
+        >
+          <button
+            @click="next()"
+            class="btn btn-dark btn-block"
+          >
+            More...
+          </button>
         </div>
-    </main>
+      </main>
     </div> 
- </div>
+  </div>
 </template>
 <script >
 import MImageGallery from './components/m-image-gallery.vue';
