@@ -7,6 +7,7 @@ from typing import Optional, List
 from pydantic import BaseModel
 import os
 import time
+import pyroaring as pr
 
 def get_image_paths(image_root, path_array, idxs):
     return [ os.path.normpath(f'{image_root}/{path_array[int(i)]}').replace('//', '/') for i in idxs ]
@@ -23,6 +24,7 @@ class Imdata(BaseModel):
     dbidx : int
     boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
     refboxes : Optional[List[Box]]
+    marked_accepted : Optional[bool]
 
 class SessionState(BaseModel):
     gdata : List[List[Imdata]]
@@ -36,11 +38,14 @@ class Session:
     acc_indices : list
     ldata_db : dict
     timing : list
+    accepted : pr.BitMap
 
     def __init__(self, gdm : GlobalDataManager, dataset_name, index_name):
         self.gdm = gdm
         self.dataset = self.gdm.get_dataset(dataset_name)
         self.acc_indices = []
+        self.accepted = pr.BitMap()
+
         self.ldata_db = {}
         self.init_q = None
         self.timing = []
@@ -69,6 +74,9 @@ class Session:
         self.init_q = key
         self.loop.set_vec(qstr=key)
         return self.step()
+
+    def update_state(self, state: SessionState):
+        self.update_labeldb(state.gdata)
 
     def get_state(self) -> SessionState:
         gdata = []
@@ -100,13 +108,17 @@ class Session:
                 refboxes = []
 
             boxes = self.ldata_db.get(dbidx,None) # None means no annotations yet (undef), empty means no boxes.
-            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, refboxes=refboxes)
+            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, refboxes=refboxes, marked_accepted=dbidx in self.accepted)
             reslabs.append(elt)
         return reslabs
 
     def update_labeldb(self, gdata):
+        self.accepted = pr.BitMap()
         for ldata in gdata:
             for imdata in ldata:
+                if imdata.marked_accepted:
+                    self.accepted.add(imdata.dbidx)
+
                 if imdata.boxes is not None:
                     self.ldata_db[imdata.dbidx] = [b.dict() for b in imdata.boxes]
                 else:

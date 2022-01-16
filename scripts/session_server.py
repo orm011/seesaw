@@ -69,7 +69,7 @@ class WebSeesaw:
 
     def _step(self, state: SessionState):
         if state is not None: ## refinement code
-            self.session.update_labeldb(gdata=state.gdata)
+            self.session.update_state(state)
 
             box_dict = {}
             idxbatch = []
@@ -104,7 +104,7 @@ class WebSeesaw:
     @app.post('/save', response_model=AppState)
     def save(self, body : SessionReq):
         print('save req')
-        self.session.update_labeldb(gdata=body.client_data.session.gdata)
+        self.session.update_state(body.client_data.session)
 
         summary = {'qstr':self.session.init_q, 
         'ldata_db':self.session.ldata_db,
