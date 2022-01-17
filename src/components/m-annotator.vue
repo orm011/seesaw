@@ -1,13 +1,13 @@
 <template>
   <div
-    class="annotator_div"
+    class="annotator_div row"
     ref="container"
     @keyup.esc="emit('esc')"
     tabindex="0"
   >
     <img
       :class="read_only ? 'annotator_image_small':'annotator_image'"
-      :src="initial_imdata.url"
+      :src="imdata.url"
       ref="image" 
       @load="draw_initial_contents"
       tabindex="1"
@@ -22,6 +22,17 @@
       @mouseover="hover(true)"
       @mouseleave="hover(false)"
     />
+    <div 
+      class="form-check annotator-check" 
+    >
+      <input 
+        class="form-check-input" 
+        type="checkbox" 
+        :disabled="read_only" 
+        v-model="this.imdata.marked_accepted"
+      > 
+      <!-- we use the save method to sync state, so we disable this for the small vue -->
+    </div>
   </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
     eg, the $refs and other vue component object attributes) -->
@@ -33,8 +44,11 @@ import paper from 'paper/dist/paper-core';
 export default { 
   name: "MAnnotator", // used by ipyvue?
   props: ['initial_imdata', 'read_only'],
+  emits: ['imdata-save'],
   data : function() {
-        return {height_ratio:null, width_ratio:null, paper: null }
+        return {height_ratio:null, width_ratio:null, 
+                paper: null, 
+                imdata : this.initial_imdata }
   },
   created : function (){
       console.log('created annotator')
@@ -49,18 +63,19 @@ export default {
           let {x1,x2,y1,y2} = box;
           return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale};
     },
-    save_current_box_data : function() {
+    save : function() {
         let paper = this.paper
         let boxes = (paper.project.getItems({className:'Path'})
                           .map(x =>  {let b = x.bounds; return {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}})
                           .map(box => this.rescale_box(box, this.height_ratio, this.width_ratio)))
-        console.log('saving boxes', )
+        console.log('saving boxes')
         if (boxes.length == 0){
+            this.imdata.boxes = null;
             console.log('length 0 reverts to null right now')
-            this.$emit('box-save', null)
         } else {
-            this.$emit('box-save', boxes)
+            this.imdata.boxes = boxes;
         }
+        this.$emit('imdata-save', this.imdata)
     },
     load_current_box_data : function() {
       // assumes currently image on canvas is the one where we want to display boxes on
@@ -91,7 +106,9 @@ export default {
             }
         } 
     },
-
+    toggle_accept(){
+        this.imdata.marked_accepted = this.imdata.marked_accepted ? false : true
+    },
     canvas_click : function (e){
         console.log('canvas click!', e);
         this.$emit('cclick', e)
@@ -99,9 +116,7 @@ export default {
 
     draw_initial_contents : function() {
         console.log('(draw)setting up', this)
-        let paper = this.paper;
-        let img = this.$refs.image; 
-        let cnv = this.$refs.canvas;
+        let img = this.$refs.image;         
         let container = this.$refs.container;
         
         let height = img.height;
@@ -109,18 +124,22 @@ export default {
         // when the image has no max size, the container div 
         // ends up with a size of 0, and centering the element
         // does not seem to work
-        console.log('drawing canvas', img.height, img.width, img)
         container.style.setProperty('width', width + 'px')
         container.style.setProperty('height', height + 'px')
-        // size of element outside
-        cnv.height = height;
-        cnv.width = width;
-
         img.style.setProperty('display', 'block')
+
+        if (this.read_only && (this.initial_imdata.boxes === null || this.initial_imdata.boxes.length === 0)){
+          return;
+        }
         // call some code to draw activation array 
         // on top of canvas 
         // ctx
         // ctx = f(cnv)
+        let paper = this.paper;
+        let cnv = this.$refs.canvas;
+        console.log('drawing canvas', img.height, img.width, img)
+        cnv.height = height;
+        cnv.width = width;
         paper.setup(cnv);
         this.height_ratio = height / img.naturalHeight
         this.width_ratio = width / img.naturalWidth
@@ -258,6 +277,13 @@ export default {
     padding:0px;
     object-fit:none; /* never rescale up */ 
 }
+
+.annotator-check {
+  position:absolute;
+  top: 10px;
+  left: 10px;
+}
+
 .annotator_image_small {
   width: auto !important;
   height: auto !important;

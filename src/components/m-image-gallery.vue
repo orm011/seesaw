@@ -4,17 +4,18 @@
       <div class="image-gallery">
         <div
           v-for="(data,index) in initial_imdata"
-          :key="index*10000 + (data.boxes == null ? 0 : data.boxes.length)"
+          :key="imdata_key(index)"
         >
           <!-- img is much more light weight to render, and the common case is no labels -->
-          <img
+          <!-- <img
             v-if="data.boxes == null || data.boxes.length === 0"
             :src="data.url"
             @click="onclick(index)"
             :class="get_class(index)"
-          >
+          > -->
+          <!-- v-else -->
           <m-annotator
-            v-else
+            :class="data.marked_accepted ? 'gallery-accepted':''"
             ref="annotators"
             :initial_imdata="data"
             :read_only="true"
@@ -33,18 +34,12 @@
         <m-annotator
           ref="annotator"
           :initial_imdata="initial_imdata[selection]"
-          :key="index*10000 + (initial_imdata[selection].boxes == null ? 0 :
-            initial_imdata[selection].boxes.length)"
+          :key="imdata_key(selection)"
           :read_only="false"
           tabindex="1"
-          @box-save="box_save(selection, $event)"
+          @imdata-save="$emit('imdata-save', {idx:selection, imdata:$event})"
         />
       </div>
-      <!-- <button class="navbar-toggler position-absolute d-md-none collapsed" type="button" 
-          data-bs-toggle="collapse" data-bs-target="#sidebarMenu" aria-controls="sidebarMenu" 
-            aria-expanded="false" aria-label="Toggle navigation">
-              <span class="navbar-toggler-icon"></span>
-        </button> -->
       <div class="row">
         <button
           v-if="refmode"
@@ -69,6 +64,7 @@ import MModal from './m-modal.vue';
   name : 'MImageGallery',
   components: { 'm-annotator':MAnnotator, 'm-modal':MModal },
   props: { initial_imdata:{type:Array, default: () => []}, refmode:Boolean },
+  emits: ['imdata-save', 'copy-ref'],
   data : function() { return { selection:null }},
   created : function (){},
   mounted : function (){
@@ -89,16 +85,21 @@ import MModal from './m-modal.vue';
         return 'rejected'
       }
     },
+    imdata_key(index){
+      let imdata = this.initial_imdata[index];
+      let box_num = (imdata.boxes == null ? 0 : imdata.boxes.length + 1);
+      let acc_num = imdata.marked_accepted ? 1 : 0;
+      return index*1000 + acc_num*100 + box_num;
+    },
     close_modal(){ // closing modal emits a data edit event
       // this.box_save(index);
-      this.$refs.annotator.save_current_box_data();
+      this.$refs.annotator.save();
       this.selection  = null;
     },
-    box_save(index, boxlist){
-      // let imdict = this.initial_imdata[index];
-      console.log('(gallery) saving boxes...', index, boxlist)
-      this.$emit('data_update', {idx:index, boxes:boxlist})
-    },
+    // imdata_save(imdata){
+    //   // let imdict = this.initial_imdata[index];
+    //   this.$emit('imdata-save', imdata)
+    // },
     onclick(index){
       this.selection = index;
     },
@@ -151,6 +152,11 @@ import MModal from './m-modal.vue';
   /* transition: all 100ms ease-out; */
   transition: opacity 100ms;
 }
+
+.gallery-accepted{
+  opacity: .7;
+}
+
 .image-gallery img.rejected {
   opacity: .5;
   border: 5px solid red;

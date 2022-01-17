@@ -24,7 +24,7 @@ class Imdata(BaseModel):
     dbidx : int
     boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
     refboxes : Optional[List[Box]]
-    marked_accepted : Optional[bool]
+    marked_accepted : bool
 
 class SessionState(BaseModel):
     gdata : List[List[Imdata]]

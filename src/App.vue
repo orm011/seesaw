@@ -116,7 +116,7 @@
               ref="galleries"
               v-if="imdata.length > 0"
               :initial_imdata="filter_boxes(imdata, current_category)"
-              @data_update="data_update(idx, $event)"
+              @imdata-save="data_update(idx, $event)"
               :refmode="refmode"
               @copy-ref="copy_ref(idx, $event)"
             />
@@ -165,6 +165,9 @@ export default {
         total_images() {
             return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
         },
+        total_accepted() {
+            return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
+        },
         total_annotations(){
             let annot_per_list = function(l){
               let total = 0;
@@ -189,8 +192,8 @@ export default {
           return out
         },
         data_update(gdata_idx, ev){
-          console.log('data_update')
-          this.client_data.session.gdata[gdata_idx][ev.idx].boxes =  ev.boxes
+          console.log('data_update', gdata_idx, ev.idx, ev.imdata)
+          this.client_data.session.gdata[gdata_idx][ev.idx] = ev.imdata
         },
         copy_ref(gdata_idx, panel_idx){
           let refboxes = this.client_data.session.gdata[gdata_idx][panel_idx].refboxes;
