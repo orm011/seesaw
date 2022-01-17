@@ -13,15 +13,20 @@ from seesaw.server_session_state import Session, Imdata, Box, SessionState
 import pickle
 import time
 import os
+import argparse
+from ray import serve
+
+parser = argparse.ArgumentParser(description='start a seesaw session server')
+parser.add_argument('--seesaw_root', type=str, help='Seesaw root folder')
+args = parser.parse_args()
+assert os.path.isdir(args.seesaw_root)
 
 app = FastAPI()
-
 ray.init('auto', namespace="seesaw")
-from ray import serve
 
 print('starting ray.serve...')
 ## can be started in detached mode beforehand to enable fast restart
-serve.start(http_options={'port':8000}) ##  the documented ways of specifying this are currently failing...
+serve.start(http_options={'port':8000})
 
 class IndexSpec(BaseModel):
     d_name:str 
@@ -42,8 +47,9 @@ class ResetReq(BaseModel):
 @serve.deployment(name="seesaw_deployment", ray_actor_options={"num_cpus": 8}, route_prefix='/')
 @serve.ingress(app)
 class WebSeesaw:
-    def __init__(self):
-        self.gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root')
+    def __init__(self, root_dir):
+        self.root_dir = root_dir
+        self.gdm = GlobalDataManager(root_dir)
         self.indices = self.gdm.list_indices()
         self.current_index = self.indices[0]
         self._reset_dataset(self.current_index)
@@ -124,7 +130,7 @@ class WebSeesaw:
         ### save state with time id
 
 
-WebSeesaw.deploy()
+WebSeesaw.deploy(root_dir=args.seesaw_root)
 print('sessionserver is ready. visit it through http://localhost:9000')
 while True: # wait.
     input()
