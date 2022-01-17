@@ -55,10 +55,10 @@
             </div>
           </div>
           <div class="row">
-            <span>Total images seen: {{ total_images() }}</span>
+            <span>Total images shown: {{ total_images() }}</span>
           </div>
           <div class="row">
-            <span>Total results found: {{ total_annotations() }}</span>
+            <span>Total images accepted: {{ total_accepted() }}</span>
           </div>
           <!-- <div class='row'>
           <button class="btn btn-dark btn-block" @click="save()"> Save </button>
@@ -166,7 +166,8 @@ export default {
             return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
         },
         total_accepted() {
-            return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
+          let accepted_per_list = (l)=> l.map((elt) => elt.marked_accepted ? 1 : 0).reduce((a,b)=>a+b, 0)
+          return this.client_data.session.gdata.map(accepted_per_list).reduce((a,b)=>a+b, 0)
         },
         total_annotations(){
             let annot_per_list = function(l){
