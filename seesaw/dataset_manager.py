@@ -594,7 +594,7 @@ class GlobalDataManager:
             print('creating new root folder')
             os.makedirs(root)
 
-        self.root = root
+        self.root = os.path.abspath(root)
         self.data_root = f'{root}/data/'
         self.model_root = f'{root}/models/'
         self.index_root = f'{root}/indices/'
