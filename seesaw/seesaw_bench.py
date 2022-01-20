@@ -1,28 +1,25 @@
-#from .data_server import *
+from dataclasses import dataclass
+import random
+import copy
+
+
 from .search_loop_models import *
 from .search_loop_tools import *
 
 import inspect
 from .dataset_tools import *
-from .vloop_dataset_loaders import EvDataset, get_class_ev
 from .fine_grained_embedding import *
 from .multiscale_index import *
 from .coarse_index import CoarseIndex
 from .search_loop_models import adjust_vec, adjust_vec2
 import numpy as np
-import sklearn.metrics
 import math
 from .util import *
-from .pairwise_rank_loss import VecState
 import pyroaring as pr
 import importlib
-from .dataset_manager import VectorIndex
-from .seesaw_session import SeesawLoop, LoopParams
-
-from .figures import ndcg_score_fn
+from .seesaw_session import SessionParams, Session, Imdata, Box
 
 # ignore this comment
-
 def vls_init_logger():
     import logging
     logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
@@ -166,103 +163,88 @@ _clip_tx = T.Compose([
                     ])
 
 
-import random
-from .figures import compute_metrics
-from .server_session_state import Session
 
-def benchmark_loop(*, hdb0 : AccessMethod, n_batches, tqdm_disabled:bool, category, qstr,
-                interactive, warm_start, batch_size, minibatch_size, 
-              learning_rate, max_examples, num_epochs, loss_margin, 
-              max_feedback=None, box_drop_prob=0.,
-               granularity:str, positive_vector_type, n_augment,min_box_size=10,
-               model_type='logistic', solver_opts={}, **kwargs):     
-    assert positive_vector_type in ['image_only', 'image_and_vec', 'vec_only', None]
-    frame = inspect.currentframe()
-    args, _, _, values = inspect.getargvalues(frame)
-    params = {k:v for (k,v) in values.items() if k in args and k not in ['ev', 'category', 'qstr', 'n_batches', 'max_feedback', 'box_drop_prob']} 
-    rtup = {**{'category':category, 'qstr':qstr}, **params, **kwargs}       
+@dataclass(frozen=True)
+class BenchParams:
+    ground_truth_category : str
+    dataset_name : str
+    index_name : str
+    qstr : str
+    n_batches : int
+    max_feedback : int
+    box_drop_prob : float
 
-    catgt = ev0.query_ground_truth[category]
-    class_idxs = catgt[~catgt.isna()].index.values
-    if class_idxs.shape[0] == 0:
-        print(f'No labelled frames for class "{category}" found ')
-        return (rtup, None)
 
-    ev, class_idxs = get_class_ev(ev0, category, boxes=True)
-    ds =  DataFrameDataset(ev.box_data[ev.box_data.category == category], index_var='dbidx', max_idx=class_idxs.shape[0]-1)
-    gt0 = ev.query_ground_truth[category]
-    gt = gt0.values
+def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
+    imdata = imdata.copy()
+    rows = box_data[box_data.dbidx == imdata.dbidx]
+    if rows.shape[0] > 0:
+      rows = rows[['x1', 'x2', 'y1', 'y2', 'category']]
 
-    rtup['nbatches'] = n_batches
-    rtup['ntotal'] = gt.sum()
-    rtup['nimages'] = gt.shape[0]
-    rtup['nvecs'] = ev.fine_grained_meta.shape[0]
+      ## drop some boxes based on b.box_drop_prob 
+      rnd = np.random.rand(rows.shape[0])
+      kept_rows = rows[rnd >=  b.box_drop_prob]
+      filling = [Box(**b) for b in kept_rows.to_dict(orient='records')]
+    else:
+      filling = []
+    imdata.boxes = filling
+    imdata.marked_accepted = len(filling) > 0
+    return imdata
 
-    print('benchmark loop', rtup)
-    params = LoopParams(**params)
-
-    max_results = gt.sum()
+def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : pd.DataFrame,
+                      b : BenchParams, p : SessionParams):
+    rtup = {**p.__dict__, **b.__dict__}    
+    positives = pr.FrozenBitMap(box_data.dbidx.values)
+    assert positives.intersection(subset) == positives, 'index mismatch'
+    max_results = len(positives)
     assert max_results > 0
-    
-    acc_indices = []
+    rtup['ntotal'] = max_results
+    rtup['nimages'] = len(subset)
+
     acc_results = []
+    print('benchmark loop', rtup)
 
     total_results = 0
-    loop = SeesawLoop(ev, params)
-    loop.set_vec(qstr=qstr)
-    start_time = time.time()
-    images_seen = pr.BitMap()
+    session.set_text(b.qstr)
 
-    for i in tqdm(range(n_batches),leave=False, disable=tqdm_disabled):
+    for i in tqdm(range(b.n_batches),leave=False, disable=True):
         print(f'iter {i}')
-        if i >= 1:
-            curr_time = time.time()
-            print(f'previous iteration took {curr_time - start_time}s')
-            start_time = time.time()
-
-        idxbatch = loop.next_batch()
-        
-        # ran out of batches
-        if idxbatch.shape[0] == 0:
+        idxbatch = session.next()
+        assert [idx in subset for idx in idxbatch]
+        if len(idxbatch) == 0:
             break
 
-        #images_seen.update(idxbatch)
-        acc_indices.append(idxbatch)
-        acc_results.append(gt[idxbatch])
-        total_results += gt[idxbatch].sum()
+        s = copy.deepcopy(session.get_state())
+        last_batch = s.gdata[-1]
+        for i, imdata in enumerate(last_batch):
+          last_batch[i] = fill_imdata(imdata, box_data, b)
+
+        session.update_state(s)
+        
+        batch_pos = np.array([imdata.marked_accepted for imdata in last_batch])
+        acc_results.append(batch_pos)
+        total_results += batch_pos.sum()
 
         if total_results == max_results:
-            print(f'Found all {total_results} possible results for {category} after {i} batches. stopping...')
+            print(f'Found all {total_results} possible results for {b.ground_truth_category} after {i} batches. stopping...')
             break
 
-        if i + 1 == n_batches:
+        if i + 1 == b.n_batches:
             print(f'n batches. ending...')
             break 
         
-        box_dict = {}
-        for idx in idxbatch:
-            bxs = ds[idx]
-            rnd = np.random.rand(bxs.shape[0])
-            bxs = bxs[rnd >= box_drop_prob]
-            box_dict[idx] = bxs
-
-        gt2 = np.array([box_dict[idx].shape[0] > 0 for idx in idxbatch]).astype('float')
-        # if (gt2 != gt[idxbatch]).all():
-        #     print('Warning: gt data and box data seem to disagree. ')
-
-        if max_feedback is None or (i+1)*batch_size <= max_feedback:
-            loop.refine(idxbatch=idxbatch, box_dict=box_dict)
+        if b.max_feedback is None or (i+1)*p.batch_size <= b.max_feedback:
+            session.refine()
 
     res = {}
     hits = np.concatenate(acc_results)
-    indices = np.concatenate(acc_indices)
-
+    indices = np.concatenate(session.acc_indices)
     assert hits.shape[0] == indices.shape[0]
     index_set = pr.BitMap(indices)
     assert len(index_set) == indices.shape[0], 'check no repeated indices'
     res['hits'] = np.where(hits)[0]
     res['total_seen'] = indices.shape[0]
-    res['latency_profile'] = pd.DataFrame.from_records(loop.state.latency_profile)
+    res['latency_profile'] = np.array(session.timing)
 
     return (rtup, res)
 
@@ -271,46 +253,55 @@ def run_on_actor(br, tup):
 
 from .progress_bar import tqdm_map
 
-#from .dataset_manager import RemoteVectorIndex
 import os
+import string
 
 class BenchRunner(object):
-    def __init__(self, evs):
-        print('initing benchrunner env...')
-        print(evs)
-        revs = {}
-        for (k,evref) in evs.items():
-            if isinstance(evref, ray.ObjectRef): # remote
-                ev = ray.get(evref)
-                revs[k] = ev
-            else: # local
-                revs[k] = evref
-        self.evs = revs
-
-        assert os.path.exists(vector_path), vector_path
-        vi = VectorIndex(load_path=vector_path, copy_to_tmpdir=True, prefault=True)
-        self.evs[k].vec_index = vi # use vector store directly instead
-
+    def __init__(self, seesaw_root, results_dir):
+        assert os.path.isdir(results_dir)
         vls_init_logger()
-        print('loaded all evs...')
-
+        self.gdm = GlobalDataManager(seesaw_root)
+        self.results_dir = results_dir
+        random.seed(os.getpid())
+        
     def ready(self):
         return True
-    
-    def run_loop(self, tup):
+
+    def run_loop(self, b : BenchParams, p : SessionParams):
         import seesaw
         importlib.reload(seesaw)
-
+        from seesaw import Session, prep_bench_data, benchmark_loop
         start = time.time()
-        print(f'getting ev for {tup["dataset"]}...')
-        ev = self.evs[tup['dataset']]
-        print(f'got ev {ev} after {time.time() - start}')
-        ## for repeated benchmarking we want to reload without having to recreate these classes
-        # importlib.reload(importlib.import_module('seesaw'))
-        # importlib.reload(importlib.import_module(benchmark_loop.__module__))
-        res = seesaw.benchmark_loop(ev=ev, **tup)
+
+        session, box_data, subset_idxs = prep_bench_data(self.gdm, b, p)
+        random_suffix = ''.join([random.choice(string.ascii_lowercase) for _ in range(10)])
+        output_dir = f'{self.results_dir}/session_{time.strftime("%Y%m%d-%H%M%S")}_{random_suffix}'
+        os.mkdir(output_dir)
+        print(f'saving results to {output_dir}')
+        res = benchmark_loop(session=session, box_data=box_data, subset=subset_idxs, b=b, p=p)
+        json.dump(b.__dict__,open(f'{output_dir}/bench_params.json', 'w'))
+        session.save_state(f'{output_dir}/session_state.json')
+
         print(f'Finished running after {time.time() - start}')
         return res
+
+def prep_bench_data(gdm : GlobalDataManager,  b : BenchParams, p : SessionParams):
+    ds = gdm.get_dataset(b.dataset_name)
+    box_data, qgt = ds.load_ground_truth()
+
+    catgt = qgt[b.ground_truth_category]    
+    box_data = box_data[box_data.category == b.ground_truth_category]
+    subset_idxs = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
+
+    if len(subset_idxs) == 0:
+        print(f'No labelled frames for class "{b.ground_truth_category}" found ')
+        return None
+    
+    hdb = gdm.load_index(b.dataset_name, b.index_name)
+    hdb = hdb.subset(subset_idxs)
+    session = Session(gdm, ds, hdb, p)
+
+    return session, box_data, subset_idxs
 
 RemoteBenchRunner = ray.remote(BenchRunner)
 

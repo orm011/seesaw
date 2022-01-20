@@ -187,7 +187,9 @@ export default {
           let out = []
           for (const ent of imdata){
             let outent = {...ent};
-            outent.refboxes = ent.refboxes.filter((b) => b.category === category || category === '');
+            if (ent.refboxes != null){
+              outent.refboxes = ent.refboxes.filter((b) => b.category === category || category === '');
+            }
             out.push(outent);
           }
           return out

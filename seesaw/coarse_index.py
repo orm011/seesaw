@@ -24,7 +24,6 @@ class CoarseIndex(AccessMethod):
         self.embedding = embedding
         self.vectors = vectors
         self.vector_meta = vector_meta
-
         self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
         #assert len(self.images) >= self.vectors.shape[0]
     
@@ -87,8 +86,8 @@ class CoarseQuery(InteractiveQuery):
     def __init__(self, db : CoarseIndex):
         super().__init__(db)
 
-    def getXy(self, idxbatch, box_dict):
-        idxbatch = np.array([self.db.all_indices.rank(idx) - 1 for idx in idxbatch])
-        Xt = self.db.vectors[idxbatch]
-        yt = np.array([box_dict[idx].shape[0] > 0 for idx in idxbatch])
+    def getXy(self):
+        positions = np.array([self.index.all_indices.rank(idx) - 1 for idx in self.label_db.seen])
+        Xt = self.index.vectors[positions]
+        yt = np.array([len(self.label_db.get(idx, format='box')) > 0 for idx in self.label_db.seen])
         return Xt,yt

@@ -25,11 +25,12 @@ import ray
 import shutil
 import math
 
-
 import pyarrow
 from pyarrow import parquet as pq
 import shutil
 import io
+
+from ray.data.extensions import TensorArray
 
 
 from .dataset_tools import ExplicitPathDataset
@@ -290,6 +291,7 @@ def extract_seesaw_meta(dataset, output_dir, output_name, num_workers, batch_siz
 #     mc = gdm.get_dataset(dataset_name)
 #     mc.preprocess()
 
+
 class SeesawDatasetManager:
     def __init__(self, root, dataset_name, dataset_path):
         ''' Assumes layout created by create_dataset
@@ -396,11 +398,12 @@ class SeesawDatasetManager:
         box_data, qgt = prep_ground_truth(self.paths, box_data, qgt)
         return box_data, qgt
 
+    def load_evdataset(self, *, index_subpath, force_recompute=False, load_coarse=False, load_ground_truth=False) -> EvDataset:
 
-    def load_evdataset(self, *, index_subpath, force_recompute=False, load_coarse=True, load_ground_truth=True) -> EvDataset:
+        vec_path = f'{self.dataset_root}/{index_subpath}/vectors'
         cached_meta_path= f'{self.dataset_root}/{index_subpath}/vectors.sorted.cached'
         coarse_meta_path= f'{self.dataset_root}/{index_subpath}/vectors.coarse.cached'
-        vec_index_path = f'{self.dataset_root}/indices/{self.index_name}/vectors.annoy'
+        vec_index_path = f'{self.dataset_root}/{index_subpath}/vectors.annoy'
 
         if not os.path.exists(cached_meta_path) or force_recompute:
             if os.path.exists(cached_meta_path):
@@ -411,7 +414,7 @@ class SeesawDatasetManager:
             def assign_ids(df):
                 return df.assign(dbidx=df.file_path.map(lambda path : idmap[path]))
 
-            ds = ray.data.read_parquet(self.vector_path(), columns=['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
+            ds = ray.data.read_parquet(vec_path, columns=['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
             df = pd.concat(ray.get(ds.to_pandas_refs()), axis=0, ignore_index=True)
             df = assign_ids(df)
             df = df.sort_values(['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2']).reset_index(drop=True)
@@ -457,11 +460,10 @@ class SeesawDatasetManager:
             box_data = None
             qgt = None
  
-        if os.path.exists(self.index_path()):
-            vec_index = self.index_path() # start actor elsewhere
-        else:
-            vec_index = None
-
+        # if os.path.exists(self.index_path()):
+        #     vec_index = self.index_path() # start actor elsewhere
+        # else:
+        vec_index = None
 
         return EvDataset(root=self.image_root, paths=self.paths, 
             embedded_dataset=embedded_dataset, 
@@ -470,7 +472,7 @@ class SeesawDatasetManager:
             embedding=None,#model used for embedding 
             fine_grained_embedding=fine_grained_embedding,
             fine_grained_meta=fine_grained_meta, 
-            vec_index_path=self.index_path(),
+            vec_index_path=None,
             vec_index=vec_index)
 
 
@@ -587,7 +589,14 @@ def ensure_db(dbpath):
 
 import pandas as pd
 
-import importlib
+from typing import Optional
+from pydantic import BaseModel
+
+class IndexSpec(BaseModel):
+    d_name:str 
+    i_name:str
+    m_name:Optional[str]
+
 class GlobalDataManager:
     def __init__(self, root):
         if not os.path.exists(root):
@@ -644,7 +653,8 @@ class GlobalDataManager:
                     order by datasets.d_id, i_id
         ''', mode='df')
 
-        return df.to_dict(orient='records')
+        recs = df.to_dict(orient='records')
+        return [IndexSpec(**d) for d in recs]
 
     def get_index_construction_data(self, dataset_name, index_name):
         return self._fetch_unique('''select i_constructor, i_path, m_name from indices,models,datasets 
@@ -653,7 +663,7 @@ class GlobalDataManager:
                             and indices.m_id == models.m_id
                         ''', (dataset_name, index_name))
 
-    def load_index(self, dataset_name, index_name):
+    def load_index(self, dataset_name, index_name) -> AccessMethod:
         cons_name, data_path, model_name = self.get_index_construction_data(dataset_name, index_name)
         return AccessMethod.restore(self, cons_name, data_path, model_name)
 
@@ -725,7 +735,8 @@ class GlobalDataManager:
         return d_path
 
     def get_dataset(self, dataset_name) -> SeesawDatasetManager:
-        assert dataset_name in self.list_datasets(), 'must create it first'
+        all_ds = self.list_datasets()
+        assert dataset_name in all_ds, f'{dataset_name} not found in {all_ds}'
         d_path = self._fetch_dataset_path(dataset_name)
         return SeesawDatasetManager(self.root, dataset_name, d_path)
         

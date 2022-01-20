@@ -1,3 +1,18 @@
+import json
+from seesaw.query_interface import AccessMethod
+import numpy as np
+import pandas as pd
+from .dataset_manager import GlobalDataManager, SeesawDatasetManager
+
+from typing import Optional, List
+from pydantic import BaseModel
+import os
+import time
+import pyroaring as pr
+
+def get_image_paths(image_root, path_array, idxs):
+    return [ os.path.normpath(f'{image_root}/{path_array[int(i)]}').replace('//', '/') for i in idxs ]
+
 from .search_loop_models import *
 from .search_loop_tools import *
 
@@ -22,7 +37,7 @@ from dataclasses import dataclass,field
 
 ## used only to make life easier
 @dataclass(frozen=True)
-class LoopParams:
+class SessionParams:
     interactive : str
     warm_start : str
     batch_size : int
@@ -48,49 +63,17 @@ class LoopState:
     latency_profile : list = field(default_factory=list)
     vec_state : VecState = None
 
-
-def make_acccess_method(ev, p : LoopParams):
-    if p.granularity == 'multi':
-        hdb = MultiscaleIndex(images=ev.image_dataset, embedding=ev.embedding, 
-            vectors=ev.fine_grained_embedding, vector_meta=ev.fine_grained_meta, vec_index=ev.vec_index)
-    elif p.granularity == 'coarse':
-        hdb = CoarseIndex(images=ev.image_dataset, embedding=ev.embedding,vectors=ev.embedded_dataset)
-    else:
-        assert False
-
-    return hdb
-
 class SeesawLoop:
-    bfq : InteractiveQuery
-    params : LoopParams
+    q : InteractiveQuery
+    params : SessionParams
     state : LoopState
 
-    def __init__(self, hdb : AccessMethod, params : LoopParams):
+    def __init__(self, q : InteractiveQuery, params : SessionParams):
         self.params = params
         self.state = LoopState()
+        self.q = q
 
-        p = self.params
-        s = self.state
-
-        self.hdb = hdb
-        self.bfq = hdb.new_query()
-
-    def set_vec(self, qstr : str):
-        p = self.params
-        s = self.state
-
-        if qstr == 'nolang':
-            s.tvec = None
-            s.tmode = 'random'
-        else:
-            init_vec = self.hdb.string2vec(string=qstr)
-            s.tvec = init_vec
-            s.tmode = 'dot'
-            if p.model_type == 'multirank2':
-                s.vec_state = VecState(init_vec, margin=p.loss_margin, opt_class=torch.optim.SGD, 
-                opt_params={'lr':p.learning_rate})
-        
-        #res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
+                #res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
 
     def next_batch(self):
         """
@@ -104,17 +87,15 @@ class SeesawLoop:
                                     'lookup':None, 'label':None, 'refine':None, }    
         s.latency_profile.append(lp)
 
-        idxbatch, _ = self.bfq.query_stateful(mode=s.tmode, vector=s.tvec, batch_size=p.batch_size)
+        idxbatch, _ = self.q.query_stateful(mode=s.tmode, vector=s.tvec, batch_size=p.batch_size)
         lp['n_images'] = idxbatch.shape[0]
         lp['lookup'] = time.time() - start_lookup
         return idxbatch
 
-    def refine(self, idxbatch : np.array, box_dict : dict):
+    def refine(self):
         """
         update based on vector. box dict will have every index from idx batch, including empty dfs.
         """
-        assert idxbatch.shape[0] == len(box_dict)
-
         start_refine = time.time()
 
         p = self.params
@@ -124,7 +105,7 @@ class SeesawLoop:
         lp['label'] = start_refine - lp['lookup']
 
         if p.interactive != 'plain':
-            Xt,yt = self.bfq.getXy(idxbatch, box_dict)
+            Xt,yt = self.q.getXy()
             lp['n_posvecs'] = (yt == 1).sum()#.shape[0]
             lp['n_negvecs'] = (yt != 1).sum()
 
@@ -191,3 +172,111 @@ class SeesawLoop:
                 pass
 
             lp['refine'] = time.time() - start_refine
+
+
+class Imdata(BaseModel):
+    url : str
+    dbidx : int
+    boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
+    refboxes : Optional[List[Box]]
+    marked_accepted : bool
+
+class SessionState(BaseModel):
+    gdata : List[List[Imdata]]
+    timing : List[float]
+    reference_categories : List[str]
+
+class Session:
+    current_dataset : str
+    current_index : str
+    loop : SeesawLoop
+    acc_indices : list
+    total_results : int
+    timing : list
+    accepted : pr.BitMap
+    q : InteractiveQuery
+    index : AccessMethod
+
+    def __init__(self, gdm : GlobalDataManager, dataset : SeesawDatasetManager, hdb : AccessMethod, params : SessionParams):
+        self.gdm = gdm
+        self.dataset = dataset
+        self.acc_indices = []
+        self.accepted = pr.BitMap()
+        self.params = params
+        self.init_q = None
+        self.timing = []
+        self.index = hdb 
+        self.q = hdb.new_query()
+
+        self.loop = SeesawLoop(self.q, params=self.params)
+
+    def next(self):
+        start = time.time()
+        idxbatch = self.loop.next_batch()
+
+        delta = time.time() - start
+
+        self.acc_indices.append(idxbatch)
+        self.timing.append(delta)
+
+        return idxbatch
+
+    def set_text(self, key):        
+        self.init_q = key
+        p = self.loop.params
+        s = self.loop.state
+
+        if key == 'nolang':
+            s.tvec = None
+            s.tmode = 'random'
+        else:
+            init_vec = self.index.string2vec(string=key)
+            s.tvec = init_vec
+            s.tmode = 'dot'
+            if p.model_type == 'multirank2':
+                s.vec_state = VecState(init_vec, margin=p.loss_margin, opt_class=torch.optim.SGD, 
+                opt_params={'lr':p.learning_rate})
+
+    def update_state(self, state: SessionState):
+        self._update_labeldb(state.gdata)
+
+    def refine(self):
+        self.loop.refine()
+
+    def get_state(self) -> SessionState:
+        gdata = []
+        for indices in self.acc_indices:
+            imdata = self.get_panel_data(idxbatch=indices)
+            gdata.append(imdata)
+        
+        dat = {'gdata':gdata}
+        dat['timing']  = self.timing
+        # if self.ev.query_ground_truth is not None:
+        #     dat['reference_categories'] = self.ev.query_ground_truth.columns.values.tolist()
+        # else:
+        dat['reference_categories'] = []
+        return SessionState(**dat)
+
+    def get_panel_data(self, *, idxbatch):
+        reslabs = []
+        urls = get_image_paths(self.dataset.image_root, self.dataset.paths, idxbatch)
+
+        for (url, dbidx) in zip(urls, idxbatch):
+            dbidx = int(dbidx)
+            boxes = self.q.label_db.get(dbidx, format='box') # None means no annotations yet (undef), empty means no boxes.
+            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, refboxes=None, marked_accepted=dbidx in self.accepted)
+            reslabs.append(elt)
+        return reslabs
+
+    def _update_labeldb(self, gdata):
+        for ldata in gdata:
+            for imdata in ldata:
+                if imdata.marked_accepted:
+                    self.accepted.add(imdata.dbidx)
+                self.q.label_db.put(imdata.dbidx, imdata.boxes)
+
+    def save_state(self, path):
+        os.makedirs(path, exist_ok=True)
+        json.dump(self.params.__dict__,open(f'{path}/loop_params.json', 'w'))
+        st = self.get_state()
+        json.dump(st.dict(), open(f'{path}/session_state.json', 'w'))

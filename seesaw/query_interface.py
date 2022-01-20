@@ -8,12 +8,6 @@ def get_constructor(cons_name : str):
     constructor = getattr(index_mod, pieces[-1])
     return constructor
 
-# instead of EvDataset
-# ev.embedding.embed_str: abstract away string emb.
-# ev.image_dataset #potentially used for some methods that will look at the image based on feedback
-# AccessMethod() # 
-# Query() # keeps annotations, keeps list of previously seen, etc. 
-
 class AccessMethod:
     def string2vec(self, string : str) -> np.ndarray:
         raise NotImplementedError('implement me')
@@ -36,16 +30,55 @@ class AccessMethod:
         c = get_constructor(type_name)
         return c.from_path(gdm, data_path, model_name)
 
+from pydantic import BaseModel
+from typing import Optional, List
+import pandas as pd
+
+class Box(BaseModel):
+    x1 : float
+    y1 : float
+    x2 : float
+    y2 : float
+    category : Optional[str] # used for sending ground truth data only, so we can filter by category on the client.
+
+class LabelDB:
+  def __init__(self):
+    self.ldata = {}
+
+  @property
+  def seen(self):
+    return pr.BitMap(self.ldata.keys()) 
+
+  def put(self, dbidx : int, boxes : List[Box]):
+    self.ldata[dbidx] = boxes
+
+  def get(self, dbidx : int, format : str):
+    dbidx = int(dbidx)
+    if dbidx not in self.ldata:
+      return None # has not been seen. used when sending data
+
+    boxes = self.ldata[dbidx]
+    if boxes is None: # seen by user but not labeled. consider negative for now
+      boxes = []    
+
+    if format == 'df':
+      if boxes == []:
+        return pd.DataFrame(boxes, columns=['x1', 'x2', 'y1', 'y2']).astype('float32') # cols in case it is empty
+      else:
+        return pd.DataFrame([b.dict() for b in boxes])[['x1', 'x2', 'y1', 'y2']].astype('float32')
+
+    elif format == 'box':
+      return boxes  
 
 class InteractiveQuery(object):
     """
         tracks what has been shown already and supplies it 
         to stateless db as part of query
     """
-    def __init__(self, db: AccessMethod):
-        self.db = db
-        self.seen = pr.BitMap()
-        self.acc_idxs = []
+    def __init__(self, index: AccessMethod):
+        self.index = index
+        self.returned = pr.BitMap() # images returned from index (not necessarily seen yet)
+        self.label_db = LabelDB()
         self.startk = 0
 
     def query_stateful(self, *args, **kwargs):
@@ -58,9 +91,11 @@ class InteractiveQuery(object):
         batch_size = kwargs.get('batch_size')
         del kwargs['batch_size']
             
-        idxs, nextstartk = self.db.query(*args, topk=batch_size, **kwargs, exclude=self.seen, startk=self.startk)
+        idxs, nextstartk = self.index.query(*args, topk=batch_size, **kwargs, exclude=self.returned, startk=self.startk)
         # assert nextstartk >= self.startk nor really true: if vector changes a lot, 
         self.startk = nextstartk
-        self.seen.update(idxs)
-        self.acc_idxs.append(idxs)
+        self.returned.update(idxs)
         return idxs, nextstartk
+
+    def getXy(self):
+        raise NotImplementedError('abstract')
