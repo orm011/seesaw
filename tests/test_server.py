@@ -21,11 +21,11 @@ assert len(state.session.gdata) == 0
 state = webseesaw.text('bird')
 assert len(state.session.gdata) == 1
 
-for i in range(2):
+for i in range(2,4):
     next_req = SessionReq(client_data=state)
     state = webseesaw.next(next_req)
-    assert len(state.session.gdata) == 2 + i
+    assert len(state.session.gdata) == i
 
 ## check reset call
-state = webseesaw.reset(ResetReq(index=state.current_index))
+state = webseesaw.reset(ResetReq(index=state.session.params.index_spec))
 assert len(state.session.gdata) == 0

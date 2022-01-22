@@ -2,7 +2,7 @@ import json
 from seesaw.query_interface import AccessMethod
 import numpy as np
 import pandas as pd
-from .dataset_manager import GlobalDataManager, SeesawDatasetManager
+from .dataset_manager import GlobalDataManager, IndexSpec, SeesawDatasetManager
 
 from typing import Optional, List
 from pydantic import BaseModel
@@ -32,12 +32,10 @@ from .dataset_manager import VectorIndex
 from .query_interface import *
 from .multiscale_index import MultiscaleIndex
 from .coarse_index import CoarseIndex
-
 from dataclasses import dataclass,field
-
-## used only to make life easier
-@dataclass(frozen=True)
-class SessionParams:
+        
+class SessionParams(BaseModel):
+    index_spec : IndexSpec
     interactive : str
     warm_start : str
     batch_size : int
@@ -45,14 +43,8 @@ class SessionParams:
     learning_rate : float
     max_examples : int
     loss_margin : float
-    tqdm_disabled : bool
-    granularity : str
-    positive_vector_type : str
     num_epochs : int
-    n_augment : int
-    min_box_size : int = 10
-    model_type : int = 'logistic'
-    solver_opts : dict = None
+    model_type : str
 
 from .query_interface import AccessMethod
 
@@ -182,6 +174,7 @@ class Imdata(BaseModel):
     marked_accepted : bool
 
 class SessionState(BaseModel):
+    params : SessionParams
     gdata : List[List[Imdata]]
     timing : List[float]
     reference_categories : List[str]
@@ -249,12 +242,11 @@ class Session:
             imdata = self.get_panel_data(idxbatch=indices)
             gdata.append(imdata)
         
-        dat = {'gdata':gdata}
+        dat = {}
+        dat['gdata'] = gdata
         dat['timing']  = self.timing
-        # if self.ev.query_ground_truth is not None:
-        #     dat['reference_categories'] = self.ev.query_ground_truth.columns.values.tolist()
-        # else:
         dat['reference_categories'] = []
+        dat['params'] = self.params
         return SessionState(**dat)
 
     def get_panel_data(self, *, idxbatch):
@@ -275,8 +267,8 @@ class Session:
                     self.accepted.add(imdata.dbidx)
                 self.q.label_db.put(imdata.dbidx, imdata.boxes)
 
-    def save_state(self, path):
-        os.makedirs(path, exist_ok=True)
-        json.dump(self.params.__dict__,open(f'{path}/loop_params.json', 'w'))
+    def get_data(self):
+        #os.makedirs(path, exist_ok=True)
+        #json.dump(self.params.__dict__,open(f'{path}/loop_params.json', 'w'))
         st = self.get_state()
-        json.dump(st.dict(), open(f'{path}/session_state.json', 'w'))
+        return dict(session_params=self.params.dict(), session_state=st.dict())

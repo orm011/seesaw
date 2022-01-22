@@ -1,3 +1,4 @@
+from seesaw.memory_cache import CacheStub
 from seesaw.dataset_manager import GlobalDataManager
 from types import prepare_class
 from ray.data.extensions import TensorArray
@@ -306,6 +307,7 @@ def build_index(vecs, file_name):
     u.load(file_name) # verify can load.
     return u
 
+
 class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup
     """
@@ -324,7 +326,6 @@ class MultiscaleIndex(AccessMethod):
     @staticmethod
     def from_path(gdm : GlobalDataManager, index_subpath : str, model_name :str):
         embedding = gdm.get_model_actor(model_name)
-        
         cached_meta_path= f'{gdm.root}/{index_subpath}/vectors.sorted.cached'
         vec_index_path = f'{index_subpath}/vectors.annoy'
 
@@ -335,8 +336,7 @@ class MultiscaleIndex(AccessMethod):
           vec_index = None
 
         assert os.path.exists(cached_meta_path)
-        ds = ray.data.read_parquet(cached_meta_path, columns=['dbidx', 'zoom_level', 'max_zoom_level', 'order_col','x1', 'y1', 'x2', 'y2','vectors'])
-        df = pd.concat(ray.get(ds.to_pandas_refs()),ignore_index=True)
+        df = gdm.global_cache.read_parquet(cached_meta_path)
         assert df.order_col.is_monotonic_increasing, 'sanity check'
         fine_grained_meta = df[['dbidx', 'order_col', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
         fine_grained_embedding = df['vectors'].values.to_numpy()
@@ -465,7 +465,7 @@ class MultiscaleIndex(AccessMethod):
             if self.vec_index is not None:
                 print('warning: after subsetting we lose ability to use pre-built index')
 
-        vector_meta = self.vector_meta[mask]
+        vector_meta = self.vector_meta[mask].reset_index(drop=True)
         vectors = self.vectors[mask]
         return MultiscaleIndex(embedding=self.embedding, vectors=vectors, vector_meta = vector_meta, vec_index=None)
         

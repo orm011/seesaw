@@ -18,7 +18,7 @@ from .util import *
 import pyroaring as pr
 import importlib
 from .seesaw_session import SessionParams, Session, Imdata, Box
-
+from pydantic import BaseModel
 # ignore this comment
 def vls_init_logger():
     import logging
@@ -164,14 +164,13 @@ _clip_tx = T.Compose([
 
 
 
-@dataclass(frozen=True)
-class BenchParams:
+class BenchParams(BaseModel):
+    name : str
     ground_truth_category : str
-    dataset_name : str
-    index_name : str
     qstr : str
-    n_batches : int
-    max_feedback : int
+    n_batches : int # max number of batches to run
+    max_results : int # stop when this numbrer of results is found
+    max_feedback : Optional[int]
     box_drop_prob : float
 
 
@@ -193,20 +192,14 @@ def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
 
 def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : pd.DataFrame,
                       b : BenchParams, p : SessionParams):
-    rtup = {**p.__dict__, **b.__dict__}    
     positives = pr.FrozenBitMap(box_data.dbidx.values)
     assert positives.intersection(subset) == positives, 'index mismatch'
-    max_results = len(positives)
+    max_results = min(len(positives),b.max_results)
     assert max_results > 0
-    rtup['ntotal'] = max_results
-    rtup['nimages'] = len(subset)
-
-    acc_results = []
-    print('benchmark loop', rtup)
 
     total_results = 0
+    total_seen = 0
     session.set_text(b.qstr)
-
     for i in tqdm(range(b.n_batches),leave=False, disable=True):
         print(f'iter {i}')
         idxbatch = session.next()
@@ -220,10 +213,9 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
           last_batch[i] = fill_imdata(imdata, box_data, b)
 
         session.update_state(s)
-        
         batch_pos = np.array([imdata.marked_accepted for imdata in last_batch])
-        acc_results.append(batch_pos)
         total_results += batch_pos.sum()
+        total_seen += idxbatch.shape[0]
 
         if total_results == max_results:
             print(f'Found all {total_results} possible results for {b.ground_truth_category} after {i} batches. stopping...')
@@ -236,17 +228,7 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
         if b.max_feedback is None or (i+1)*p.batch_size <= b.max_feedback:
             session.refine()
 
-    res = {}
-    hits = np.concatenate(acc_results)
-    indices = np.concatenate(session.acc_indices)
-    assert hits.shape[0] == indices.shape[0]
-    index_set = pr.BitMap(indices)
-    assert len(index_set) == indices.shape[0], 'check no repeated indices'
-    res['hits'] = np.where(hits)[0]
-    res['total_seen'] = indices.shape[0]
-    res['latency_profile'] = np.array(session.timing)
-
-    return (rtup, res)
+    return dict(nfound=int(total_results), nseen=int(total_seen))
 
 def run_on_actor(br, tup):
     return br.run_loop.remote(tup)
@@ -255,6 +237,7 @@ from .progress_bar import tqdm_map
 
 import os
 import string
+import time
 
 class BenchRunner(object):
     def __init__(self, seesaw_root, results_dir):
@@ -262,7 +245,7 @@ class BenchRunner(object):
         vls_init_logger()
         self.gdm = GlobalDataManager(seesaw_root)
         self.results_dir = results_dir
-        random.seed(os.getpid())
+        random.seed(int(f'{time.time_ns()}{os.getpid()}'))
         
     def ready(self):
         return True
@@ -270,38 +253,59 @@ class BenchRunner(object):
     def run_loop(self, b : BenchParams, p : SessionParams):
         import seesaw
         importlib.reload(seesaw)
-        from seesaw import Session, prep_bench_data, benchmark_loop
+        from seesaw import prep_bench_data, benchmark_loop
         start = time.time()
 
-        session, box_data, subset_idxs = prep_bench_data(self.gdm, b, p)
         random_suffix = ''.join([random.choice(string.ascii_lowercase) for _ in range(10)])
-        output_dir = f'{self.results_dir}/session_{time.strftime("%Y%m%d-%H%M%S")}_{random_suffix}'
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        output_dir = f'{self.results_dir}/session_{timestamp}_{random_suffix}'
         os.mkdir(output_dir)
-        print(f'saving results to {output_dir}')
-        res = benchmark_loop(session=session, box_data=box_data, subset=subset_idxs, b=b, p=p)
-        json.dump(b.__dict__,open(f'{output_dir}/bench_params.json', 'w'))
-        session.save_state(f'{output_dir}/session_state.json')
+        summary = {}
+        summary['bench_params'] = b.dict()
+        summary['timestamp'] = timestamp
+        summary['success'] = False
+        assert p.index_spec.c_name is not None, 'need category for benchmark'
 
-        print(f'Finished running after {time.time() - start}')
-        return res
+        output_path = f'{output_dir}/summary.json'
+        json.dump(summary,open(output_path, 'w'))
+        print(f'saving output to {output_dir}')
 
-def prep_bench_data(gdm : GlobalDataManager,  b : BenchParams, p : SessionParams):
-    ds = gdm.get_dataset(b.dataset_name)
+        try:
+          ds = self.gdm.get_dataset(p.index_spec.d_name)
+          hdb = self.gdm.load_index(p.index_spec.d_name, p.index_spec.i_name)
+
+          box_data, subset, positive  = prep_bench_data(ds, p)
+          summary['nimages'] = len(subset)
+          summary['ntotal'] = len(positive)
+
+          if len(positive) == 0:
+            print('no frames available, exiting')
+            return output_dir 
+
+          hdb = hdb.subset(subset)
+
+          session = Session(self.gdm, ds, hdb, p)          
+          run_info = benchmark_loop(session=session, box_data=box_data, subset=subset, b=b, p=p)
+
+          summary['session'] = session.get_state().dict()
+          summary['run_info'] = run_info
+          summary['success'] = True
+        finally:
+          summary['total_time'] = time.time() - start
+          json.dump(summary, open(output_path, 'w'))
+        
+        return output_dir
+
+def prep_bench_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()
-
-    catgt = qgt[b.ground_truth_category]    
-    box_data = box_data[box_data.category == b.ground_truth_category]
-    subset_idxs = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
-
-    if len(subset_idxs) == 0:
-        print(f'No labelled frames for class "{b.ground_truth_category}" found ')
-        return None
+    catgt = qgt[p.index_spec.c_name]    
+    box_data = box_data[box_data.category == p.index_spec.c_name]
     
-    hdb = gdm.load_index(b.dataset_name, b.index_name)
-    hdb = hdb.subset(subset_idxs)
-    session = Session(gdm, ds, hdb, p)
+    present = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
+    positive = pr.FrozenBitMap(box_data.dbidx.values)
 
-    return session, box_data, subset_idxs
+    assert positive.intersection(present) == positive    
+    return box_data, present, positive
 
 RemoteBenchRunner = ray.remote(BenchRunner)
 

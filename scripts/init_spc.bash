@@ -11,6 +11,8 @@ cd $DIR
 ray stop || echo 'starting ray head node...'
 . start_worker.bash --head "--num-cpus=40 --num-gpus=2" 
 
+python -m seesaw.memory_cache
+
 ## start serve process
 python -c 'import ray; from ray import serve; ray.init("auto", namespace="seesaw"); serve.start(detached=True)' &
 

@@ -1,3 +1,4 @@
+from seesaw.memory_cache import CacheStub
 from seesaw.query_interface import AccessMethod
 from seesaw.definitions import DATA_CACHE_DIR, parallel_copy
 import pytorch_lightning as pl
@@ -293,15 +294,16 @@ def extract_seesaw_meta(dataset, output_dir, output_name, num_workers, batch_siz
 
 
 class SeesawDatasetManager:
-    def __init__(self, root, dataset_name, dataset_path):
+    def __init__(self, root, dataset_name, dataset_path, cache):
         ''' Assumes layout created by create_dataset
         '''
         self.dataset_name = dataset_name
         self.dataset_root = f'{root}/{dataset_path}'
-        file_meta = pd.read_parquet(f'{self.dataset_root}/file_meta.parquet')
+        file_meta = cache.read_parquet(f'{self.dataset_root}/file_meta.parquet')
         self.file_meta = file_meta
         self.paths = file_meta['file_path'].values
         self.image_root = os.path.realpath(f'{self.dataset_root}/images/')
+        self.cache = cache
 
     def get_pytorch_dataset(self):
         return ExplicitPathDataset(root_dir=self.image_root, relative_path_list=self.paths)
@@ -393,8 +395,8 @@ class SeesawDatasetManager:
 
     def load_ground_truth(self):
         assert os.path.exists(f'{self.dataset_root}/ground_truth')
-        qgt = pd.read_parquet(f'{self.dataset_root}/ground_truth/qgt.parquet')
-        box_data = pd.read_parquet(f'{self.dataset_root}/ground_truth/box_data.parquet')
+        qgt = self.cache.read_parquet(f'{self.dataset_root}/ground_truth/qgt.parquet')
+        box_data = self.cache.read_parquet(f'{self.dataset_root}/ground_truth/box_data.parquet')
         box_data, qgt = prep_ground_truth(self.paths, box_data, qgt)
         return box_data, qgt
 
@@ -596,6 +598,7 @@ class IndexSpec(BaseModel):
     d_name:str 
     i_name:str
     m_name:Optional[str]
+    c_name:Optional[str] # ground truth category (for lvis benchmark)
 
 class GlobalDataManager:
     def __init__(self, root):
@@ -607,6 +610,7 @@ class GlobalDataManager:
         self.data_root = f'{root}/data/'
         self.model_root = f'{root}/models/'
         self.index_root = f'{root}/indices/'
+        self.global_cache = CacheStub('actor#cache')
 
         paths = [self.data_root, self.model_root, self.index_root]
         for p in paths:
@@ -738,7 +742,7 @@ class GlobalDataManager:
         all_ds = self.list_datasets()
         assert dataset_name in all_ds, f'{dataset_name} not found in {all_ds}'
         d_path = self._fetch_dataset_path(dataset_name)
-        return SeesawDatasetManager(self.root, dataset_name, d_path)
+        return SeesawDatasetManager(self.root, dataset_name, d_path, self.global_cache)
         
     def clone(self, ds = None, ds_name = None, clone_name : str = None) -> SeesawDatasetManager:
         assert ds is not None or ds_name is not None
@@ -793,10 +797,7 @@ class GlobalDataManager:
 
 def prep_ground_truth(paths, box_data, qgt):
     """adds dbidx column to box data, sets dbidx in qgt and sorts qgt by dbidx
-    """
-    orig_box_data = box_data
-    orig_qgt = qgt
-    
+    """    
     path2idx = dict(zip(paths, range(len(paths))))
     mapfun = lambda x : path2idx.get(x,-1)
     box_data = box_data.assign(dbidx=box_data.file_path.map(mapfun).astype('int'))

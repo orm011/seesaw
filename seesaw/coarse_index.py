@@ -79,7 +79,7 @@ class CoarseIndex(AccessMethod):
 
     def subset(self, indices : pr.BitMap):
         mask = self.vector_meta.dbidx.isin(indices)
-        return CoarseIndex(embedding=self.embedding, vectors=self.vectors[mask], vector_meta = self.vector_meta[mask])
+        return CoarseIndex(embedding=self.embedding, vectors=self.vectors[mask], vector_meta = self.vector_meta[mask].reset_index(drop=True))
 
 
 class CoarseQuery(InteractiveQuery):

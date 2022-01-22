@@ -5,6 +5,7 @@ from fastapi.applications import FastAPI
 from pydantic import BaseModel
 from fastapi import FastAPI
 
+import os
 from .dataset_manager import GlobalDataManager, IndexSpec
 from .seesaw_bench import BenchParams
 from .seesaw_session import Session, Box, SessionState, SessionParams
@@ -12,7 +13,6 @@ from .seesaw_session import Session, Box, SessionState, SessionParams
 
 class AppState(BaseModel): # Using this as a response for every state transition.
     indices : List[IndexSpec]
-    current_index : IndexSpec
     session : SessionState
 
 class SessionReq(BaseModel):
@@ -30,6 +30,17 @@ class GroundTruthResp(BaseModel):
     dbidx : int
     boxes : List[Box]
 
+class SessionInfoReq(BaseModel):
+    path : str
+
+class SaveResp(BaseModel):
+    path : str
+
+def prep_db(gdm, index_spec):
+    hdb = gdm.load_index(index_spec.d_name, index_spec.i_name)
+    # TODO: add subsetting here
+    return hdb
+
 def add_routes(app : FastAPI):
   class WebSeesaw:
       def __init__(self, root_dir, save_path):
@@ -38,33 +49,21 @@ def add_routes(app : FastAPI):
 
           self.gdm = GlobalDataManager(root_dir)
           self.indices = self.gdm.list_indices()
-          self.current_index = self.indices[0]
-          self.current_category = None
-          self.bench_params = BenchParams(dataset_name=self.current_index.d_name,
-                                          index_name=self.current_index.i_name, 
-                                          ground_truth_category=self.current_category,
-                                          qstr=None,
-                                          n_batches=None, 
-                                          max_feedback=None,
-                                          box_drop_prob=None)
-
-          self.params = SessionParams(interactive='pytorch', 
+          self.params = SessionParams(index_spec=self.indices[0],
+                                    interactive='pytorch', 
                                     warm_start='warm', batch_size=3, 
                                     minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
-                                    tqdm_disabled=True, granularity='multi', positive_vector_type='vec_only', 
-                                    num_epochs=2, n_augment=None, min_box_size=10, model_type='multirank2', 
-                                    solver_opts={'C': 0.1, 'max_examples': 225, 'loss_margin': 0.05})
+                                    num_epochs=2, model_type='multirank2')
 
-          self._reset_dataset(self.current_index)
+          self._reset_dataset(self.params.index_spec)
 
       def _reset_dataset(self, index_spec : IndexSpec):
-          hdb = self.gdm.load_index(index_spec.d_name, index_spec.i_name)
+          hdb = prep_db(self.gdm, index_spec)
+          self.params.index_spec = index_spec
           self.session = Session(gdm=self.gdm, dataset=self.gdm.get_dataset(index_spec.d_name), hdb=hdb, params=self.params)
-          self.current_index = index_spec
 
       def _getstate(self):
           return AppState(indices=self.indices, 
-                              current_index=self.current_index, 
                               session=self.session.get_state())
 
       @app.get('/getstate', response_model=AppState)
@@ -97,13 +96,22 @@ def add_routes(app : FastAPI):
           self.session.next()
           return self._getstate()
 
-      @app.post('/save', response_model=AppState)
+      @app.post('/save', response_model=SaveResp)
       def save(self, body : SessionReq):
-          print('save req')
           self.session.update_state(body.client_data.session)
-          output_path = f'{self.save_path}/session_summary_{time.strftime("%Y%m%d-%H%M%S")}'
-          json.dump(self.bench_params, open(f'{output_path}/bench_params.json', 'w'))
-          self.session.save_state(output_path)
-          return self._getstate()
+          output_path = f'{self.save_path}/session_{time.strftime("%Y%m%d-%H%M%S")}'
+          os.makedirs(output_path, exist_ok=False)
+          base = self._getstate().dict()
+          json.dump(base, open(f'{output_path}/summary.json', 'w'))
+          return SaveResp(path=output_path)
+
+      @app.post('/session_info', response_model=AppState)
+      def session_info(self, body : SessionInfoReq):
+          assert os.path.isdir(body.path)
+          sum_path = f'{body.path}/summary.json'
+          all_info  = json.load(open(sum_path, 'r'))
+          if 'indices' not in all_info: # probably saved from benchmark
+            all_info['indices'] = []
+          return AppState(indices=all_info['indices'], session=all_info['session'])
 
   return WebSeesaw
