@@ -40,8 +40,8 @@
               </div>
               <div class="row">
                 <select
-                  v-model="client_data.session.params.index_spec"
-                  @change="reset(client_data.session.params.current_index)"
+                  v-model="current_index"
+                  @change="reset(current_index)"
                 >
                   <option
                     v-for="(idxspec,idx) in client_data.indices"
@@ -71,7 +71,7 @@
           <div class="row">
             <button
               class="btn btn-dark btn-block"
-              @click="reset(client_data.current_index)"
+              @click="reset(current_index)"
             >
               Reset
             </button>
@@ -169,6 +169,7 @@ export default {
                                 indices : [] 
                               },
                 current_category : null,
+                current_index : null,
                 session_path : null,
                 selection: null, 
                 text_query:null,
@@ -233,13 +234,14 @@ export default {
           this.client_data.session.gdata[gdata_idx][panel_idx].boxes = newboxes
         },
         _update_client_data(data, reset = false){
-          console.log('current data', this.client_data);
+          console.log('current data', this.$data);
           console.log('update client data', data, reset);
           this.client_data = data;
+          this.current_index = data.session.params.index_spec;
           this.selection = null;
         },
         reset(index){
-          console.log('start reset...');
+          console.log('start reset...', index, {...this.$data});
           let reqdata = {index:index};
           // this.$data = this.data()
           
