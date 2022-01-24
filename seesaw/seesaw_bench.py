@@ -323,21 +323,22 @@ def get_metric_summary(session : SessionState):
 
 def get_metrics_table(base_path):
     summary_paths = glob.glob(base_path + '/**/summary.json')
-    all_summaries = [BenchSummary(**json.load(open(path))) for path in summary_paths]
-
-    successes = []
-    failures = []
-    for bs in all_summaries:
+    res = []
+    for path in summary_paths:
+        base_path = path[:-len('summary.json')]
+        bs = BenchSummary(**json.load(open(path)))
         b = bs.bench_params
         s = bs.session_params
 
         if bs.result is not None:
             mets = get_metric_summary(bs.result.session)
-            successes.append({**b.dict(), **s.dict(), **mets})
+            res.append({**b.dict(), **s.dict(), **mets})
         else:
-            failures.append({**b.dict(), **s.dict()})
-            
-    return pd.DataFrame(successes), pd.DataFrame(failures)
+            res.append({**b.dict(), **s.dict()})
+        
+        # add it here so we can easily visualize it
+        res[-1]['session_path'] = base_path
+    return pd.DataFrame(res)
 
 def prep_bench_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()
@@ -349,6 +350,38 @@ def prep_bench_data(ds, p : SessionParams):
 
     assert positive.intersection(present) == positive    
     return box_data, present, positive
+
+from .dataset_manager import IndexSpec
+from .dataset_search_terms import category2query
+def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : SessionParams, b_template : BenchParams, 
+      max_classes_per_dataset=math.inf):
+    configs = []
+    avail_datasets = gdm.list_datasets()
+    for d in datasets:
+        assert d in avail_datasets
+        ds = gdm.get_dataset(d)
+        _,qgt=ds.load_ground_truth()
+        ctpos = qgt.sum()
+        classes = ctpos.index[(ctpos > 0)]
+        for i,c in enumerate(classes):
+            if i > max_classes_per_dataset:
+                break
+            for var in variants:
+                update_b = {}
+                update_b['qstr'] = category2query(d.split('/')[-2], c)
+                update_b['ground_truth_category'] = c
+                b = BenchParams(**{**b_template, 
+                                   **update_b, 
+                                   **{k:v for (k,v) in var.items() if k in BenchParams.__fields__.keys()}}
+                               )
+                
+                update_s = {'index_spec':IndexSpec(d_name=d, i_name=var['index_name'], c_name=c)}
+                s = SessionParams(**{**s_template,
+                                     **update_s,
+                                     **{k:v for (k,v) in var.items() if k in SessionParams.__fields__.keys()}}
+                                 )
+                configs.append((b,s))
+    return configs
 
 RemoteBenchRunner = ray.remote(BenchRunner)
 

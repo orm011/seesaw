@@ -34,5 +34,6 @@ configs = [ (BenchParams(name='seesaw_test', ground_truth_category='aerosol can'
 for (b,p) in configs:
   br.run_loop(b,p)
 
-a,b = get_metrics_table(TEST_SAVE)
+a = get_metrics_table(TEST_SAVE)
 assert a.shape[0] == len(configs)
+assert os.path.isdir(a['session_path'].values[0]) # session path is correct
