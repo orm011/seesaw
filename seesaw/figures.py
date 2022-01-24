@@ -151,8 +151,6 @@ def compute_metrics(*, hit_indices, total_seen, total_positives, ndatabase, at_N
         
     nfound = hpos.shape[0]
     nframes = at_N
-    precision = nfound/nframes
-    recall = nfound/ntotal
     
     return dict(ntotal=ntotal, nfound=nfound, 
                 ndcg_score=ndcg_score,

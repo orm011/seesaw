@@ -10,7 +10,6 @@ from .dataset_manager import GlobalDataManager, IndexSpec
 from .seesaw_bench import BenchParams
 from .seesaw_session import Session, Box, SessionState, SessionParams
 
-
 class AppState(BaseModel): # Using this as a response for every state transition.
     indices : List[IndexSpec]
     session : SessionState
@@ -110,8 +109,9 @@ def add_routes(app : FastAPI):
           assert os.path.isdir(body.path)
           sum_path = f'{body.path}/summary.json'
           all_info  = json.load(open(sum_path, 'r'))
-          if 'indices' not in all_info: # probably saved from benchmark
-            all_info['indices'] = []
-          return AppState(indices=all_info['indices'], session=all_info['session'])
+          if 'bench_params' in all_info: # saved benchmark
+            return AppState(indices=[], session=all_info['result']['session'])
+          else: # saved web session
+            return AppState(indices=all_info['indices'], session=all_info['session'])
 
   return WebSeesaw

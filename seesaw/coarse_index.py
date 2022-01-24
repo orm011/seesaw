@@ -55,7 +55,8 @@ class CoarseIndex(AccessMethod):
             topk = len(included)
 
         assert mode == 'dot'
-        vecs = self.vectors[included]        
+        vecs = self.vectors[self.vector_meta.dbidx.isin(included)]
+                
         if vector is None:
             scores = np.random.randn(vecs.shape[0])
         else:

@@ -239,6 +239,22 @@ import os
 import string
 import time
 
+from .seesaw_session import SessionState
+
+class BenchResult(BaseModel):
+    nimages: int
+    ntotal: int
+    session: SessionState
+    run_info : dict
+    total_time : float
+
+class BenchSummary(BaseModel):
+    bench_params : BenchParams
+    session_params : SessionParams
+    timestamp : str
+    result : Optional[BenchResult]
+
+
 class BenchRunner(object):
     def __init__(self, seesaw_root, results_dir):
         assert os.path.isdir(results_dir)
@@ -260,24 +276,21 @@ class BenchRunner(object):
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         output_dir = f'{self.results_dir}/session_{timestamp}_{random_suffix}'
         os.mkdir(output_dir)
-        summary = {}
-        summary['bench_params'] = b.dict()
-        summary['timestamp'] = timestamp
-        summary['success'] = False
-        assert p.index_spec.c_name is not None, 'need category for benchmark'
+        summary = BenchSummary(bench_params=b, session_params=p, 
+          timestamp = timestamp, result=None)
 
         output_path = f'{output_dir}/summary.json'
-        json.dump(summary,open(output_path, 'w'))
+        json.dump(summary.dict(),open(output_path, 'w'))
         print(f'saving output to {output_dir}')
+
+        assert p.index_spec.c_name is not None, 'need category for benchmark'
 
         try:
           ds = self.gdm.get_dataset(p.index_spec.d_name)
           hdb = self.gdm.load_index(p.index_spec.d_name, p.index_spec.i_name)
 
           box_data, subset, positive  = prep_bench_data(ds, p)
-          summary['nimages'] = len(subset)
-          summary['ntotal'] = len(positive)
-
+          
           if len(positive) == 0:
             print('no frames available, exiting')
             return output_dir 
@@ -286,15 +299,45 @@ class BenchRunner(object):
 
           session = Session(self.gdm, ds, hdb, p)          
           run_info = benchmark_loop(session=session, box_data=box_data, subset=subset, b=b, p=p)
-
-          summary['session'] = session.get_state().dict()
-          summary['run_info'] = run_info
-          summary['success'] = True
+          summary.result = BenchResult(ntotal=len(positive), nimages = len(subset), 
+                                      session=session.get_state(), run_info=run_info, total_time=time.time() - start)
         finally:
-          summary['total_time'] = time.time() - start
-          json.dump(summary, open(output_path, 'w'))
+          json.dump(summary.dict(), open(output_path, 'w'))
         
         return output_dir
+
+import glob
+
+def get_metric_summary(session : SessionState):
+    curr_idx = 0
+    hit_indices = []
+    for ent in session.gdata:
+        for imdata in ent:
+            assert (len(imdata.boxes) == 0) == (not imdata.marked_accepted)
+            if imdata.marked_accepted:
+                hit_indices.append(curr_idx)
+            curr_idx +=1
+    index_set = pr.BitMap(hit_indices)
+    assert len(index_set) == len(hit_indices)
+    return dict(hit_indices=np.array(index_set), total_seen=curr_idx)
+
+def get_metrics_table(base_path):
+    summary_paths = glob.glob(base_path + '/**/summary.json')
+    all_summaries = [BenchSummary(**json.load(open(path))) for path in summary_paths]
+
+    successes = []
+    failures = []
+    for bs in all_summaries:
+        b = bs.bench_params
+        s = bs.session_params
+
+        if bs.result is not None:
+            mets = get_metric_summary(bs.result.session)
+            successes.append({**b.dict(), **s.dict(), **mets})
+        else:
+            failures.append({**b.dict(), **s.dict()})
+            
+    return pd.DataFrame(successes), pd.DataFrame(failures)
 
 def prep_bench_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()
