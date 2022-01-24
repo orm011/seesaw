@@ -9,7 +9,7 @@ cd $DIR
 
 # echo 'starting head node'
 ray stop || echo 'starting ray head node...'
-. start_worker.bash --head "--num-cpus=40 --num-gpus=2" 
+. start_worker.bash --head "--num-cpus=40 --num-gpus=2 "
 
 python -m seesaw.memory_cache
 

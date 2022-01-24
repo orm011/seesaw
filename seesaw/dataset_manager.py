@@ -704,7 +704,6 @@ class GlobalDataManager:
 
         return ModelService(self._create_model_actor(model_name, actor_name))
 
-        return [f for f in os.listdir(self.data_root) if not f.startswith('_')]
     
     def create_dataset(self, image_src, dataset_name, paths=[]) -> SeesawDatasetManager:
         '''

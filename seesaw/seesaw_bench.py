@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import random
 import copy
+from seesaw.figures import compute_metrics
 
 
 from .search_loop_models import *
@@ -200,8 +201,8 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
     total_results = 0
     total_seen = 0
     session.set_text(b.qstr)
-    for i in tqdm(range(b.n_batches),leave=False, disable=True):
-        print(f'iter {i}')
+    for batch_num in tqdm(range(1, b.n_batches + 1),leave=False, disable=True):
+        print(f'iter {batch_num}')
         idxbatch = session.next()
         assert [idx in subset for idx in idxbatch]
         if len(idxbatch) == 0:
@@ -209,8 +210,8 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
 
         s = copy.deepcopy(session.get_state())
         last_batch = s.gdata[-1]
-        for i, imdata in enumerate(last_batch):
-          last_batch[i] = fill_imdata(imdata, box_data, b)
+        for j, imdata in enumerate(last_batch):
+          last_batch[j] = fill_imdata(imdata, box_data, b)
 
         session.update_state(s)
         batch_pos = np.array([imdata.marked_accepted for imdata in last_batch])
@@ -218,20 +219,21 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
         total_seen += idxbatch.shape[0]
 
         if total_results == max_results:
-            print(f'Found all {total_results} possible results for {b.ground_truth_category} after {i} batches. stopping...')
+            print(f'Found all {total_results} possible results for {b.ground_truth_category} after {batch_num} batches. stopping...')
             break
 
-        if i + 1 == b.n_batches:
-            print(f'n batches. ending...')
+        if batch_num == b.n_batches:
+            print(f'iter {batch_num} = {b.n_batches}. ending...')
             break 
         
-        if b.max_feedback is None or (i+1)*p.batch_size <= b.max_feedback:
+        if b.max_feedback is None or (batch_num+1)*p.batch_size <= b.max_feedback:
+            print('refining...')
             session.refine()
 
     return dict(nfound=int(total_results), nseen=int(total_seen))
 
 def run_on_actor(br, tup):
-    return br.run_loop.remote(tup)
+    return br.run_loop.remote(*tup)
 
 from .progress_bar import tqdm_map
 
@@ -321,24 +323,37 @@ def get_metric_summary(session : SessionState):
     assert len(index_set) == len(hit_indices)
     return dict(hit_indices=np.array(index_set), total_seen=curr_idx)
 
-def get_metrics_table(base_path):
+
+
+def process_one_row(obj, path, at_N):
+    base_path = path[:-len('summary.json')]
+    bs = BenchSummary(**json.load(open(path)))
+    b = bs.bench_params
+    s = bs.session_params
+
+    res = {**b.dict(), **s.index_spec.dict(), **s.dict()}
+    res['session_path'] = base_path
+
+    if bs.result is not None:
+        summary = get_metric_summary(bs.result.session)
+        mets = compute_metrics(**summary, total_positives=bs.result.ntotal, ndatabase=bs.result.nimages, at_N=at_N)
+        res.update(**mets)
+
+    return res
+
+def get_metrics_table(base_path, at_N):
     summary_paths = glob.glob(base_path + '/**/summary.json')
     res = []
-    for path in summary_paths:
-        base_path = path[:-len('summary.json')]
-        bs = BenchSummary(**json.load(open(path)))
-        b = bs.bench_params
-        s = bs.session_params
 
-        if bs.result is not None:
-            mets = get_metric_summary(bs.result.session)
-            res.append({**b.dict(), **s.dict(), **mets})
-        else:
-            res.append({**b.dict(), **s.dict()})
-        
-        # add it here so we can easily visualize it
-        res[-1]['session_path'] = base_path
-    return pd.DataFrame(res)
+    r = ray.data.read_binary_files(summary_paths)
+    mp = r.map(lambda b : json.loads(b.decode()))
+
+    acc = []
+    for obj,path in zip(mp.iter_rows(), summary_paths):
+      res = process_one_row(obj, path, at_N)
+      acc.append(res)
+
+    return pd.DataFrame(acc)
 
 def prep_bench_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()
@@ -385,25 +400,31 @@ def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : Sessio
 
 RemoteBenchRunner = ray.remote(BenchRunner)
 
-def make_bench_actors(evs, num_actors, resources=dict(num_cpus=4, memory=15*(2**30))):
-    evref = ray.put(evs)
+def make_bench_actors(resources_per_bench, bench_constructor_args):
+    #dict(num_cpus=4, memory=15*(2**30))
+    resources = resources_per_bench
+
+    avail_res = ray.available_resources()
+    num_nodes = len(ray.nodes())
+
+    max_mem = math.floor(avail_res['memory']//num_nodes//resources['memory'])
+    max_cpu = math.floor(avail_res['CPU']//num_nodes//resources['num_cpus'])
+
+    num_actors_per_node = min(max_mem, max_cpu) - 2
+    num_actors = num_actors_per_node * num_nodes
+    print(f'creating {num_actors} based on available shares: mem {max_mem} cpu {max_cpu}')
     actors = []
     try:
         for i in range(num_actors):
-            a = RemoteBenchRunner.options(**resources).remote(evs=evref)
+            a = RemoteBenchRunner.options(**resources).remote(**bench_constructor_args)
             actors.append(a)
     except Exception as e:
         for a in actors:
             ray.kill(a)
-        raise e
+        raise e 
 
     return actors
 
-def parallel_run(*, evs, actors, tups, benchresults):
-    print('new run')
-    if len(actors) > 0:
-        tqdm_map(actors, run_on_actor, tups, benchresults)
-    else:    
-        for tup in tqdm(tups):
-            pexp = BenchRunner(evs).run_loop(tup)
-            benchresults.append(pexp)
+def parallel_run(*, actors, tups):
+  res  = []
+  tqdm_map(actors, run_on_actor, tups, res=res)

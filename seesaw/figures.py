@@ -40,6 +40,7 @@ def make_labeler(fmt_func):
     return fun
 
 def ndcg_score_fn(hit_indices, total_frames_seen, at_k_frames, total_positives):
+    hit_indices = hit_indices.astype('int')
     assert (hit_indices < total_frames_seen).all()
     assert total_positives > 0, 'undefined if no positives'
     assert at_k_frames > 0, 'undefined if no frames'
@@ -52,7 +53,7 @@ def ndcg_score_fn(hit_indices, total_frames_seen, at_k_frames, total_positives):
     best_hits[:total_positives] = 1.
 
     hits = np.zeros(at_k_frames)
-    rel_indices = hit_indices[hit_indices < at_k_frames]
+    rel_indices = hit_indices[hit_indices < at_k_frames]    
     hits[rel_indices] = 1.
     
     wi = np.arange(at_k_frames)
