@@ -19,14 +19,31 @@
 <script>
 export default {
     name : 'MModal',
-    data : function(){return {active:true}},
+    data : function(){return {active:true, handler:null}},
+    emits : ['arrow', 'close'],
     mounted : function () {
+      this.$data.handler = this.handle_keyup;
+      console.log('added handler', this)
+      window.addEventListener('keyup', this.handle_keyup)
+    },
+    unmounted : function (){
+      console.log('removed handler')
+      window.removeEventListener('keyup', this.handle_keyup);
     },
     methods : {
+
         close(){
             this.$emit('close');
             // this.active = false;
             // this.modal.hide()
+        },
+        handle_keyup(ev){
+            console.log('within handler', this, ev)
+            if (ev.code === 'ArrowLeft' || ev.code === 'ArrowRight'){
+              this.$emit('arrow', ev.code); 
+            } else if (ev.code == 'Escape') {
+              this.$emit('close');
+            }
         },
         show(){
             // this.active = true;

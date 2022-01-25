@@ -27,7 +27,8 @@
     <m-modal
       v-if="selection != null"
       ref="modal"
-      @close="close_modal()"
+      @close="this.close_modal()"
+      @arrow="handle_arrow($event)"
       tabindex="0"
     >
       <div class="row">
@@ -64,7 +65,7 @@ import MModal from './m-modal.vue';
   name : 'MImageGallery',
   components: { 'm-annotator':MAnnotator, 'm-modal':MModal },
   props: { initial_imdata:{type:Array, default: () => []}, refmode:Boolean },
-  emits: ['imdata-save', 'copy-ref'],
+  emits: ['imdata-save', 'copy-ref', 'selection'],
   data : function() { return { selection:null }},
   created : function (){},
   mounted : function (){
@@ -93,8 +94,14 @@ import MModal from './m-modal.vue';
     },
     close_modal(){ // closing modal emits a data edit event
       // this.box_save(index);
+      console.log('closing modal but saving first');
       this.$refs.annotator.save();
       this.selection  = null;
+    },
+    handle_arrow(ev){
+      if (this.selection  != null){
+        this.$emit('selection', {local_idx : this.selection, ev : ev})
+      }
     },
     // imdata_save(imdata){
     //   // let imdict = this.initial_imdata[index];

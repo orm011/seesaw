@@ -137,6 +137,7 @@
               v-if="imdata.length > 0"
               :initial_imdata="filter_boxes(imdata, current_category)"
               @imdata-save="data_update(idx, $event)"
+              @selection="handle_selection_change(idx, $event)"
               :refmode="refmode"
               @copy-ref="copy_ref(idx, $event)"
             />
@@ -160,6 +161,7 @@
 </template>
 <script >
 import MImageGallery from './components/m-image-gallery.vue';
+import _ from 'lodash';
 
 export default {
     components : {'m-image-gallery':MImageGallery},
@@ -174,6 +176,7 @@ export default {
                 selection: null, 
                 text_query:null,
                 refmode : false,
+                global_idx_view : [],
               }
             },
     mounted (){
@@ -222,6 +225,50 @@ export default {
             out.push(outent);
           }
           return out
+        },
+        get_nth_idcs(global_idx){
+          var rem = global_idx;
+          for (const [gdata_idx, gdata] of this.client_data.session.gdata.entries()){
+            console.assert(rem >= 0);
+
+            if (rem < gdata.length){
+              return {gdata_idx:gdata_idx, local_idx:rem};
+            } else{
+              rem -= gdata.length;
+            }
+          }
+          console.assert(false, global_idx)
+        },
+        get_global_idx(gdata_idx, local_idx){
+          var acc = 0
+          console.assert(gdata_idx >= 0)
+          for (const [curr_gdata_idx, gdata] of this.client_data.session.gdata.entries()){
+            if (curr_gdata_idx === gdata_idx){
+              console.assert(local_idx < gdata.length);
+              return acc + local_idx
+            } else {
+              acc += gdata.length;
+            }
+          }
+          console.assert(false, 'should not reach this', gdata_idx, local_idx);
+        },
+        handle_selection_change(idx, evdata){
+          let {local_idx, ev, ...rest} = evdata;
+          // if can move in the right direction
+          // will disable current modal and enable a different one from here
+          let total = this.total_images();
+          let delta = (ev === 'ArrowLeft') ? -1 : ((ev === 'ArrowRight') ? 1 : 0)
+          let glidx = this.get_global_idx(idx, local_idx)
+          let target = glidx + delta;
+          if (target >= 0 && target < total){
+            console.log('about to switch'); 
+            let {gdata_idx:new_gdata_idx, local_idx:new_local_idx} = this.get_nth_idcs(target);
+            this.$refs.galleries[idx].close_modal();
+            this.$refs.galleries[new_gdata_idx].$data.selection = new_local_idx; // sel new
+          } else{
+            console.log('not legal to switch', idx, local_idx, target);
+          }
+
         },
         data_update(gdata_idx, ev){
           console.log('data_update', gdata_idx, ev.idx, ev.imdata)
