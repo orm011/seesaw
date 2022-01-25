@@ -9,20 +9,12 @@ cd $DIR
 
 # echo 'starting head node'
 ray stop || echo 'starting ray head node...'
-. start_worker.bash --head "--num-cpus=40"
+. start_worker.bash --head
 
 python -m seesaw.memory_cache
 
 ## start serve process
 python -c 'import ray; from ray import serve; ray.init("auto", namespace="seesaw"); serve.start(detached=True)' &
 
-HEAD="`hostname`:6379"
-
-# NUM_NODES=4
-# echo 'starting secondary nodes'
-# for i in `seq $NUM_NODES`; do
-#     LLsub start_worker.bash  -s 48 -- $HEAD 
-# done
-# sleep 5 # give time for secondary nodes to start
 wait # for model actor and ray serve
 sleep infinity
