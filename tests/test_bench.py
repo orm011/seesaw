@@ -29,7 +29,15 @@ configs = [ (BenchParams(name='seesaw_test', ground_truth_category='aerosol can'
               interactive='plain', warm_start='warm', batch_size=3, 
               minibatch_size=10, learning_rate=0.005, max_examples=500, 
               loss_margin=0.1, num_epochs=2, model_type='cosine')
-            )
+            ),
+
+            (BenchParams(name='seesaw_test', ground_truth_category='aerosol can', qstr='aerosol can', 
+              n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
+            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name='aerosol can'),
+              interactive='pytorch', warm_start='warm', batch_size=3, 
+              minibatch_size=10, learning_rate=0.005, max_examples=3, 
+              loss_margin=0.1, num_epochs=2, model_type='cosine')
+            ),
 ]
 import json
 
@@ -41,7 +49,7 @@ for (b,p) in configs:
   # check termination makes sense
 
   reached_batch_max = len(bs.result.session.gdata) == bs.bench_params.n_batches
-  reached_max_results = bs.bench_params.max_results == len(summ['hit_indices'])
+  reached_max_results = bs.bench_params.max_results <= len(summ['hit_indices']) # could excced due to batching
   reached_all_results = bs.result.ntotal == len(summ['hit_indices'])
   reached_all_images = summ['total_seen'] == bs.result.nimages
 

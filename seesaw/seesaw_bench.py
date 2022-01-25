@@ -323,8 +323,6 @@ def get_metric_summary(session : SessionState):
     assert len(index_set) == len(hit_indices)
     return dict(hit_indices=np.array(index_set), total_seen=curr_idx)
 
-
-
 def process_one_row(obj, path, at_N):
     base_path = path[:-len('summary.json')]
     bs = BenchSummary(**json.load(open(path)))
@@ -336,7 +334,7 @@ def process_one_row(obj, path, at_N):
 
     if bs.result is not None:
         summary = get_metric_summary(bs.result.session)
-        mets = compute_metrics(**summary, total_positives=bs.result.ntotal, ndatabase=bs.result.nimages, at_N=at_N)
+        mets = compute_metrics(**summary, batch_size=s.batch_size, total_positives=bs.result.ntotal, ndatabase=bs.result.nimages, at_N=at_N)
         res.update(**mets)
 
     return res

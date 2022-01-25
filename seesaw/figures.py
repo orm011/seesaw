@@ -39,14 +39,14 @@ def make_labeler(fmt_func):
         return list(map(fmt_func, arrlike))
     return fun
 
-def ndcg_score_fn(hit_indices, total_frames_seen, at_k_frames, total_positives):
+def ndcg_score_fn(*, hit_indices, total_frames_seen, at_k_frames, total_positives):
     hit_indices = hit_indices.astype('int')
     assert (hit_indices < total_frames_seen).all()
     assert total_positives > 0, 'undefined if no positives'
     assert at_k_frames > 0, 'undefined if no frames'
     if at_k_frames > total_frames_seen:
-        assert hit_indices.shape[0] == total_positives, 'no data available for k larger than total_frames_seen'
-        at_k_frames = total_frames_seen # everything else would be zero anyway, so can compute
+      at_k_frames = total_frames_seen # decide what to do in the calling code (can do this check)
+      #assert hit_indices.shape[0] == total_positives, 'no data available for k larger than total_frames_seen'
         
     assert at_k_frames <= total_frames_seen
     best_hits = np.zeros(at_k_frames)
@@ -138,51 +138,63 @@ def test_score_rare():
 
 # test_score_sanity()
 # test_score_rare()
-def compute_metrics(*, hit_indices, total_seen, total_positives, ndatabase, at_N):
-    ndcg_score = ndcg_score_fn(hit_indices, total_seen, total_positives=total_positives, at_k_frames=at_N)
+def compute_metrics(*, hit_indices, batch_size, total_seen, total_positives, ndatabase, at_N):
+    ndcg_score = ndcg_score_fn(hit_indices=hit_indices, total_frames_seen=total_seen, 
+                      total_positives=total_positives, at_k_frames=at_N)
+
     ntotal=total_positives
+  
+    hpos_full = np.ones(total_positives)*np.inf
+    hpos_full[:hit_indices.shape[0]] = hit_indices
+    nseen = hpos_full + 1
+
+    nfound = np.arange(total_positives) + 1
     
-    hpos = hit_indices[hit_indices < at_N]
-    if hpos.shape[0] > 0:
-        nfirst = hpos[0] + 1
-        rr = 1./nfirst
+    precisions = nfound/nseen
+    AP = np.mean(precisions)
+
+    best_possible_seen = (np.arange(total_positives) + 1).astype('float')
+    best_possible_seen[total_seen:] = np.inf # cannot get instances beyond what is seen
+    best_precisions = best_possible_seen/nfound
+    bestAP = np.mean(best_precisions)
+    relAP = AP/bestAP
+
+    ## a key metric: how long did it take to find the second thing after feedback...
+    batch_no = nseen//batch_size
+    nfirst_batch = batch_no[0]
+    nfirst = nseen[0]
+
+    if (batch_no > batch_no[0]).any():
+      gtpos = np.where(batch_no > batch_no[0])[0]
+      assert gtpos.shape[0] > 0
+      first_after_feedback = gtpos[0]
+      nfirst2second_batch = batch_no[first_after_feedback] - nfirst_batch
+      nfirst2second = nseen[first_after_feedback] - nfirst
     else:
-        nfirst = np.inf
-        rr = 1/nfirst
-        
-    nfound = hpos.shape[0]
-    nframes = at_N
-    
+            # only one batch contains all positives (or maybe no positives at all)
+      # this metric is not well defined.
+      nfirst2second = np.nan
+      nfirst2second_batch = np.nan
+
+
+    # fbatch = batchno[0]
+    # laterbatch = batchno > fbatch
+  
     return dict(ntotal=ntotal, nfound=nfound, 
                 ndcg_score=ndcg_score,
                 ndatabase=ndatabase, abundance=ntotal/ndatabase,
-                nframes=nframes,
-                nfirst = nfirst, reciprocal_rank=rr)
+                nframes=total_seen,
+                AP=AP,
+                bestAP=bestAP,
+                relAP=relAP,
+                nfirst = nseen[0], 
+                nfirst_batch = nfirst_batch,
+                nfirst2second = nfirst2second,
+                nfirst2second_batch = nfirst2second_batch,
+                reciprocal_rank=precisions[0])
 
-def process_tups(results, at_N):
-    tups = []
-    profs = []
-    for i,(params, res) in tqdm(enumerate(results),total=len(results)):
-        mets = compute_metrics(hit_indices=res['hits'], total_seen=int(res['total_seen']),
-                 total_positives=int(params['ntotal']), ndatabase=params['nimages'], at_N=at_N)
-        mets['at_N'] = at_N
-        mets['dataset'] = params['dataset']
-        mets['variant'] = params['variant']
-        mets['category'] = params['category']
-        mets['qstr'] = params['qstr']
-        mets['dataset_variant'] = params['dataset_variant']
-        mets['run_id'] = i
-        tups.append(mets)
 
-        df = res['latency_profile']
-        df = df.assign(dataset=params['dataset'], variant=params['variant'], category=params['category'],run_id=i)
-        profs.append(df)
- 
-    accuracy_df = pd.DataFrame.from_records(tups)
-    latency_df = pd.concat(profs, ignore_index=True)
-    return accuracy_df, latency_df
-
-def side_by_side_comparison(stats, baseline_variant, metric):
+def side_by_side_comparison(stats, *, baseline_variant, metric):
     v1 = stats
     metrics = list(set(['nfound', 'nfirst'] + [metric]))
 
@@ -203,20 +215,20 @@ def side_by_side_comparison(stats, baseline_variant, metric):
     sbs = sbs.assign(delta=sbs[metric] - sbs['base'])
     return sbs
 
-def better_same_worse(stats, variant, baseline_variant='plain', metric='ndcg_score', reltol=1.1,
+def better_same_worse(stats, *, variant, baseline_variant, metric, reltol,
                      summary=True):
-    sbs = side_by_side_comparison(stats, baseline_variant='plain', metric='ndcg_score')
+    sbs = side_by_side_comparison(stats, baseline_variant=baseline_variant, metric=metric)
     invtol = 1/reltol
-    sbs = sbs.assign(better=sbs.ndcg_score > reltol*sbs.base, worse=sbs.ndcg_score < invtol*sbs.base,
-                    same=sbs.ndcg_score.between(invtol*sbs.base, reltol*sbs.base))
+    sbs = sbs.assign(better=sbs[metric] > reltol*sbs.base, worse=sbs[metric] < invtol*sbs.base,
+                    same=sbs[metric].between(invtol*sbs.base, reltol*sbs.base))
     bsw = sbs[sbs.variant == variant].groupby('dataset')[['better', 'same', 'worse']].sum()
     if summary:
         return bsw
     else:
         return sbs
 
-def bsw_table(stats, variant, reltol=1.1):
-    bsw = better_same_worse(stats, variant=variant, reltol=reltol)
+def bsw_table(stats, *, variant, baseline_variant, metric, reltol):
+    bsw = better_same_worse(stats, metric=metric, baseline_variant=baseline_variant, variant=variant, reltol=reltol)
     dstot = bsw.sum(axis=1)
     bsw = bsw.assign(total=dstot)
     tot = bsw.sum()
@@ -225,11 +237,11 @@ def bsw_table(stats, variant, reltol=1.1):
     print(bsw_table.to_latex())
     return bsw_table
     
-def summary_breakdown(sbs):
+def summary_breakdown(sbs, metric):
     base_metric = 'base'
     part = sbs[base_metric].map(lambda x : '1.' if x > .3 else '.3' if x > .1 else '.1')
     sbs = sbs.assign(part=part)
-    totals = sbs.groupby(['part', 'dataset', 'variant']).ndcg_score.mean().reset_index().groupby(['part', 'variant']).ndcg_score.mean().unstack(level=0)
+    totals = sbs.groupby(['part', 'dataset', 'variant'])[metric].mean().reset_index().groupby(['part', 'variant'])[metric].mean().unstack(level=0)
     counts = sbs.groupby(['part', 'dataset', 'variant']).size().rename('cats').reset_index().groupby(['part', 'variant']).cats.sum().unstack(level=0)
     
     tr = totals.transpose()
@@ -253,9 +265,9 @@ def remove_leading_zeros(fmtr):
         return fx
     return fun
 
-def comparison_table(tot_res, variant):
-    baseline = 'plain'
+def comparison_table(tot_res, *, variant, baseline_variant):
     sys = variant
+    baseline = baseline_variant
     tot_res = tot_res.transpose()
     tot_res = tot_res.assign(ratio=tot_res[sys]/tot_res[baseline])
     total_counts = tot_res['counts'].sum()
@@ -269,10 +281,10 @@ def comparison_table(tot_res, variant):
     print(tot_res.to_latex(float_format=fmtter))
     return tot_res
 
-def ablation_table(tot_res, variant):
-    baseline = 'plain'
-    inter = 'multiplain'
-    sys = variant
+def ablation_table(tot_res, variants_list):
+    baseline = variants_list[0]
+    inter = variants_list[1]
+    sys = variants_list[2]
     #tot_res = tot_res.loc[]
     tot_res = tot_res.transpose()[[baseline,inter,sys]].rename(mapper={baseline:'semantic embeddding',
                                                  inter:'+ multiscale search',
@@ -300,10 +312,8 @@ def old_benchresults(resultlist):
         ans[tup[0]['dataset']].append(tup)
     return ans
 
-def print_tables(stats, variant):
-    # benchresults = old_benchresults(resultlist)
-    # stats = process_tups(evs=evs2, keys=evs2.keys(), benchresults=benchresults, at_N=at_N)
-    all_vars = stats.groupby(['dataset', 'category', 'variant',]).ndcg_score.mean().unstack(-1)
+def print_tables(stats, *, variant,  baseline_variant, metric, reltol):
+    all_vars = stats.groupby(['dataset', 'category', 'variant',])[metric].mean().unstack(-1)
     means = all_vars.groupby('dataset').mean()
     counts = all_vars.groupby('dataset').size().rename('num_queries')
     per_dataset = pd.concat([means, counts],axis=1)
@@ -311,17 +321,21 @@ def print_tables(stats, variant):
     display(per_dataset)
     
     print('by query')
-    bsw_table(stats, variant=variant, reltol=1.1)
+    bsw_table(stats, variant=variant, baseline_variant=baseline_variant, metric=metric, reltol=reltol)
     
     
     print('breakdown by initial res')
-    sbs = better_same_worse(stats, variant=variant, summary=False)
-    tot_res = summary_breakdown(sbs)
-    comparison_table(tot_res, variant=variant)
+    sbs = better_same_worse(stats, variant=variant, baseline_variant=baseline_variant, reltol=reltol, metric=metric, summary=False)
+    tot_res = summary_breakdown(sbs, metric=metric)
+    comparison_table(tot_res, variant=variant, baseline_variant=baseline_variant)
 
 
     print('ablation')
-    display(ablation_table(tot_res, variant=variant))
+    if variant == 'seesaw':
+      abtab = ablation_table(tot_res, variants_list=['plain', 'multiplain','seesaw',])
+      display(abtab)
+    else:
+      print('skipping ablation table bc. using other variant')
 
     x = np.geomspace(.02, 1, num=5)
     y = 1/x
@@ -349,7 +363,7 @@ def print_tables(stats, variant):
     #+ geom_abline()
     #    + geom_point(aes(x='recall', y='precision', color='variant'), size=1.)
     #     + facet_wrap(facets=['cat'], ncol=6, scales='free_x')
-     + xlab('baseline NDCG')
+     + xlab(f'baseline {metric}')
     # +scale_color_discrete()
         + theme(figure_size=(8,5), legend_position='top',
                subplots_adjust={'hspace': 0.5}, legend_title=element_blank(),
