@@ -160,7 +160,6 @@
       v-if="selection != null"
       ref="modal"
       @modalKeyUp="handleModalKeyUp($event)"
-      tabindex="0"
     >
       <div class="row">
         <m-annotator
@@ -168,7 +167,6 @@
           :initial_imdata="this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx]"
           :read_only="false"
           :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
-          tabindex="1"
         />
       </div>
       <!-- <div class="row">
@@ -233,11 +231,6 @@ export default {
         total_accepted() {
           let accepted_per_list = (l)=> l.map((elt) => elt.marked_accepted ? 1 : 0).reduce((a,b)=>a+b, 0)
           return this.client_data.session.gdata.map(accepted_per_list).reduce((a,b)=>a+b, 0)
-        },
-        gen_key(imdata){
-            let box_num = (imdata.boxes == null ? 0 : imdata.boxes.length + 1);
-            let acc_num = imdata.marked_accepted ? 1 : 0;
-            return imdata.dbidx*1000 + acc_num*100 + box_num;
         },
         total_annotations(){
             let annot_per_list = function(l){

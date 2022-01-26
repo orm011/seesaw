@@ -52,15 +52,6 @@ import MAnnotator from './m-annotator.vue';
       } else if (ldata.boxes.length === 0){
         return 'rejected'
       }
-    },
-    gen_key(imdata){
-          let box_num = (imdata.boxes == null ? 0 : imdata.boxes.length + 1);
-          let acc_num = imdata.marked_accepted ? 1 : 0;
-          let box_coord_sum = 0;
-          for (b of imdata.boxes){
-            b.x1 + b.x2 + b.y1 + b.y2
-          }
-          return imdata.dbidx*1000 + acc_num*100 + box_num;
     }
   }
 }
