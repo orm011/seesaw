@@ -136,10 +136,8 @@
               ref="galleries"
               v-if="imdata.length > 0"
               :initial_imdata="filter_boxes(imdata, current_category)"
-              @imdata-save="data_update(idx, $event)"
               @selection="handle_selection_change(idx, $event)"
               :refmode="refmode"
-              @copy-ref="copy_ref(idx, $event)"
             />
           </div>
           <div class="row space" />
@@ -157,17 +155,52 @@
         </div>
       </main>
     </div> 
-  </div>
+    <m-modal
+      v-if="selection != null"
+      ref="modal"
+      @close="close_modal()"
+      @arrow="handle_arrow($event)"
+      tabindex="0"
+    >
+      <div class="row">
+        <m-annotator
+          ref="annotator"
+          :initial_imdata="this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx]"
+          :read_only="false"
+          :key="gen_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx])"
+          tabindex="1"
+          @imdata-save="data_update($event)"
+        />
+      </div>
+      <!-- <div class="row">
+        <button
+          v-if="refmode"
+          class="btn btn-dark bton-block"
+          @click="$emit('copy-ref', selection)"
+        > 
+          Autofill ({{ initial_imdata[selection].refboxes.length }} boxes)
+        </button> -->
+        <!-- <button v-if="refmode" class="btn btn-dark bton-block" @click="copyref(selection)"> 
+            Mark not-relevant
+        </button> -->
+      <!-- </div> -->
+    </m-modal>
+  </div>  
 </template>
 <script >
 import MImageGallery from './components/m-image-gallery.vue';
+import MAnnotator from './components/m-annotator.vue';
+import MModal from './components/m-modal.vue';
+
 import _ from 'lodash';
 
 export default {
-    components : {'m-image-gallery':MImageGallery},
+    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator},
     props: {},
     data () { return { 
-                client_data : { session : { params :{ index_spec : {d_name:'', i_name:'', m_name:''}}, gdata : [] }, 
+                client_data : { session : { params :{ index_spec : {d_name:'', i_name:'', m_name:''}}, 
+                                            gdata : [] 
+                                          }, 
                                 indices : [] 
                               },
                 current_category : null,
@@ -176,7 +209,7 @@ export default {
                 selection: null, 
                 text_query:null,
                 refmode : false,
-                global_idx_view : [],
+                keys : {}
               }
             },
     mounted (){
@@ -200,6 +233,11 @@ export default {
         total_accepted() {
           let accepted_per_list = (l)=> l.map((elt) => elt.marked_accepted ? 1 : 0).reduce((a,b)=>a+b, 0)
           return this.client_data.session.gdata.map(accepted_per_list).reduce((a,b)=>a+b, 0)
+        },
+        gen_key(imdata){
+            let box_num = (imdata.boxes == null ? 0 : imdata.boxes.length + 1);
+            let acc_num = imdata.marked_accepted ? 1 : 0;
+            return imdata.dbidx*1000 + acc_num*100 + box_num;
         },
         total_annotations(){
             let annot_per_list = function(l){
@@ -252,8 +290,15 @@ export default {
           }
           console.assert(false, 'should not reach this', gdata_idx, local_idx);
         },
-        handle_selection_change(idx, evdata){
-          let {local_idx, ev, ...rest} = evdata;
+    handle_selection_change(idx, evdata){
+      if (this.$refs.annotator != undefined){
+        this.$refs.annotator.save();
+      }
+      this.selection = {gdata_idx:idx, local_idx:evdata};
+    },
+    handle_arrow(ev){
+      if (this.selection  != null){
+          let {gdata_idx:idx, local_idx} = this.selection;
           // if can move in the right direction
           // will disable current modal and enable a different one from here
           let total = this.total_images();
@@ -262,17 +307,18 @@ export default {
           let target = glidx + delta;
           if (target >= 0 && target < total){
             console.log('about to switch'); 
-            let {gdata_idx:new_gdata_idx, local_idx:new_local_idx} = this.get_nth_idcs(target);
-            this.$refs.galleries[idx].close_modal();
-            this.$refs.galleries[new_gdata_idx].$data.selection = new_local_idx; // sel new
+            let new_idx = this.get_nth_idcs(target);
+            this.handle_selection_change(new_idx.gdata_idx, new_idx.local_idx);
+            // this.$refs.galleries[idx].close_modal();
+            // this.$refs.galleries[new_gdata_idx].$data.selection = new_local_idx; // sel new
           } else{
             console.log('not legal to switch', idx, local_idx, target);
           }
-
-        },
-        data_update(gdata_idx, ev){
-          console.log('data_update', gdata_idx, ev.idx, ev.imdata)
-          this.client_data.session.gdata[gdata_idx][ev.idx] = ev.imdata
+      }
+    },
+        data_update(ev){
+          console.log('data_update', ev)
+          this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx] = ev;
         },
         copy_ref(gdata_idx, panel_idx){
           let refboxes = this.client_data.session.gdata[gdata_idx][panel_idx].refboxes;
@@ -328,7 +374,13 @@ export default {
                             })
             .then(response => response.json())
             .then(p => console.log('save response', p))
+        },
+        close_modal(){
+          console.log('close modal', this.$refs.annotator)
+          this.$refs.annotator.save()
+          this.selection = null;
         }
+        
     }
 }
 </script>

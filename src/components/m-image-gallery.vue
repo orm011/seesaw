@@ -4,7 +4,7 @@
       <div class="image-gallery">
         <div
           v-for="(data,index) in initial_imdata"
-          :key="imdata_key(index)"
+          :key="gen_key(data)"
         >
           <!-- img is much more light weight to render, and the common case is no labels -->
           <!-- <img
@@ -19,53 +19,21 @@
             ref="annotators"
             :initial_imdata="data"
             :read_only="true"
-            @cclick="onclick(index)"
+            @cclick="$emit('selection', index);"
           />
         </div>
       </div>
     </div>
-    <m-modal
-      v-if="selection != null"
-      ref="modal"
-      @close="this.close_modal()"
-      @arrow="handle_arrow($event)"
-      tabindex="0"
-    >
-      <div class="row">
-        <m-annotator
-          ref="annotator"
-          :initial_imdata="initial_imdata[selection]"
-          :key="imdata_key(selection)"
-          :read_only="false"
-          tabindex="1"
-          @imdata-save="$emit('imdata-save', {idx:selection, imdata:$event})"
-        />
-      </div>
-      <div class="row">
-        <button
-          v-if="refmode"
-          class="btn btn-dark bton-block"
-          @click="$emit('copy-ref', selection)"
-        > 
-          Autofill ({{ initial_imdata[selection].refboxes.length }} boxes)
-        </button>
-        <!-- <button v-if="refmode" class="btn btn-dark bton-block" @click="copyref(selection)"> 
-            Mark not-relevant
-        </button> -->
-      </div>
-    </m-modal>
   </div>
 </template>
 <script>
 import MAnnotator from './m-annotator.vue';
-import MModal from './m-modal.vue';
-
 
  export default {
   name : 'MImageGallery',
-  components: { 'm-annotator':MAnnotator, 'm-modal':MModal },
+  components: { 'm-annotator':MAnnotator },
   props: { initial_imdata:{type:Array, default: () => []}, refmode:Boolean },
-  emits: ['imdata-save', 'copy-ref', 'selection'],
+  emits: ['selection'],
   data : function() { return { selection:null }},
   created : function (){},
   mounted : function (){
@@ -76,7 +44,6 @@ import MModal from './m-modal.vue';
     // 1. this image does not have what I'm looking for (checkbox?)
     // 2. 
     get_class(index){
-      
       let ldata = this.initial_imdata[index];
       if (ldata.boxes == null){
         return 'unknown'
@@ -86,46 +53,11 @@ import MModal from './m-modal.vue';
         return 'rejected'
       }
     },
-    imdata_key(index){
-      let imdata = this.initial_imdata[index];
-      let box_num = (imdata.boxes == null ? 0 : imdata.boxes.length + 1);
-      let acc_num = imdata.marked_accepted ? 1 : 0;
-      return index*1000 + acc_num*100 + box_num;
-    },
-    close_modal(){ // closing modal emits a data edit event
-      // this.box_save(index);
-      console.log('closing modal but saving first');
-      this.$refs.annotator.save();
-      this.selection  = null;
-    },
-    handle_arrow(ev){
-      if (this.selection  != null){
-        this.$emit('selection', {local_idx : this.selection, ev : ev})
-      }
-    },
-    // imdata_save(imdata){
-    //   // let imdict = this.initial_imdata[index];
-    //   this.$emit('imdata-save', imdata)
-    // },
-    onclick(index){
-      this.selection = index;
-    },
-    // copyref(index){
-    //     let imdict = this.imdata[index];
-
-    //     console.log('click copyref');
-    //     const reflabels = imdict.refboxes;
-
-    //     if (imdict.boxes == null){
-    //       imdict.boxes = []
-    //     }
-
-    //     for (const obj of reflabels){
-    //       imdict.boxes.push(obj)  
-    //     }
-
-    //     this.$refs.annotator.load_current_box_data()
-    // }
+    gen_key(imdata){
+          let box_num = (imdata.boxes == null ? 0 : imdata.boxes.length + 1);
+          let acc_num = imdata.marked_accepted ? 1 : 0;
+          return imdata.dbidx*1000 + acc_num*100 + box_num;
+    }
   }
 }
 </script>

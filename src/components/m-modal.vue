@@ -2,7 +2,6 @@
   <!-- mostly based on https://www.w3schools.com/howto/howto_css_modal_images.asp -->
   <div
     :class="`my-modal ${active ? 'my-modal-active': ''}` "
-    tabindex="0"
   >
     <span
       class="close"
@@ -10,7 +9,6 @@
     >&times;</span>
     <div
       class="my-modal-content"
-      tabindex="1"
     >
       <slot />
     </div>

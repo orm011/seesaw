@@ -2,22 +2,16 @@
   <div
     class="annotator_div row"
     ref="container"
-    @keyup.esc="emit('esc')"
-    tabindex="0"
   >
     <img
       :class="read_only ? 'annotator_image_small':'annotator_image'"
       :src="imdata.url"
       ref="image" 
       @load="draw_initial_contents"
-      tabindex="1"
-      @keyup.esc="emit('esc')"
     >
     <canvas
       class="annotator_canvas"
       ref="canvas"
-      @keyup.esc="emit('esc')"
-      tabindex="2"
       @click="canvas_click" 
       @mouseover="hover(true)"
       @mouseleave="hover(false)"
