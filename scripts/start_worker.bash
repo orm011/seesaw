@@ -1,9 +1,9 @@
 #! /bin/bash
 set -x
 
-cd /home/gridsan/omoll/seesaw/scripts/
+cd /home/gridsan/$USER/seesaw/scripts/
 
-TMPNAME=/state/partition1/user/omoll/raytmp/
+TMPNAME=/state/partition1/user/$USER/raytmp/
 HEAD_ADDRESS=$1
 OTHER_FLAGS=$2 # pass --block if needed
 
