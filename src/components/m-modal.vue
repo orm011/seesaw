@@ -3,14 +3,19 @@
   <div
     :class="`my-modal ${active ? 'my-modal-active': ''}` "
   >
-    <span
+    <!-- <span
       class="close"
       @click="close"
-    >&times;</span>
+    >&times;</span> -->
     <div
       class="my-modal-content"
     >
       <slot />
+    </div>
+    <div class="keyword-text">
+      <span> 'Esc' for going back to main view </span>
+      <span> 'Left' and 'Right' arrow for previous/next image</span>
+      <span> 'D' to remove selected box </span>
     </div>
   </div>
 </template>
@@ -18,7 +23,7 @@
 export default {
     name : 'MModal',
     data : function(){return {active:true, handler:null}},
-    emits : ['arrow', 'close'],
+    emits : ['modalKeyUp'],
     mounted : function () {
       this.$data.handler = this.handle_keyup;
       console.log('added handler', this)
@@ -29,24 +34,9 @@ export default {
       window.removeEventListener('keyup', this.handle_keyup);
     },
     methods : {
-
-        close(){
-            this.$emit('close');
-            // this.active = false;
-            // this.modal.hide()
-        },
         handle_keyup(ev){
-            console.log('within handler', this, ev)
-            if (ev.code === 'ArrowLeft' || ev.code === 'ArrowRight'){
-              this.$emit('arrow', ev.code); 
-            } else if (ev.code == 'Escape') {
-              this.$emit('close');
-            }
+            this.$emit('modalKeyUp', ev);
         },
-        show(){
-            // this.active = true;
-            // this.modal.show()
-        }
     }
 }
 </script>
@@ -128,6 +118,12 @@ export default {
   color: #bbb;
   text-decoration: none;
   cursor: pointer;
+}
+
+.keyword-text > span {
+  color: rgb(240,240,240);
+  font-size: 20px;
+  display:block;
 }
 
 /* 100% Image Width on Smaller Screens */

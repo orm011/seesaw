@@ -38,7 +38,7 @@ import paper from 'paper/dist/paper-core';
 export default { 
   name: "MAnnotator", // used by ipyvue?
   props: ['initial_imdata', 'read_only'],
-  emits: ['imdata-save'],
+  emits: ['cclick'],
   data : function() {
         return {height_ratio:null, width_ratio:null, 
                 paper: null, 
@@ -62,14 +62,17 @@ export default {
         let boxes = (paper.project.getItems({className:'Path'})
                           .map(x =>  {let b = x.bounds; return {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}})
                           .map(box => this.rescale_box(box, this.height_ratio, this.width_ratio)))
-        console.log('saving boxes')
+        console.log('saving state from paper to local imdata ')
         if (boxes.length == 0){
             this.imdata.boxes = null;
             console.log('length 0 reverts to null right now')
         } else {
             this.imdata.boxes = boxes;
         }
-        this.$emit('imdata-save', this.imdata)
+    },
+    get_latest_imdata(){
+      this.save();
+      return this.imdata;
     },
     load_current_box_data : function() {
       // assumes currently image on canvas is the one where we want to display boxes on

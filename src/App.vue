@@ -136,7 +136,8 @@
               ref="galleries"
               v-if="imdata.length > 0"
               :initial_imdata="filter_boxes(imdata, current_category)"
-              @selection="handle_selection_change(idx, $event)"
+              :imdata_keys="imdata.map((imdat) => get_vue_key(imdat.dbidx))"
+              @selection="handle_selection_change({gdata_idx:idx, local_idx:$event})"
               :refmode="refmode"
             />
           </div>
@@ -158,8 +159,7 @@
     <m-modal
       v-if="selection != null"
       ref="modal"
-      @close="close_modal()"
-      @arrow="handle_arrow($event)"
+      @modalKeyUp="handleModalKeyUp($event)"
       tabindex="0"
     >
       <div class="row">
@@ -167,9 +167,8 @@
           ref="annotator"
           :initial_imdata="this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx]"
           :read_only="false"
-          :key="gen_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx])"
+          :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
           tabindex="1"
-          @imdata-save="data_update($event)"
         />
       </div>
       <!-- <div class="row">
@@ -208,6 +207,7 @@ export default {
                 session_path : null,
                 selection: null, 
                 text_query:null,
+                imdata_knum : {},
                 refmode : false,
                 keys : {}
               }
@@ -290,25 +290,37 @@ export default {
           }
           console.assert(false, 'should not reach this', gdata_idx, local_idx);
         },
-    handle_selection_change(idx, evdata){
+    handle_selection_change(new_selection){
       if (this.$refs.annotator != undefined){
-        this.$refs.annotator.save();
+        let imdata = this.$refs.annotator.get_latest_imdata();
+        this.data_update(imdata);
       }
-      this.selection = {gdata_idx:idx, local_idx:evdata};
+      
+      this.selection = new_selection;
     },
-    handle_arrow(ev){
+    handleModalKeyUp(ev){
+          console.log('within modalKeyUp handler', ev)
+          if (ev.code === 'ArrowLeft' || ev.code === 'ArrowRight'){
+            let delta = (ev.code === 'ArrowLeft') ? -1 : 1
+            this.handle_arrow(delta);
+          } else if (ev.code == 'Escape') {
+            this.close_modal()
+          } else if (ev.code == 'Space'){
+            this.accept_whole_image();
+          }
+    },
+    handle_arrow(delta){
       if (this.selection  != null){
           let {gdata_idx:idx, local_idx} = this.selection;
           // if can move in the right direction
           // will disable current modal and enable a different one from here
           let total = this.total_images();
-          let delta = (ev === 'ArrowLeft') ? -1 : ((ev === 'ArrowRight') ? 1 : 0)
           let glidx = this.get_global_idx(idx, local_idx)
           let target = glidx + delta;
           if (target >= 0 && target < total){
             console.log('about to switch'); 
             let new_idx = this.get_nth_idcs(target);
-            this.handle_selection_change(new_idx.gdata_idx, new_idx.local_idx);
+            this.handle_selection_change(new_idx);
             // this.$refs.galleries[idx].close_modal();
             // this.$refs.galleries[new_gdata_idx].$data.selection = new_local_idx; // sel new
           } else{
@@ -316,9 +328,24 @@ export default {
           }
       }
     },
-        data_update(ev){
-          console.log('data_update', ev)
-          this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx] = ev;
+    get_vue_key(dbidx){
+      let vnum = 0;
+        if (dbidx in this.imdata_knum){
+          vnum = this.imdata_knum[dbidx]
+        }
+        return dbidx * 10000 + vnum; // needs to be unique per image as well
+    },
+    incr_vue_key(dbidx){
+        if (! (dbidx in this.imdata_knum )){
+          this.imdata_knum[dbidx] = 1;
+        } else {
+          this.imdata_knum[dbidx] += 1;
+        }
+    },
+        data_update(imdata){
+          console.log('data_update', imdata)
+          this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx] = imdata;
+          this.incr_vue_key(imdata.dbidx)
         },
         copy_ref(gdata_idx, panel_idx){
           let refboxes = this.client_data.session.gdata[gdata_idx][panel_idx].refboxes;
@@ -331,7 +358,7 @@ export default {
           console.log('update client data', data, reset);
           this.client_data = data;
           this.current_index = data.session.params.index_spec;
-          this.selection = null;
+          this.handle_selection_change(null);
         },
         reset(index){
           console.log('start reset...', index, {...this.$data});
@@ -376,9 +403,7 @@ export default {
             .then(p => console.log('save response', p))
         },
         close_modal(){
-          console.log('close modal', this.$refs.annotator)
-          this.$refs.annotator.save()
-          this.selection = null;
+          this.handle_selection_change(null)
         }
         
     }

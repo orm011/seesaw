@@ -4,7 +4,7 @@
       <div class="image-gallery">
         <div
           v-for="(data,index) in initial_imdata"
-          :key="gen_key(data)"
+          :key="imdata_keys[index]"
         >
           <!-- img is much more light weight to render, and the common case is no labels -->
           <!-- <img
@@ -32,7 +32,7 @@ import MAnnotator from './m-annotator.vue';
  export default {
   name : 'MImageGallery',
   components: { 'm-annotator':MAnnotator },
-  props: { initial_imdata:{type:Array, default: () => []}, refmode:Boolean },
+  props: { initial_imdata:{type:Array, default: () => []}, refmode:Boolean, imdata_keys:{type:Array} },
   emits: ['selection'],
   data : function() { return { selection:null }},
   created : function (){},
@@ -56,6 +56,10 @@ import MAnnotator from './m-annotator.vue';
     gen_key(imdata){
           let box_num = (imdata.boxes == null ? 0 : imdata.boxes.length + 1);
           let acc_num = imdata.marked_accepted ? 1 : 0;
+          let box_coord_sum = 0;
+          for (b of imdata.boxes){
+            b.x1 + b.x2 + b.y1 + b.y2
+          }
           return imdata.dbidx*1000 + acc_num*100 + box_num;
     }
   }
