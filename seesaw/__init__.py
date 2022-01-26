@@ -1,27 +1,40 @@
 
 import importlib
 from . import dataset_manager
-from . import vls_benchmark_tools
+from . import seesaw_bench
+from . import seesaw_web
 from . import search_loop_models
 from . import figures
 from . import pairwise_rank_loss
 from . import search_loop_tools
-from . import definitions
-from . import server_session_state
+from . import seesaw_session
+from . import multiscale_index
+from . import coarse_index
+
 
 importlib.reload(dataset_manager)
-importlib.reload(vls_benchmark_tools)
+importlib.reload(seesaw_bench)
+importlib.reload(seesaw_web)
+importlib.reload(seesaw_session)
+importlib.reload(multiscale_index)
+importlib.reload(coarse_index)
+
 importlib.reload(search_loop_tools)
 importlib.reload(search_loop_models)
+
 importlib.reload(figures)
 importlib.reload(pairwise_rank_loss)
 
+
+from .dataset_manager import *
+from .seesaw_session import *
+from .seesaw_web import *
+from .seesaw_bench import *
+from .multiscale_index import *
+from .coarse_index import *
+
 from .figures import *
-from .pairwise_rank_loss import VecState
-from .vloop_dataset_loaders import *
-from .vls_benchmark_tools import *
 from .dataset_tools import *
-from .fine_grained_embedding import *
 from .imgviz import *
 from .dataset_search_terms import *
 from .search_loop_tools import *
@@ -30,4 +43,3 @@ from .pairwise_rank_loss import *
 from .progress_bar import *
 from .embeddings import *
 from .util import *
-from .dataset_manager import *

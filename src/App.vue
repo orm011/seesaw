@@ -40,8 +40,8 @@
               </div>
               <div class="row">
                 <select
-                  v-model="client_data.current_index"
-                  @change="reset(client_data.current_index)"
+                  v-model="current_index"
+                  @change="reset(current_index)"
                 >
                   <option
                     v-for="(idxspec,idx) in client_data.indices"
@@ -60,15 +60,35 @@
           <div class="row">
             <span>Total images accepted: {{ total_accepted() }}</span>
           </div>
-          <!-- <div class='row'>
-          <button class="btn btn-dark btn-block" @click="save()"> Save </button>
-        </div> -->
+          <div class="row">
+            <button 
+              class="btn btn-dark btn-block" 
+              @click="save()"
+            > 
+              Save 
+            </button>
+          </div>
           <div class="row">
             <button
               class="btn btn-dark btn-block"
-              @click="reset(client_data.current_index)"
+              @click="reset(current_index)"
             >
               Reset
+            </button>
+          </div>
+
+          <div class="row">
+            <input
+              v-model="session_path" 
+              placeholder="session path"
+            >
+          </div>
+          <div class="row">
+            <button 
+              class="btn btn-dark btn-block" 
+              @click="load_session(session_path)"
+            > 
+              Load Session
             </button>
           </div>
 
@@ -145,17 +165,17 @@ export default {
     components : {'m-image-gallery':MImageGallery},
     props: {},
     data () { return { 
-                client_data : { session : { gdata : [] }, 
-                                current_index : {d_name:'', i_name:'', m_name:''}, 
+                client_data : { session : { params :{ index_spec : {d_name:'', i_name:'', m_name:''}}, gdata : [] }, 
                                 indices : [] 
                               },
                 current_category : null,
+                current_index : null,
+                session_path : null,
                 selection: null, 
                 text_query:null,
                 refmode : false,
               }
             },
-
     mounted (){
         fetch('/api/getstate', {cache: "reload"})
             .then(response => response.json())
@@ -164,6 +184,15 @@ export default {
     methods : {
         total_images() {
             return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
+        },
+        load_session(session_path){
+            fetch(`/api/session_info`,   
+                {method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({path:session_path})}
+            )
+            .then(response => response.json())
+            .then(this._update_client_data)
         },
         total_accepted() {
           let accepted_per_list = (l)=> l.map((elt) => elt.marked_accepted ? 1 : 0).reduce((a,b)=>a+b, 0)
@@ -187,7 +216,9 @@ export default {
           let out = []
           for (const ent of imdata){
             let outent = {...ent};
-            outent.refboxes = ent.refboxes.filter((b) => b.category === category || category === '');
+            if (ent.refboxes != null){
+              outent.refboxes = ent.refboxes.filter((b) => b.category === category || category === '');
+            }
             out.push(outent);
           }
           return out
@@ -203,25 +234,24 @@ export default {
           this.client_data.session.gdata[gdata_idx][panel_idx].boxes = newboxes
         },
         _update_client_data(data, reset = false){
-          console.log('current data', this.client_data);
+          console.log('current data', this.$data);
           console.log('update client data', data, reset);
           this.client_data = data;
+          this.current_index = data.session.params.index_spec;
           this.selection = null;
-
-          if (reset){
-            this.text_query = null;
-          }
         },
         reset(index){
-          console.log(this);
+          console.log('start reset...', index, {...this.$data});
           let reqdata = {index:index};
-            fetch(`/api/reset`,   
-                {method: 'POST', 
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(reqdata)
-            })
-            .then(response => response.json())
-            .then(data => this._update_client_data(data, true))
+          // this.$data = this.data()
+          
+          fetch(`/api/reset`,   
+              {method: 'POST', 
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify(reqdata)
+          })
+          .then(response => response.json())
+          .then(data => this._update_client_data(data, true))
         },
         text(text_query){
             fetch(`/api/text?key=${encodeURIComponent(text_query)}`,   
@@ -250,7 +280,7 @@ export default {
                             body: JSON.stringify(body) // body data type must match "Content-Type" header
                             })
             .then(response => response.json())
-            .then(this._update_client_data)
+            .then(p => console.log('save response', p))
         }
     }
 }

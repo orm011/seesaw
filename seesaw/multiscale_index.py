@@ -1,3 +1,4 @@
+from seesaw.memory_cache import CacheStub
 from seesaw.dataset_manager import GlobalDataManager
 from types import prepare_class
 from ray.data.extensions import TensorArray
@@ -265,7 +266,7 @@ def get_boxes(vec_meta):
     boxes = boxes.astype('float32') ## multiplication makes this type double but this is too much.
     return boxes
 
-def get_pos_negs_all_v2(dbidxs, box_dict, vec_meta):
+def get_pos_negs_all_v2(dbidxs, label_db : LabelDB, vec_meta : pd.DataFrame):
     idxs = pr.BitMap(dbidxs)
     relvecs = vec_meta[vec_meta.dbidx.isin(idxs)]
     
@@ -274,7 +275,7 @@ def get_pos_negs_all_v2(dbidxs, box_dict, vec_meta):
     for idx in dbidxs:
         acc_vecs = relvecs[relvecs.dbidx == idx]
         acc_boxes = get_boxes(acc_vecs)
-        label_boxes = box_dict[idx]
+        label_boxes = label_db.get(idx, format='df')
         ious = box_iou(label_boxes, acc_boxes)
         total_iou = ious.sum(axis=0) 
         negatives = total_iou == 0
@@ -306,6 +307,7 @@ def build_index(vecs, file_name):
     u.load(file_name) # verify can load.
     return u
 
+
 class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup
     """
@@ -324,15 +326,17 @@ class MultiscaleIndex(AccessMethod):
     @staticmethod
     def from_path(gdm : GlobalDataManager, index_subpath : str, model_name :str):
         embedding = gdm.get_model_actor(model_name)
-        
         cached_meta_path= f'{gdm.root}/{index_subpath}/vectors.sorted.cached'
         vec_index_path = f'{index_subpath}/vectors.annoy'
 
-        vec_index = VectorIndex(base_dir=gdm.root, load_path=vec_index_path, copy_to_tmpdir=True, prefault=True)
+        if os.path.exists(vec_index_path):
+          vec_index = VectorIndex(base_dir=gdm.root, load_path=vec_index_path, copy_to_tmpdir=True, prefault=True)
+        else:
+          print('no optimized index found... using vectors')
+          vec_index = None
 
         assert os.path.exists(cached_meta_path)
-        ds = ray.data.read_parquet(cached_meta_path, columns=['dbidx', 'zoom_level', 'max_zoom_level', 'order_col','x1', 'y1', 'x2', 'y2','vectors'])
-        df = pd.concat(ray.get(ds.to_pandas_refs()),ignore_index=True)
+        df = gdm.global_cache.read_parquet(cached_meta_path)
         assert df.order_col.is_monotonic_increasing, 'sanity check'
         fine_grained_meta = df[['dbidx', 'order_col', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
         fine_grained_embedding = df['vectors'].values.to_numpy()
@@ -461,32 +465,28 @@ class MultiscaleIndex(AccessMethod):
             if self.vec_index is not None:
                 print('warning: after subsetting we lose ability to use pre-built index')
 
-        vector_meta = self.vector_meta[mask]
+        vector_meta = self.vector_meta[mask].reset_index(drop=True)
         vectors = self.vectors[mask]
         return MultiscaleIndex(embedding=self.embedding, vectors=vectors, vector_meta = vector_meta, vec_index=None)
         
-
-
 class BoxFeedbackQuery(InteractiveQuery):
     def __init__(self, db):
         super().__init__(db)
-        self.acc_pos = []
-        self.acc_neg = []
+        # self.acc_pos = []
+        # self.acc_neg = []
 
-    def getXy(self, idxbatch, box_dict):
-        batchpos, batchneg = get_pos_negs_all_v2(idxbatch, box_dict, self.db.vector_meta)
+    def getXy(self):
+        pos, neg = get_pos_negs_all_v2(self.label_db.seen, self.label_db, self.index.vector_meta)
  
         ## we are currently ignoring these positives
-        self.acc_pos.append(batchpos)
-        self.acc_neg.append(batchneg)
+        # self.acc_pos.append(batchpos)
+        # self.acc_neg.append(batchneg)
+        # pos = pr.BitMap.union(*self.acc_pos)
+        # neg = pr.BitMap.union(*self.acc_neg)
 
-        pos = pr.BitMap.union(*self.acc_pos)
-        neg = pr.BitMap.union(*self.acc_neg)
-
-        allpos = self.db.vectors[pos]
-        Xt = np.concatenate([allpos, self.db.vectors[neg]])
+        allpos = self.index.vectors[pos]
+        Xt = np.concatenate([allpos, self.index.vectors[neg]])
         yt = np.concatenate([np.ones(len(allpos)), np.zeros(len(neg))])
-
         return Xt,yt
         # not really valid. some boxes are area 0. they should be ignored.but they affect qgt
         # if np.concatenate(acc_results).sum() > 0:
