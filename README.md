@@ -35,3 +35,35 @@ You can map port 9000 to an available host port eg here we map 9000 in the conta
  
 - if you map things as above, a running notebook is available at 
 `http://localhost:8889`  
+
+
+# ui
+To build/develop this one:
+* install node (from website)
+* npm install yarn
+
+
+## Project setup
+```
+yarn install
+```
+
+### Compiles and hot-reloads for development
+```
+yarn serve
+```
+
+
+### Compiles and minifies for production
+```
+yarn build
+```
+
+```
+ yarn build --mode development 
+```
+
+### Lints and fixes files
+```
+yarn lint
+```

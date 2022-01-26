@@ -1,13 +1,16 @@
-import clip
+from seesaw.memory_cache import CacheStub
+from seesaw.query_interface import AccessMethod
+from seesaw.definitions import DATA_CACHE_DIR, parallel_copy
 import pytorch_lightning as pl
 import os
 import multiprocessing as mp
 
-import clip, torch
+import torch
 import PIL
 from operator import itemgetter
 
-from .multigrain import * #SlidingWindow,PyramidTx,non_resized_transform
+import transformers
+
 from .embeddings import * 
 from .vloop_dataset_loaders import EvDataset
 
@@ -23,12 +26,12 @@ import ray
 import shutil
 import math
 
-
 import pyarrow
 from pyarrow import parquet as pq
 import shutil
-
 import io
+
+from ray.data.extensions import TensorArray
 
 
 from .dataset_tools import ExplicitPathDataset
@@ -84,18 +87,42 @@ def trace_emb_jit(output_path):
     print(out.dtype)
     jitmod.save(output_path)
 
+def clip_loader(variant="ViT-B/32"):
+    def fun(device, jit_path=None):
+        if jit_path == None:
+            model, _ = clip.load(variant, device=device, jit=False)
+            ker = NormalizedEmbedding(model.visual)
+        else:
+            ker = torch.jit.load(jit_path, map_location=device)
+
+        return ker
+    return fun
+
+class HGFaceWrapper(nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, images):
+        return self.model.get_image_features(images)
+
+def huggingface_loader(variant="./models/clip-vit-base-patch32"):
+    ## output must be extracted and then normalized
+    def fun(device, jit_path=None):
+        model = transformers.CLIPModel.from_pretrained(variant)
+        return HGFaceWrapper(model)
+
+    return fun
+
 class ImageEmbedding(nn.Module):
     def __init__(self, device, jit_path=None):
         super().__init__()
         self.device = device            
 
-        if jit_path == None:
-            model, _ = clip.load("ViT-B/32", device=device, jit=False)
-            ker = NormalizedEmbedding(model.visual)
-        else:
-            ker = torch.jit.load(jit_path, map_location=device)
+        # if loader_function is None:
+        #     loader_function = clip_loader()
+        ker = huggingface_loader(variant=jit_path)(device)
 
-        
         kernel_size = 224 # changes with variant        
         self.model = SlidingWindow(ker, kernel_size=kernel_size, stride=kernel_size//2,center=True).to(self.device)
 
@@ -157,7 +184,11 @@ class BatchInferModel:
                 vectors = self.model(preprocessed_image=im.unsqueeze(0).to(self.device)).to('cpu').numpy()
                 tup['accs'] = vectors
                 res.append(tup)
-        return postprocess_results(res)
+
+        if len(res) == 0:
+            return []
+        else:
+            return [postprocess_results(res)]
 
 #mcc = mini_coco(None)
 def worker_function(wid, dataset,slice_size,indices, cpus_per_proc, vector_root, jit_path):
@@ -197,19 +228,29 @@ class Preprocessor:
 
         def full_preproc(tup):
             ray_tup = fix_meta(tup)
-            image = PIL.Image.open(io.BytesIO(ray_tup['binary']))
-            ray_tup['image'] = image
+            try:
+                image = PIL.Image.open(io.BytesIO(ray_tup['binary']))
+            except PIL.UnidentifiedImageError:
+                print(f'error parsing binary {ray_tup["file_path"]}')
+                ## some images are corrupted / not copied properly
+                ## it is easier to handle that softly
+                image = None
+
             del ray_tup['binary']
-            return preprocess(ray_tup, factor=pyramid_factor)
+            if image is  None:
+                return [] # empty list ok?
+            else:
+                ray_tup['image'] = image
+                return preprocess(ray_tup, factor=pyramid_factor)
 
         def preproc_batch(b):
             return [full_preproc(tup) for tup in b]
 
-        dl = ray_dataset.pipeline(parallelism=20).map_batches(preproc_batch, batch_size=20)
+        dl = ray_dataset.window(blocks_per_window=20).map_batches(preproc_batch, batch_size=20)
         res = []
         for batch in dl.iter_rows():
             batch_res = self.bim(batch)
-            res.append(batch_res)
+            res.extend(batch_res)
         # dl = DataLoader(txds, num_workers=1, shuffle=False,
         #                 batch_size=1, collate_fn=iden)
         # res = []
@@ -251,16 +292,18 @@ def extract_seesaw_meta(dataset, output_dir, output_name, num_workers, batch_siz
 #     mc = gdm.get_dataset(dataset_name)
 #     mc.preprocess()
 
+
 class SeesawDatasetManager:
-    def __init__(self, root, dataset_name):
+    def __init__(self, root, dataset_name, dataset_path, cache):
         ''' Assumes layout created by create_dataset
         '''
         self.dataset_name = dataset_name
-        self.dataset_root = f'{root}/{dataset_name}'
-        file_meta = pd.read_parquet(f'{self.dataset_root}/file_meta.parquet')
+        self.dataset_root = f'{root}/{dataset_path}'
+        file_meta = cache.read_parquet(f'{self.dataset_root}/file_meta.parquet')
         self.file_meta = file_meta
         self.paths = file_meta['file_path'].values
-        self.image_root = f'{self.dataset_root}/images'
+        self.image_root = os.path.realpath(f'{self.dataset_root}/images/')
+        self.cache = cache
 
     def get_pytorch_dataset(self):
         return ExplicitPathDataset(root_dir=self.image_root, relative_path_list=self.paths)
@@ -268,47 +311,6 @@ class SeesawDatasetManager:
     def __repr__(self):
         return f'{self.__class__.__name__}({self.dataset_name})'
         
-    def preprocess(self, model_path,num_subproc=-1, force=False):
-        ''' Will run a preprocess pipeline and store the output
-            -1: use all gpus
-            0: use one gpu process and preprocessing all in the local process 
-        '''
-        dataset = self.get_pytorch_dataset()
-        jit_path=model_path
-        vector_root = self.vector_path()
-        if os.path.exists(vector_root):
-            i = 0
-            while True:
-                i+=1
-                backup_name = f'{vector_root}.bak.{i:03d}'
-                if os.path.exists(backup_name):
-                    continue
-                else:
-                    os.rename(vector_root, backup_name)
-                    break
-        
-        os.makedirs(vector_root, exist_ok=False)
-
-        if num_subproc == -1:
-            num_subproc = torch.cuda.device_count()
-        
-        jobs = []
-        if num_subproc == 0:
-            worker_function(0, dataset, slice_size=len(dataset), 
-                indices=np.arange(len(dataset)), cpus_per_proc=0, vector_root=vector_root, jit_path=jit_path)
-        else:
-            indices = np.random.permutation(len(dataset))
-            slice_size = int(math.ceil(indices.shape[0]/num_subproc))
-            cpus_per_proc = min(os.cpu_count()//num_subproc,4) if num_subproc > 0 else 0
-
-            for i in range(num_subproc):
-                p = mp.Process(target=worker_function, args=(i,dataset, slice_size, indices, cpus_per_proc, vector_root, jit_path))
-                jobs.append(p)
-                p.start()
-
-            for p in jobs:
-                p.join()
-
     def preprocess2(self, model_path, archive_path=None, archive_prefix='', pyramid_factor=.5):
         dataset = self.get_pytorch_dataset()
         jit_path=model_path
@@ -327,15 +329,8 @@ class SeesawDatasetManager:
         os.makedirs(vector_root, exist_ok=False)
         sds = self
 
-
-        if archive_path is not None:
-            assert archive_path.endswith('.tar')
-            file_system = fsspec.get_filesystem_class('tar')(archive_path)
-            read_paths = (file_system.root_marker + archive_prefix + '/' + sds.paths).tolist()
-        else:
-            real_prefix=f'{os.path.realpath(sds.image_root)}/'
-            file_system = fsspec.get_filesystem_class('file')
-            read_paths = ((real_prefix + sds.paths)).tolist()
+        real_prefix=f'{os.path.realpath(sds.image_root)}/'
+        read_paths = ((real_prefix + sds.paths)).tolist()
             
         read_paths = [os.path.normpath(p) for p in read_paths]
 
@@ -388,7 +383,7 @@ class SeesawDatasetManager:
         qgt.to_parquet(f'{gt_root}/qgt.parquet')
 
     def vector_path(self):
-        return f'{self.dataset_root}/meta/vectors'
+        return f'{self.dataset_root}/indices/{self.index_name}/vectors'
 
     def ground_truth_path(self):
         gt_root = f'{self.dataset_root}/ground_truth/'
@@ -400,17 +395,17 @@ class SeesawDatasetManager:
 
     def load_ground_truth(self):
         assert os.path.exists(f'{self.dataset_root}/ground_truth')
-        qgt = pd.read_parquet(f'{self.dataset_root}/ground_truth/qgt.parquet')
-        box_data = pd.read_parquet(f'{self.dataset_root}/ground_truth/box_data.parquet')
+        qgt = self.cache.read_parquet(f'{self.dataset_root}/ground_truth/qgt.parquet')
+        box_data = self.cache.read_parquet(f'{self.dataset_root}/ground_truth/box_data.parquet')
         box_data, qgt = prep_ground_truth(self.paths, box_data, qgt)
         return box_data, qgt
 
-    def index_path(self):
-        return  f'{self.dataset_root}/meta/vectors.annoy'
-    
-    def load_evdataset(self, *, force_recompute=False, load_coarse=True, load_ground_truth=True) -> EvDataset:
-        cached_meta_path= f'{self.dataset_root}/meta/vectors.sorted.cached'
-        coarse_meta_path= f'{self.dataset_root}/meta/vectors.coarse.cached'
+    def load_evdataset(self, *, index_subpath, force_recompute=False, load_coarse=False, load_ground_truth=False) -> EvDataset:
+
+        vec_path = f'{self.dataset_root}/{index_subpath}/vectors'
+        cached_meta_path= f'{self.dataset_root}/{index_subpath}/vectors.sorted.cached'
+        coarse_meta_path= f'{self.dataset_root}/{index_subpath}/vectors.coarse.cached'
+        vec_index_path = f'{self.dataset_root}/{index_subpath}/vectors.annoy'
 
         if not os.path.exists(cached_meta_path) or force_recompute:
             if os.path.exists(cached_meta_path):
@@ -421,8 +416,8 @@ class SeesawDatasetManager:
             def assign_ids(df):
                 return df.assign(dbidx=df.file_path.map(lambda path : idmap[path]))
 
-            ds = ray.data.read_parquet(self.vector_path(), columns=['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
-            df = pd.concat(ray.get(ds.to_pandas()), axis=0, ignore_index=True)
+            ds = ray.data.read_parquet(vec_path, columns=['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2','vectors'])
+            df = pd.concat(ray.get(ds.to_pandas_refs()), axis=0, ignore_index=True)
             df = assign_ids(df)
             df = df.sort_values(['dbidx', 'zoom_level', 'x1', 'y1', 'x2', 'y2']).reset_index(drop=True)
             df = df.assign(order_col=df.index.values)
@@ -437,7 +432,7 @@ class SeesawDatasetManager:
         print('loading fine embedding...')
         assert os.path.exists(cached_meta_path)
         ds = ray.data.read_parquet(cached_meta_path, columns=['dbidx', 'zoom_level', 'max_zoom_level', 'order_col','x1', 'y1', 'x2', 'y2','vectors'])
-        df = pd.concat(ray.get(ds.to_pandas()),ignore_index=True)
+        df = pd.concat(ray.get(ds.to_pandas_refs()),ignore_index=True)
         assert df.order_col.is_monotonic_increasing, 'sanity check'
         fine_grained_meta = df[['dbidx', 'order_col', 'zoom_level', 'x1', 'y1', 'x2', 'y2']]
         fine_grained_embedding = df['vectors'].values.to_numpy()
@@ -456,7 +451,7 @@ class SeesawDatasetManager:
             coarse_df = pd.read_parquet(coarse_meta_path)
             assert coarse_df.dbidx.is_monotonic_increasing, 'sanity check'
             embedded_dataset = coarse_df['vectors'].values.to_numpy()
-            assert embedded_dataset.shape[0] == self.paths.shape[0]
+            # assert embedded_dataset.shape[0] == self.paths.shape[0], corrupted images are not in embeddding but yes in files
         else:
             embedded_dataset = None
 
@@ -467,11 +462,10 @@ class SeesawDatasetManager:
             box_data = None
             qgt = None
  
-        if os.path.exists(self.index_path()):
-            vec_index = self.index_path() # start actor elsewhere
-        else:
-            vec_index = None
-
+        # if os.path.exists(self.index_path()):
+        #     vec_index = self.index_path() # start actor elsewhere
+        # else:
+        vec_index = None
 
         return EvDataset(root=self.image_root, paths=self.paths, 
             embedded_dataset=embedded_dataset, 
@@ -480,6 +474,7 @@ class SeesawDatasetManager:
             embedding=None,#model used for embedding 
             fine_grained_embedding=fine_grained_embedding,
             fine_grained_meta=fine_grained_meta, 
+            vec_index_path=None,
             vec_index=vec_index)
 
 
@@ -554,18 +549,161 @@ Expected data layout for a seesaw root with a few datasets:
 │           ├── part_000.parquet
 │           └── part_001.parquet
 """
+import sqlite3
+def ensure_db(dbpath):
+    conn_uri = f'file:{dbpath}?nolock=1' # lustre makes locking fail, this should run only from manager though.
+    conn = sqlite3.connect(conn_uri, uri=True)
+    try:
+        cur = conn.cursor()
+        cur.execute('''CREATE TABLE IF NOT EXISTS models(
+                                            m_id INTEGER PRIMARY KEY,
+                                            m_created DATETIME default current_timestamp,
+                                            m_name TEXT UNIQUE,
+                                            m_path TEXT UNIQUE,
+                                            m_constructor TEXT,
+                                            m_origin_path TEXT 
+                                            )''')
+
+        cur.execute('''CREATE TABLE IF NOT EXISTS datasets(
+                                            d_id INTEGER PRIMARY KEY, 
+                                            d_created DATETIME default current_timestamp,
+                                            d_name TEXT UNIQUE,
+                                            d_path TEXT UNIQUE,
+                                            d_origin_path TEXT
+                                            )''')
+
+        cur.execute('''CREATE TABLE IF NOT EXISTS indices(
+                                            i_id INTEGER PRIMARY KEY,
+                                            i_created DATETIME default current_timestamp,
+                                            i_name TEXT,
+                                            i_constructor TEXT, 
+                                            i_path TEXT, 
+                                            d_id INTEGER,
+                                            m_id INTEGER,
+                                            FOREIGN KEY(d_id) REFERENCES datasets(d_id)
+                                            FOREIGN KEY(m_id) REFERENCES models(_id)
+                                            UNIQUE(d_id, i_name)
+                                            )''')
+        conn.commit()
+    finally:
+        conn.close()
+
+
+import pandas as pd
+
+from typing import Optional
+from pydantic import BaseModel
+
+class IndexSpec(BaseModel):
+    d_name:str 
+    i_name:str
+    m_name:Optional[str]
+    c_name:Optional[str] # ground truth category (for lvis benchmark)
+
 class GlobalDataManager:
     def __init__(self, root):
         if not os.path.exists(root):
-            print('creating new data folder')
+            print('creating new root folder')
             os.makedirs(root)
-        else:
-            assert os.path.isdir(root)
-            
-        self.root = root
-        
+
+        self.root = os.path.abspath(root)
+        self.data_root = f'{root}/data/'
+        self.model_root = f'{root}/models/'
+        self.index_root = f'{root}/indices/'
+        self.global_cache = CacheStub('actor#cache')
+
+        paths = [self.data_root, self.model_root, self.index_root]
+        for p in paths:
+            os.makedirs(p, exist_ok=True)
+
+        self.dbpath = f'{root}/meta.sqlite'
+        self.dburi = f'file:{self.dbpath}?nolock=1'
+        ensure_db(self.dbpath)
+
+    def _get_connection(self):
+        return sqlite3.connect(self.dburi, uri=True)
+
+    def _fetch(self, sql, *args, mode='plain', **kwargs):
+        try:
+            conn = self._get_connection()
+            if mode == 'dict':
+                conn.row_factory = sqlite3.Row
+                tups =  conn.execute(sql, *args, **kwargs).fetchall()
+                return [dict(tup) for tup in tups]
+            elif mode == 'plain':
+                return conn.execute(sql, *args, **kwargs).fetchall()
+            elif mode == 'df':
+                return pd.read_sql_query(sql, conn)
+        finally:
+            conn.close()
+
+    def _fetch_unique(self, *args, **kwargs):
+        tups = self._fetch(*args, **kwargs)
+        assert len(tups) == 1
+        return tups[0]    
+
     def list_datasets(self):
-        return [f for f in os.listdir(self.root) if not f.startswith('_')]
+        tups = self._fetch('''
+                    select d_name from datasets
+                    order by d_id
+        ''')
+        return [t[0] for t in tups]
+    
+    def list_indices(self):
+        df = self._fetch('''
+            select d_name, i_name, m_name from indices, datasets, models
+                    where datasets.d_id == indices.d_id
+                    and models.m_id == indices.m_id
+                    order by datasets.d_id, i_id
+        ''', mode='df')
+
+        recs = df.to_dict(orient='records')
+        return [IndexSpec(**d) for d in recs]
+
+    def get_index_construction_data(self, dataset_name, index_name):
+        return self._fetch_unique('''select i_constructor, i_path, m_name from indices,models,datasets 
+                        where d_name == ? and i_name == ? 
+                            and indices.d_id == datasets.d_id
+                            and indices.m_id == models.m_id
+                        ''', (dataset_name, index_name))
+
+    def load_index(self, dataset_name, index_name) -> AccessMethod:
+        cons_name, data_path, model_name = self.get_index_construction_data(dataset_name, index_name)
+        return AccessMethod.restore(self, cons_name, data_path, model_name)
+
+    def _get_model_path(self, model_name : str) -> str :
+        return self._fetch_unique('''select m_path from models where m_name == ?''', (model_name,))[0]
+
+    def _create_model_actor(self, model_name : str, actor_name : str):
+        if not torch.cuda.is_available():
+            device = 'cpu'
+            num_gpus = 0
+            num_cpus = 4
+        else:
+            device = 'cuda:0'
+            num_gpus = .3
+            num_cpus = 2
+
+        m_path = self._get_model_path(model_name)
+        full_path = f'{self.root}/{m_path}'
+        print(full_path)
+
+        r = (ray.remote(HGWrapper)
+                .options(name=actor_name, num_gpus=num_gpus, num_cpus=num_cpus, lifetime='detached')
+                .remote(path=full_path, device=device))
+        
+        return r
+
+    def get_model_actor(self, model_name : str):
+        actor_name = 'model_manager#{model_name}'
+    
+        try:
+            return ModelService(ray.get_actor(name=actor_name))
+        except ValueError:
+            pass # handle this specific error due to actor not existing
+
+        return ModelService(self._create_model_actor(model_name, actor_name))
+
     
     def create_dataset(self, image_src, dataset_name, paths=[]) -> SeesawDatasetManager:
         '''
@@ -578,7 +716,7 @@ class GlobalDataManager:
         assert dataset_name not in self.list_datasets(), 'dataset with same name already exists'
         image_src = os.path.realpath(image_src)
         assert os.path.isdir(image_src)
-        dspath = f'{self.root}/{dataset_name}'
+        dspath = f'{self.data_root}/{dataset_name}'
         assert not os.path.exists(dspath), 'name already used'
         os.mkdir(dspath)
         image_path = f'{dspath}/images'
@@ -587,15 +725,24 @@ class GlobalDataManager:
             paths = list_image_paths(image_src)
             
         df = pd.DataFrame({'file_path':paths})
+
+        ## use file name order to keep things intuitive
+        df = df.sort_values('file_path').reset_index(drop=True)
         df.to_parquet(f'{dspath}/file_meta.parquet')
         return self.get_dataset(dataset_name)
-            
-    def get_dataset(self, dataset_name) -> SeesawDatasetManager:
-        assert dataset_name in self.list_datasets(), 'must create it first'
-        ## TODO: cache this representation
-        return SeesawDatasetManager(self.root, dataset_name)                
-        
+    
+    def _fetch_dataset_path(self, dataset_name):
+        d_path = self._fetch_unique(''' 
+                select d_path from datasets where d_name == ?
+        ''', (dataset_name,))[0]
+        return d_path
 
+    def get_dataset(self, dataset_name) -> SeesawDatasetManager:
+        all_ds = self.list_datasets()
+        assert dataset_name in all_ds, f'{dataset_name} not found in {all_ds}'
+        d_path = self._fetch_dataset_path(dataset_name)
+        return SeesawDatasetManager(self.root, dataset_name, d_path, self.global_cache)
+        
     def clone(self, ds = None, ds_name = None, clone_name : str = None) -> SeesawDatasetManager:
         assert ds is not None or ds_name is not None
         if ds is None:
@@ -610,7 +757,7 @@ class GlobalDataManager:
                     break
 
         assert clone_name is not None
-        shutil.copytree(src=ds.dataset_root, dst=f'{self.root}/{clone_name}', symlinks=True)
+        shutil.copytree(src=ds.dataset_root, dst=f'{self.data_root}/{clone_name}', symlinks=True)
         return self.get_dataset(clone_name)
 
     def clone_subset(self, ds=None, ds_name=None, 
@@ -649,10 +796,7 @@ class GlobalDataManager:
 
 def prep_ground_truth(paths, box_data, qgt):
     """adds dbidx column to box data, sets dbidx in qgt and sorts qgt by dbidx
-    """
-    orig_box_data = box_data
-    orig_qgt = qgt
-    
+    """    
     path2idx = dict(zip(paths, range(len(paths))))
     mapfun = lambda x : path2idx.get(x,-1)
     box_data = box_data.assign(dbidx=box_data.file_path.map(mapfun).astype('int'))
@@ -674,7 +818,6 @@ import random
 import os
 import sys
 import time
-import pynndescent
 
 def build_annoy_idx(*, vecs, output_path, n_trees):
     start = time.time()
@@ -690,6 +833,8 @@ def build_annoy_idx(*, vecs, output_path, n_trees):
 
 
 def build_nndescent_idx(vecs, output_path, n_trees):
+    import pynndescent
+
     start = time.time()
     ret = pynndescent.NNDescent(vecs.copy(), metric='dot', n_neighbors=100, n_trees=n_trees,
                                 diversify_prob=.5, pruning_degree_multiplier=2., low_memory=False)
@@ -701,28 +846,18 @@ def build_nndescent_idx(vecs, output_path, n_trees):
     pickle.dump(ret, file=open(output_path, 'wb'))
     return difftime
 
-import annoy
+import shutil
 class VectorIndex:
-    def __init__(self, *, load_path, copy_to_tmpdir=False, prefault=False):
+    def __init__(self, *, base_dir, load_path, copy_to_tmpdir : bool, prefault=False):
         t = annoy.AnnoyIndex(512, 'dot')
         self.vec_index = t
         if copy_to_tmpdir:
-            tmpdir = os.environ.get('TMPDIR')
-            assert tmpdir is not None, 'need a tmpdir for copying'
-            fname = load_path.replace('/', '_')
-            tmp_load_path = f'{tmpdir}/{fname}'
-            print(f'copying file {load_path} to {tmp_load_path} for faster mmap...')
-            shutil.copy2(load_path, tmp_load_path)
-            print('done copying...')
-            actual_load_path = tmp_load_path
+            print('cacheing first', base_dir, DATA_CACHE_DIR, load_path)
+            actual_load_path = parallel_copy(base_dir=base_dir, cache_dir=DATA_CACHE_DIR, rel_path=load_path)
         else:
             print('loading directly')
-            actual_load_path = load_path
+            actual_load_path = f'{base_dir}/{load_path}'
 
-        if prefault:
-            print('prefaulting vector store...')
-        else:
-            print('not prefaulting ')
         t.load(actual_load_path, prefault=prefault)
         print('done loading')
 
