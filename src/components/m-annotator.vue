@@ -143,6 +143,7 @@ export default {
         paper.view.draw();
         this.load_current_box_data();
 
+
         if (!this.read_only) {
             this.setup_box_drawing_tool(paper);
         }
@@ -150,16 +151,20 @@ export default {
         paper.view.draw();
         paper.view.update();
     },
-    setup_box_drawing_tool : function(paper) {
-      let tool = paper.tool;
-      let makeRect = (from,to) => {
-          let r = new paper.Path.Rectangle(from,to);
+    draw_full_frame_box(){
+      // implement me
+    },
+    makeRect(from, to){
+          let r = new this.paper.Path.Rectangle(from, to);
           r.strokeColor = 'green';
           r.strokeWidth = 2;
           r.data.state = null;
           r.selected = false;
           return r;
-      }
+    },
+    setup_box_drawing_tool : function(paper) {
+      let tool = paper.tool;
+      let makeRect = this.makeRect; // needed for => 
 
       tool.onMouseDown = (e) => {
           let hit_opts = {segments: true,

@@ -211,6 +211,8 @@ export default {
               }
             },
     mounted (){
+        console.log('Vue App object avail in window.VueApp');
+        window.VueApp = this;
         fetch('/api/getstate', {cache: "reload"})
             .then(response => response.json())
             .then(this._update_client_data)
