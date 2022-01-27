@@ -121,7 +121,7 @@ export default {
     clear_activation: function(){
         while (this.activation_paths.length !== 0){
             var path = this.activation_paths.pop(); 
-            path.remove(); 
+            path.remove();
         }
     }, 
     rescale_box : function(box, height_scale, width_scale) {

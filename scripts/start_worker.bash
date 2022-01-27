@@ -4,8 +4,6 @@ set -x
 cd /home/gridsan/$USER/seesaw/scripts/
 
 TMPNAME=/state/partition1/user/$USER/raytmp/
-HEAD_ADDRESS=$1
-OTHER_FLAGS=$2 # pass --block if needed
 
 OBJ_MEM_GB=64 # cpu work nodes have around 94, gpu nodes have 79  
 OBJ_MEM_BYTES=$(( $OBJ_MEM_GB*(2**30) ))
