@@ -22,7 +22,7 @@
       <input 
         class="form-check-input" 
         type="checkbox" 
-        :disabled="read_only" 
+        disabled 
         v-model="this.imdata.marked_accepted"
       > 
       <!-- we use the save method to sync state, so we disable this for the small vue -->
@@ -65,9 +65,11 @@ export default {
         console.log('saving state from paper to local imdata ')
         if (boxes.length == 0){
             this.imdata.boxes = null;
+            this.imdata.marked_accepted = false;
             console.log('length 0 reverts to null right now')
         } else {
             this.imdata.boxes = boxes;
+            this.imdata.marked_accepted = true;
         }
     },
     get_latest_imdata(){
@@ -217,7 +219,7 @@ export default {
       }
 
       tool.onMouseUp = () => {
-        //   this.save_current_box_data(); // auto save upon finishing changes
+          this.save() //_current_box_data(); // auto save upon finishing changes
       };
 
       tool.onKeyUp = (e) => {
@@ -226,6 +228,7 @@ export default {
               return;
           } else if (e.key === 'd') { // auto save upon deletion
               preselected.forEach(r => r.remove());
+              this.save(); // want to know if mark accept or not
             // this.save_current_box_data();
           } else {
               return;
