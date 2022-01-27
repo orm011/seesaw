@@ -1,9 +1,9 @@
 #! /bin/bash
 set -x
 
-cd /home/gridsan/omoll/seesaw/scripts/
+cd /home/gridsan/$USER/seesaw/scripts/
 
-TMPNAME=/state/partition1/user/omoll/raytmp/
+TMPNAME=/state/partition1/user/$USER/raytmp/
 
 OBJ_MEM_GB=64 # cpu work nodes have around 94, gpu nodes have 79  
 OBJ_MEM_BYTES=$(( $OBJ_MEM_GB*(2**30) ))

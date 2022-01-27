@@ -24,8 +24,18 @@
         type="checkbox" 
         :disabled="read_only" 
         v-model="this.imdata.marked_accepted"
-      > 
+      >
       <!-- we use the save method to sync state, so we disable this for the small vue -->
+    </div>
+    <div
+        class="form-check activation-check">
+        <input
+            class="form-check-input"
+            type="checkbox"
+            id="activation-checkbox"
+            v-model="this.show_activation"
+            @change="this.activation_press()"
+        >
     </div>
   </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
@@ -42,7 +52,9 @@ export default {
   data : function() {
         return {height_ratio:null, width_ratio:null, 
                 paper: null, 
-                imdata : this.initial_imdata }
+                imdata : this.initial_imdata,  
+                show_activation : false,
+                activation_paths : []}
   },
   created : function (){
       console.log('created annotator')
@@ -51,8 +63,67 @@ export default {
         this.paper = new paper.PaperScope();
         new paper.Tool(); // also implicitly adds tool to paper scope
         console.log('mounted annotator')
+
+        this.paper2 = new paper.PaperScope(); 
+        new paper.Tool(); 
+        
   },
   methods : {
+    activation_press: function(){
+        if (this.show_activation){
+            this.draw_activation(); 
+        } else {
+            this.clear_activation(); 
+        }
+    }, 
+    draw_activation: function(){
+        let img = this.$refs.image;         
+        let container = this.$refs.container;
+        
+        let height = img.height;
+        let width = img.width;
+        // when the image has no max size, the container div 
+        // ends up with a size of 0, and centering the element
+        // does not seem to work
+        container.style.setProperty('width', width + 'px')
+        container.style.setProperty('height', height + 'px')
+        img.style.setProperty('display', 'block')
+
+        let paper = this.paper2;
+        let cnv = this.$refs.canvas;
+        cnv.height = height;
+        cnv.width = width;
+        paper.setup(cnv);
+        paper.view.draw();
+
+        var activation = this.imdata.activation; 
+        var activation = [[.5, .2, 0], 
+                        [.2, .1, 0], 
+                        [.1, 0, 0]]; 
+        var square_width = this.$refs.image.width / activation[0].length; 
+        var square_height = this.$refs.image.height / activation.length; 
+        for (var x = 0; x < activation[0].length; x++){
+            for (var y = 0; y < activation.length; y++){
+                let paper_style = ['Rectangle', square_width * x, square_height * y, square_width, square_height];
+                let rect = paper.Rectangle.deserialize(paper_style)
+                let r = new paper.Path.Rectangle(rect);
+                r.fillColor = 'red'; 
+                r.strokeWidth = 0; 
+                r.opacity = activation[y][x]
+                this.activation_paths.push(r); 
+            }
+        } 
+        
+        paper.view.draw();
+        paper.view.update();
+      
+    }, 
+    clear_activation: function(){
+        while (this.activation_paths.length !== 0){
+            var path = this.activation_paths.pop(); 
+            path.remove();
+        }
+    }, 
     rescale_box : function(box, height_scale, width_scale) {
           let {x1,x2,y1,y2} = box;
           return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale};
@@ -256,6 +327,12 @@ export default {
 }
 </script>
 <style scoped>
+.activation-check {
+    position: absolute; 
+    bottom: 10px; 
+    left: 10px; 
+}
+
 .annotator_div {
     position:relative;
     margin:0px;
