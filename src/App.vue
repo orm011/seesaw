@@ -91,32 +91,6 @@
               Load Session
             </button>
           </div>
-
-          <!-- <div class='row'>
-        <ul class="nav flex-column">
-          <li v-for="(dataset_name,idx) in indices" :key="idx" class="nav-item">
-            <a  :class="`nav-link ${(dataset_name === current_index) ? 'active' : ''}`" aria-current="page" href="#" 
-              @click="reset(dataset_name)">
-              {{dataset_name}}
-            </a>
-          </li>
-        </ul>
-        </div> -->
-          <div
-            v-if="refmode"
-            class="row"
-          >
-            <label for="reference category">(DEBUG) pick ground truth category:</label>
-            <select v-model="current_category">
-              <option
-                v-for="(cat,idx) in ['', ...reference_categories]"
-                :key="idx"
-                :value="cat"
-              >
-                {{ cat }}
-              </option>
-            </select>
-          </div>
         </div>
       </nav>
       <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
@@ -169,18 +143,6 @@
           :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
         />
       </div>
-      <!-- <div class="row">
-        <button
-          v-if="refmode"
-          class="btn btn-dark bton-block"
-          @click="$emit('copy-ref', selection)"
-        > 
-          Autofill ({{ initial_imdata[selection].refboxes.length }} boxes)
-        </button> -->
-        <!-- <button v-if="refmode" class="btn btn-dark bton-block" @click="copyref(selection)"> 
-            Mark not-relevant
-        </button> -->
-      <!-- </div> -->
     </m-modal>
   </div>  
 </template>
