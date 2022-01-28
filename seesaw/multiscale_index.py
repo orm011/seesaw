@@ -327,12 +327,16 @@ class MultiscaleIndex(AccessMethod):
     def from_path(gdm : GlobalDataManager, index_subpath : str, model_name :str):
         embedding = gdm.get_model_actor(model_name)
         cached_meta_path= f'{gdm.root}/{index_subpath}/vectors.sorted.cached'
-        vec_index_path = f'{index_subpath}/vectors.annoy'
+        
+        relpath = f'{index_subpath}/vectors.annoy'
+        fullpath = f'{gdm.root}/{relpath}'
 
-        if os.path.exists(vec_index_path):
-          vec_index = VectorIndex(base_dir=gdm.root, load_path=vec_index_path, copy_to_tmpdir=True, prefault=True)
+        print(f'looking for vector index in {fullpath}')
+        if os.path.exists(fullpath):
+          print('using optimized index...')
+          vec_index = VectorIndex(base_dir=gdm.root, load_path=relpath, copy_to_tmpdir=True, prefault=True)
         else:
-          print('no optimized index found... using vectors')
+          print('index file not found... using vectors')
           vec_index = None
 
         assert os.path.exists(cached_meta_path)
