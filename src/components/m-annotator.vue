@@ -76,48 +76,27 @@ export default {
             this.clear_activation(); 
         }
     }, 
+    toggle_activation() {
+        this.show_activation = !this.show_activation
+        this.activation_press();
+    },
     draw_activation: function(){
-        let img = this.$refs.image;         
-        let container = this.$refs.container;
-        
-        let height = img.height;
-        let width = img.width;
-        // when the image has no max size, the container div 
-        // ends up with a size of 0, and centering the element
-        // does not seem to work
-        container.style.setProperty('width', width + 'px')
-        container.style.setProperty('height', height + 'px')
-        img.style.setProperty('display', 'block')
-
         let paper = this.paper2;
-        let cnv = this.$refs.canvas;
-        cnv.height = height;
-        cnv.width = width;
-        paper.setup(cnv);
-        paper.view.draw();
+        for (let b of this.initial_imdata.activations){
+          let boxdict = b.box
+          let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
+          let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
+          let rect = paper.Rectangle.deserialize(paper_style)
+          let r = new paper.Path.Rectangle(rect);
+          r.fillColor = 'red'; 
+          r.strokeWidth = 0; 
+          r.opacity = b.score
+          this.activation_paths.push(r); 
+        }
 
-        var activation = this.imdata.activation; 
-        var activation = [[.5, .2, 0], 
-                        [.2, .1, 0], 
-                        [.1, 0, 0]]; 
-        var square_width = this.$refs.image.width / activation[0].length; 
-        var square_height = this.$refs.image.height / activation.length; 
-        for (var x = 0; x < activation[0].length; x++){
-            for (var y = 0; y < activation.length; y++){
-                let paper_style = ['Rectangle', square_width * x, square_height * y, square_width, square_height];
-                let rect = paper.Rectangle.deserialize(paper_style)
-                let r = new paper.Path.Rectangle(rect);
-                r.fillColor = 'red'; 
-                r.strokeWidth = 0; 
-                r.opacity = activation[y][x]
-                this.activation_paths.push(r); 
-            }
-        } 
-        
         paper.view.draw();
         paper.view.update();
-      
-    }, 
+    },
     clear_activation: function(){
         while (this.activation_paths.length !== 0){
             var path = this.activation_paths.pop(); 

@@ -438,6 +438,7 @@ class MultiscaleIndex(AccessMethod):
         nframes = len(candidate_id)
         dbidxs = np.zeros(nframes)*-1
         dbscores = np.zeros(nframes)
+        activations = []
 
         ## for each frame, compute augmented scores for each tile and record max
         for i,(dbidx,frame_vec_meta) in enumerate(scmeta.groupby('dbidx')):
@@ -449,10 +450,13 @@ class MultiscaleIndex(AccessMethod):
                 tup = frame_vec_meta.iloc[j:j+1]
                 boxscs[j] = augment_score2(db, tup, qvec, relmeta, relvecs, rw_coarse=rel_weight_coarse)
 
+            frame_activations = frame_vec_meta.assign(score=boxscs)[['x1', 'y1', 'x2', 'y2', 'dbidx', 'score']]
+            activations.append(frame_activations)
             dbscores[i] = np.max(boxscs)
 
         topkidx = np.argsort(-dbscores)[:topk]
-        return dbidxs[topkidx].astype('int'), nextstartk # return fullmeta 
+        return {'dbidxs':dbidxs[topkidx].astype('int'), 'nextstartk':nextstartk, 
+                'activations':[activations[idx] for idx in topkidx]}
 
     def new_query(self):
         return BoxFeedbackQuery(self)

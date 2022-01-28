@@ -301,7 +301,7 @@ export default {
           } else if (ev.code == 'Escape') {
             this.close_modal()
           } else if (ev.code == 'Space'){
-            this.accept_whole_image();
+            this.$refs.annotator.toggle_activation()
           }
     },
     handle_arrow(delta){

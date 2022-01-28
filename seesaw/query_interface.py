@@ -91,11 +91,12 @@ class InteractiveQuery(object):
         batch_size = kwargs.get('batch_size')
         del kwargs['batch_size']
             
-        idxs, nextstartk = self.index.query(*args, topk=batch_size, **kwargs, exclude=self.returned, startk=self.startk)
+        res =  self.index.query(*args, topk=batch_size, **kwargs, exclude=self.returned, startk=self.startk)
         # assert nextstartk >= self.startk nor really true: if vector changes a lot, 
-        self.startk = nextstartk
-        self.returned.update(idxs)
-        return idxs, nextstartk
+        self.startk = res['nextstartk']
+        self.returned.update(res['dbidxs'])
+        del res['nextstartk']
+        return res
 
     def getXy(self):
         raise NotImplementedError('abstract')

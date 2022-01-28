@@ -55,7 +55,9 @@ class CoarseIndex(AccessMethod):
             topk = len(included)
 
         assert mode == 'dot'
-        vecs = self.vectors[self.vector_meta.dbidx.isin(included)]
+
+        metas = self.vector_meta.dbidx.isin(included)
+        vecs = self.vectors[metas]
                 
         if vector is None:
             scores = np.random.randn(vecs.shape[0])
@@ -64,6 +66,7 @@ class CoarseIndex(AccessMethod):
 
         maxpos = np.argsort(-scores)[:topk]
         dbidxs = np.array(included)[maxpos]
+        #metas = metas.iloc[maxpos][['x1', 'y1', ]]
         scores = scores[maxpos]
 
         ret = dbidxs
@@ -73,7 +76,7 @@ class CoarseIndex(AccessMethod):
         assert ret.shape[0] == topk  # return quantity asked, in theory could be less
         assert sret.intersection_cardinality(exclude) == 0  # honor exclude request
 
-        return ret, len(exclude) + ret.shape[0]
+        return {'dbidxs':ret, 'nextstartk':len(exclude) + ret.shape[0], 'activations':None}
 
     def new_query(self):
         return CoarseQuery(self)
