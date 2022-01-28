@@ -39,8 +39,7 @@ class Box(BaseModel):
     y1 : float
     x2 : float
     y2 : float
-    category : Optional[str] # used for sending ground truth data only, so we can filter by category on the client.
-
+    
 class LabelDB:
   def __init__(self):
     self.ldata = {}

@@ -109,10 +109,9 @@
             <m-image-gallery
               ref="galleries"
               v-if="imdata.length > 0"
-              :initial_imdata="filter_boxes(imdata, current_category)"
+              :initial_imdata="imdata"
               :imdata_keys="imdata.map((imdat) => get_vue_key(imdat.dbidx))"
               @selection="handle_selection_change({gdata_idx:idx, local_idx:$event})"
-              :refmode="refmode"
             />
           </div>
           <div class="row space" />
@@ -162,13 +161,11 @@ export default {
                                           }, 
                                 indices : [] 
                               },
-                current_category : null,
                 current_index : null,
                 session_path : null,
                 selection: null, 
                 text_query:null,
                 imdata_knum : {},
-                refmode : false,
                 keys : {}
               }
             },
@@ -209,17 +206,6 @@ export default {
               return total;
             };
             return this.client_data.session.gdata.map(annot_per_list).reduce((a,b)=>a+b, 0)
-        },
-        filter_boxes(imdata, category){
-          let out = []
-          for (const ent of imdata){
-            let outent = {...ent};
-            if (ent.refboxes != null){
-              outent.refboxes = ent.refboxes.filter((b) => b.category === category || category === '');
-            }
-            out.push(outent);
-          }
-          return out
         },
         get_nth_idcs(global_idx){
           var rem = global_idx;
@@ -303,12 +289,6 @@ export default {
           console.log('data_update', imdata)
           this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx] = imdata;
           this.incr_vue_key(imdata.dbidx)
-        },
-        copy_ref(gdata_idx, panel_idx){
-          let refboxes = this.client_data.session.gdata[gdata_idx][panel_idx].refboxes;
-          let frefboxes = refboxes.filter((b) => b.category === this.current_category || this.current_category === '')
-          let newboxes = frefboxes.length == 0 ? null : frefboxes
-          this.client_data.session.gdata[gdata_idx][panel_idx].boxes = newboxes
         },
         _update_client_data(data, reset = false){
           console.log('current data', this.$data);

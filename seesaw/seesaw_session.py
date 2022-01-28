@@ -176,9 +176,7 @@ class Imdata(BaseModel):
     dbidx : int
     boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
     activations : Optional[List[ActivationData]]
-    refboxes : Optional[List[Box]]
     marked_accepted : bool
-
 
 class SessionState(BaseModel):
     params : SessionParams
@@ -275,7 +273,7 @@ class Session:
                 del row['score']
                 activations.append(ActivationData(box=Box(**row), score=score))
 
-            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, refboxes=None, marked_accepted=dbidx in self.accepted, activations=activations)
+            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, marked_accepted=dbidx in self.accepted, activations=activations)
             reslabs.append(elt)
         return reslabs
 
