@@ -48,13 +48,15 @@ import paper from 'paper/dist/paper-core';
 export default { 
   name: "MAnnotator", // used by ipyvue?
   props: ['initial_imdata', 'read_only'],
-  emits: ['cclick'],
+  emits: ['cclick', 'selection'],
   data : function() {
         return {height_ratio:null, width_ratio:null, 
                 paper: null, 
                 imdata : this.initial_imdata,  
                 show_activation : false,
-                activation_paths : []}
+                activation_paths : [],
+                annotation_paper_objs : [] // {box, description}
+              }
   },
   created : function (){
       console.log('created annotator')
@@ -104,14 +106,19 @@ export default {
         }
     }, 
     rescale_box : function(box, height_scale, width_scale) {
-          let {x1,x2,y1,y2} = box;
-          return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale};
+          let {x1,x2,y1,y2,...rest} = box;
+          return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale, ...rest};
+    },
+    paper2imdata(paper_box){
+      // {box:path, annotation:str}
+      let b = paper_box.box.bounds;       
+      let ret = {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}
+      ret.description = paper_box.description.content;
+      return this.rescale_box(ret, this.height_ratio, this.width_ratio)
     },
     save : function() {
         let paper = this.paper
-        let boxes = (paper.project.getItems({className:'Path'})
-                          .map(x =>  {let b = x.bounds; return {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}})
-                          .map(box => this.rescale_box(box, this.height_ratio, this.width_ratio)))
+        let boxes = this.annotation_paper_objs.map(this.paper2imdata);
         console.log('saving state from paper to local imdata ')
         if (boxes.length == 0){
             this.imdata.boxes = null;
@@ -142,8 +149,15 @@ export default {
             r.strokeWidth = 2;
             r.data.state = null;
             r.selected = false;
-            console.log('drew rect ', r)
-            }
+
+            let text = new paper.PointText(new paper.Point(rdict.x1, rdict.y1));
+            text.justification = 'left';
+            text.fillColor = 'red';
+            text.content = boxdict.description;
+
+            let annot_obj = {box:r, description:text};
+            this.annotation_paper_objs.push(annot_obj);
+          }
       }
     },
     hover : function (start) {
@@ -224,29 +238,41 @@ export default {
                           fill: true,
                           class : paper.Path,
                           tolerance: 10};
-
+            console.log('mouse down')
           let hr = paper.project.hitTest(e.point, hit_opts);
           let preselected = paper.project.getSelectedItems()
           preselected.map(r => r.selected = false); // unselect previous
 
           let rect = null;
           if (hr == null && preselected.length > 0){
+              this.$emit('selection', null);
               return ;
-          } else if (hr == null){
+          } else if (hr == null){ // make a new one
               rect = makeRect(e.point.subtract(new paper.Size(1,1)),
                               e.point);
+              let text = new paper.PointText(e.point);
+              text.justification = 'left';
+              text.fillColor = 'red';
+              text.content = ''
+              let sel = {box:rect, description:text};
+              this.annotation_paper_objs.push(sel)
           } else { // existing rect
-            //  console.log(hr.item);
               rect = hr.item;
           }
 
-          rect.selected=true; // select this
+          rect.selected=true; // mark selected
+          let cur_sel = this.annotation_paper_objs.filter((obj) => obj.box.selected)
+          if (cur_sel.length == 1){
+            this.$emit('selection', cur_sel[0]);
+          } else {
+            console.log('multiple/zero selected items')
+          }
 
           if (hr != null && hr.type === 'stroke') {
               rect.data.state = 'moving';
               return;
-          }
-
+          } 
+          
           if (hr == null || hr.type === 'segment') {
               rect.data.state = 'resizing';
               let r = rect.bounds
@@ -273,17 +299,31 @@ export default {
       };
 
       tool.onKeyUp = (e) => {
-          let preselected = paper.project.getSelectedItems();
-          if (preselected.length === 0){
-              return;
-          } else if (e.key === 'd') { // auto save upon deletion
-              preselected.forEach(r => r.remove());
-              this.save(); // want to know if mark accept or not
-            // this.save_current_box_data();
-          } else {
-              return;
-          }
-      }
+        //   if (this.being_edited == null){
+        //   let preselected = paper.project.getSelectedItems();
+        //   if (preselected.length === 0){
+        //       return;
+        //   } else if (e.key === 'd') { // auto save upon deletion
+        //       preselected.forEach(r => r.remove());
+        //       this.save(); // want to know if mark accept or not
+        //     // this.save_current_box_data();
+        //   } 
+        //   else if (e.key == 'enter'){
+        //       // if (preselected.length == 1){
+        //       //   let item = preselected[0];
+        //       //   let matched = this.annotation_paper_objs.filter(x => x.box == item);
+        //       //   if (matched.length == 1){
+        //       //       this.being_edited = matched[0];
+        //       //   }
+        //       // } else{
+        //       //   console.log('need at least one selected')
+        //       // }
+        //   }
+        //    else {
+        //       return;
+        //   }
+        // } else{ 
+        }
 
       tool.onMouseDrag = (e) => {
            // console.log('drag');
@@ -304,6 +344,8 @@ export default {
               }
           }
       };
+
+    console.log('finished setting up box annotation tool ')
     }
     }
 }
@@ -324,7 +366,6 @@ export default {
     /* height:fit-content; */
     /* display:inline-block;*/  /* let this decision be done elsewhere, just like with an image */
 }
-
 
 .annotator_image {
     /* max-width:100%; */

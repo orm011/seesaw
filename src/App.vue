@@ -139,9 +139,18 @@
           ref="annotator"
           :initial_imdata="this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx]"
           :read_only="false"
+          @selection="handleAnnotatorSelectionChange($event)"
           :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
         />
       </div>
+      <div 
+        class="description-box"
+      >
+        <input v-if="annotator_text_pointer != null"
+            class="text-input" 
+            v-model="annotator_text"
+        >
+    </div>
     </m-modal>
   </div>  
 </template>
@@ -158,7 +167,7 @@ export default {
     data () { return { 
                 client_data : { session : { params :{ index_spec : {d_name:'', i_name:'', m_name:''}}, 
                                             gdata : [] 
-                                          }, 
+                                          },
                                 indices : [] 
                               },
                 current_index : null,
@@ -166,7 +175,9 @@ export default {
                 selection: null, 
                 text_query:null,
                 imdata_knum : {},
-                keys : {}
+                keys : {},
+                annotator_text : '',
+                annotator_text_pointer : null
               }
             },
     mounted (){
@@ -241,8 +252,22 @@ export default {
       
       this.selection = new_selection;
     },
+    handleAnnotatorSelectionChange(ev){
+      console.log('annotator sel change', ev)
+      if (this.annotator_text_pointer != null){ // save form state into paper box
+          this.annotator_text_pointer.description.content = this.annotator_text
+      }
+
+      if (ev != null){ 
+        this.annotator_text_pointer = ev
+        this.annotator_text = this.annotator_text_pointer.description.content;
+      } else {
+        this.annotator_text_pointer = null;
+      }
+    },
     handleModalKeyUp(ev){
-          console.log('within modalKeyUp handler', ev)
+        console.log('within modalKeyUp handler', ev)
+        if (this.annotator_text_pointer == null){ // ie if text is being entered ignore this
           if (ev.code === 'ArrowLeft' || ev.code === 'ArrowRight'){
             let delta = (ev.code === 'ArrowLeft') ? -1 : 1
             this.handle_arrow(delta);
@@ -250,7 +275,15 @@ export default {
             this.close_modal()
           } else if (ev.code == 'Space'){
             this.$refs.annotator.toggle_activation()
+          } 
+        } else {
+          if (ev.code == 'Escape'){
+            this.handleAnnotatorSelectionChange(null) // save text
+            this.close_modal();
+          } else if (ev.code == 'Enter'){ // show the text in the
+            this.handleAnnotatorSelectionChange(this.annotator_text_pointer) 
           }
+        }
     },
     handle_arrow(delta){
       if (this.selection  != null){

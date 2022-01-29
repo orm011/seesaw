@@ -49,7 +49,8 @@ def add_routes(app : FastAPI):
           self.gdm = GlobalDataManager(root_dir)
           self.indices = self.gdm.list_indices()
           self.params = SessionParams(index_spec=self.indices[0],
-                                    interactive='pytorch', 
+                                    # interactive='pytorch', 
+                                    interactive='textual', 
                                     warm_start='warm', batch_size=3, 
                                     minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
                                     num_epochs=2, model_type='multirank2')
