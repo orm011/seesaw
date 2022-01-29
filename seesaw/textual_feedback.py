@@ -162,9 +162,7 @@ def closure(idx : AccessMethod, qgt : pd.DataFrame, search_query, max_n, firsts,
         if gtvals.sum() > 0 or len(accstrs) > max_n:
             break
 
-    #     vcs = ev.embedded_dataset[idxbatch]
-    #     astrs = actual_strings    
-        vcs = ev.embedded_dataset[np.concatenate(dbidxs)]
+        vcs = bfq.embedded_dataset[np.concatenate(dbidxs)]
         astrs = accstrs
 
         if show_display:

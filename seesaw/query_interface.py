@@ -39,13 +39,13 @@ class Box(BaseModel):
     y1 : float
     x2 : float
     y2 : float
+    description: Optional[str]
     
 class LabelDB:
   def __init__(self):
     self.ldata = {}
 
-  @property
-  def seen(self):
+  def get_seen(self):
     return pr.BitMap(self.ldata.keys()) 
 
   def put(self, dbidx : int, boxes : List[Box]):

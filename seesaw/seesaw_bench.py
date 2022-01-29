@@ -179,7 +179,8 @@ def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
     imdata = imdata.copy()
     rows = box_data[box_data.dbidx == imdata.dbidx]
     if rows.shape[0] > 0:
-      rows = rows[['x1', 'x2', 'y1', 'y2', 'category']]
+      rows = rows.assign(description=rows.category)
+      rows = rows[['x1', 'x2', 'y1', 'y2', 'description']]
 
       ## drop some boxes based on b.box_drop_prob 
       rnd = np.random.rand(rows.shape[0])
@@ -193,7 +194,11 @@ def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
 
 def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : pd.DataFrame,
                       b : BenchParams, p : SessionParams):
+
+    all_box_data = box_data
+    box_data = box_data[box_data.category==b.ground_truth_category]
     positives = pr.FrozenBitMap(box_data.dbidx.values)
+
     assert positives.intersection(subset) == positives, 'index mismatch'
     max_results = min(len(positives),b.max_results)
     assert max_results > 0
@@ -211,7 +216,10 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
         s = copy.deepcopy(session.get_state())
         last_batch = s.gdata[-1]
         for j, imdata in enumerate(last_batch):
-          last_batch[j] = fill_imdata(imdata, box_data, b)
+          if p.interactive == 'textual':
+            last_batch[j] = fill_imdata(imdata, all_box_data, b)
+          else:            
+            last_batch[j] = fill_imdata(imdata, box_data, b)
 
         session.update_state(s)
         batch_pos = np.array([imdata.marked_accepted for imdata in last_batch])
@@ -356,10 +364,10 @@ def get_metrics_table(base_path, at_N):
 def prep_bench_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()
     catgt = qgt[p.index_spec.c_name]    
-    box_data = box_data[box_data.category == p.index_spec.c_name]
     
+    positive_box_data = box_data[box_data.category == p.index_spec.c_name]
     present = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
-    positive = pr.FrozenBitMap(box_data.dbidx.values)
+    positive = pr.FrozenBitMap(positive_box_data.dbidx.values)
 
     assert positive.intersection(present) == positive    
     return box_data, present, positive
