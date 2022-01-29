@@ -54,7 +54,8 @@ export default {
                 paper: null, 
                 imdata : this.initial_imdata,  
                 show_activation : false,
-                activation_paths : []}
+                activation_paths : [], 
+                activation_layer : null, }
   },
   created : function (){
       console.log('created annotator')
@@ -63,13 +64,11 @@ export default {
         this.paper = new paper.PaperScope();
         new paper.Tool(); // also implicitly adds tool to paper scope
         console.log('mounted annotator')
-
-        this.paper2 = new paper.PaperScope(); 
-        new paper.Tool(); 
         
   },
   methods : {
     activation_press: function(){
+        console.log("checks"); 
         if (this.show_activation){
             this.draw_activation(); 
         } else {
@@ -89,7 +88,8 @@ export default {
         container.style.setProperty('height', height + 'px')
         img.style.setProperty('display', 'block')
 
-        let paper = this.paper2;
+        let paper = this.paper;
+        this.activation_layer = new paper.layer()
         let cnv = this.$refs.canvas;
         cnv.height = height;
         cnv.width = width;
