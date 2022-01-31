@@ -54,7 +54,8 @@ export default {
                 paper: null, 
                 imdata : this.initial_imdata,  
                 show_activation : false,
-                activation_paths : []}
+                activation_paths : [], 
+                activation_layer : null, }
   },
   created : function (){
       console.log('created annotator')
@@ -62,14 +63,12 @@ export default {
   mounted : function() {
         this.paper = new paper.PaperScope();
         new paper.Tool(); // also implicitly adds tool to paper scope
-        console.log('mounted annotator')
-
-        this.paper2 = new paper.PaperScope(); 
-        new paper.Tool(); 
+        console.log('mounted annotator'); 
         
   },
   methods : {
     activation_press: function(){
+        console.log("checks"); 
         if (this.show_activation){
             this.draw_activation(); 
         } else {
@@ -81,7 +80,28 @@ export default {
         this.activation_press();
     },
     draw_activation: function(){
-        let paper = this.paper2;
+        let img = this.$refs.image;         
+        let container = this.$refs.container;
+        
+        let height = img.height;
+        let width = img.width;
+        // when the image has no max size, the container div 
+        // ends up with a size of 0, and centering the element
+        // does not seem to work
+        container.style.setProperty('width', width + 'px')
+        container.style.setProperty('height', height + 'px')
+        img.style.setProperty('display', 'block')
+
+        let paper = this.paper;
+        paper.activate(); 
+
+        this.activation_layer = new paper.Layer()
+        this.activation_layer.activate(); 
+
+        paper.view.draw();
+
+        console.log("activations"); 
+        console.log(this.initial_imdata.activations); 
         for (let b of this.initial_imdata.activations){
           let boxdict = b.box
           let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
@@ -98,6 +118,8 @@ export default {
         paper.view.update();
     },
     clear_activation: function(){
+        this.activation_layer.remove(); 
+        this.activation_layer = null; 
         while (this.activation_paths.length !== 0){
             var path = this.activation_paths.pop(); 
             path.remove();
@@ -108,7 +130,11 @@ export default {
           return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale};
     },
     save : function() {
+        if (this.show_activation){
+            this.clear_activation(); 
+        }
         let paper = this.paper
+        paper.activate(); 
         let boxes = (paper.project.getItems({className:'Path'})
                           .map(x =>  {let b = x.bounds; return {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}})
                           .map(box => this.rescale_box(box, this.height_ratio, this.width_ratio)))
@@ -129,6 +155,7 @@ export default {
     load_current_box_data : function() {
       // assumes currently image on canvas is the one where we want to display boxes on
       let paper = this.paper;
+      paper.activate(); 
       // console.log('about to iterate', this);
 
       if (this.initial_imdata.boxes != null) {
@@ -178,21 +205,23 @@ export default {
         img.style.setProperty('display', 'block')
 
         if (this.read_only && (this.initial_imdata.boxes === null || this.initial_imdata.boxes.length === 0)){
-          return;
+            return;
         }
         // call some code to draw activation array 
         // on top of canvas 
         // ctx
         // ctx = f(cnv)
-        let paper = this.paper;
+        let paper = this.paper;      
+        paper.activate(); 
         let cnv = this.$refs.canvas;
         console.log('drawing canvas', img.height, img.width, img)
         cnv.height = height;
         cnv.width = width;
-        paper.setup(cnv);
+        this.paper.setup(cnv);
         this.height_ratio = height / img.naturalHeight
         this.width_ratio = width / img.naturalWidth
-        paper.view.draw();
+        this.paper.view.draw();
+        
         this.load_current_box_data();
 
 
@@ -207,6 +236,7 @@ export default {
       // implement me
     },
     makeRect(from, to){
+        this.paper.activate(); 
           let r = new this.paper.Path.Rectangle(from, to);
           r.strokeColor = 'green';
           r.strokeWidth = 2;
