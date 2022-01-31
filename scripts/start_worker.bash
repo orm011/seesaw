@@ -19,6 +19,7 @@ else
     # install pm2 with npm: npm install pm2 -g
     HEAD_ADDRESS=`cat /home/gridsan/$USER/init_spc.head_node`
     RAY_CMD="ray start --block --address=$HEAD_ADDRESS --redis-password=5241590000000000 --temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES"
-    pm2 delete ray_node
-    pm2 start --name ray_node "$RAY_CMD" --no-daemon
+    pkill -9 PM2
+    pkill -9 ray
+    pm2 start "$RAY_CMD" --no-daemon
 fi
