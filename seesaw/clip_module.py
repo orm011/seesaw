@@ -86,21 +86,51 @@ def warmup(warmup_epochs, k=1.):
         curr_epoch = max(epoch - warmup_epochs,1) # >= 1
         return 1./math.sqrt(max(curr_epoch/k, 1.))
     
-    return fun
+    return fun  
+
+
+def add_to_group(opt_config, groups, name, param):
+  ''' places param within the most specific group possible based on the config
+  '''
+
+  longest = ''
+  for gp in opt_config.keys():
+    if name.startswith(gp) and len(gp) > len(longest):
+      longest = gp
+  
+  if longest == '':
+    print('warning: no rule for parameter', name)
+    assert False
+
+  opts = opt_config[longest]
+  if opts is None:
+    return # ignoring this param bc config tells us to
+
+  if longest not in groups:
+    bias_opts = {**opts ,'weight_decay':0} # don't decay bias
+    groups[longest] = ({'name':name, 'params':[], **opts}, 
+                        {'name':name + '_biases', 'params':[], **bias_opts})
+  
+
+  gp = groups[longest]
+  if name.endswith('bias'):
+    gp[1]['params'].append(param)
+  else:
+    gp[0]['params'].append(param)
 
 
 class CLIPFineTunedModel(pl.LightningModule):
     def __init__(self, path_or_model, **kwargs):
         super().__init__()
         self.save_hyperparameters(ignore='path_or_model')
-        
+
         if isinstance(path_or_model, str):
           path = path_or_model
           model = CLIPModel.from_pretrained(path)
         elif isinstance(path_or_model, CLIPModel):
           model = path_or_model
 
-        model.logit_scale = nn.Parameter(torch.tensor(math.log(self.hparams.init_scale), 
+        model.logit_scale = nn.Parameter(torch.tensor(self.hparams.logit_scale_init, 
                                   device=model.logit_scale.device,
                                   dtype=model.logit_scale.dtype))
         
@@ -126,38 +156,22 @@ class CLIPFineTunedModel(pl.LightningModule):
     def configure_optimizers(self):
         m = self.model
         h = self.hparams
-        
-        
-        optimizer = transformers.AdamW([ {'name':'logit_scale',
-                                         'params':[m.logit_scale], 
-                                         'lr':h.logit_scale_lr, 
-                                         'weight_decay':h.logit_scale_decay}
-                                       ],
-                                       lr=h.lr, weight_decay=h.decay)
-        
-        names = ['text_model','text_projection','vision_model','visual_projection']
-        
-        for name in names:
-            lr = h[name + '_lr']
-            decay = h[name + '_decay']
+      
 
-            submod = m.get_submodule(name)
-            
-            bias_params = []
-            non_bias_params = []
-            for (nm, p) in submod.named_parameters():
-                if nm.endswith('bias'):
-                    bias_params.append(p)
-                else:
-                    non_bias_params.append(p)
-                    
-            
-            group_no_bias = {'name':name, 'params':non_bias_params, 'lr':lr, 'weight_decay':decay}
-            group_bias = {'name':name +'_biases', 'params':bias_params, 'lr':lr, 'weight_decay':0.}
-            optimizer.add_param_group(group_no_bias)
-            optimizer.add_param_group(group_bias)
+        prelim_groups = {}
+        for (name,param) in m.named_parameters():
+          add_to_group(self.hparams.opt_config, prelim_groups, name, param)
 
-        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup(h.warmup_epochs))
+        groups = []
+        for k,gps in prelim_groups.items():
+          for gp in gps:
+            if len(gp['params']) > 0:
+              groups.append(gp)
+        
+        optimizer = transformers.AdamW(params=groups)        
+
+        lr_scheduler = transformers.get_constant_schedule_with_warmup(optimizer, num_warmup_steps=h.num_warmup_steps)
+          # torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup(h.warmup_epochs))
         return {'optimizer':optimizer, 'lr_scheduler':lr_scheduler}
 
 import pyarrow as pa
@@ -179,25 +193,27 @@ _best_config = {'batch_size': 128,
  'logit_scale_decay': 0.00018720038359285344,
  'decay': 0.008557100269919979,
  'init_scale': 17.08693539204199,
- 'warmup_epochs': 8,
+ 'num_warmup_steps': 8,
  'num_workers': 8,
  'test_size': 1000,
  'val_batch_size': 500}
 
 import ray.tune as tune
 
-def generate_sample(config):
-  def maybe_sample(v):
-      if getattr(v, "sample", None) != None:
-          return v.sample()
-      else:
-          return v
-
-  sample_config = {k:maybe_sample(v) for (k,v) in config.items()}
-  return sample_config
+def generate_sample(v):
+    if isinstance(v, dict):
+        return {k:generate_sample(w) for (k,w) in v.items()}
+    elif isinstance(v,list):
+        return [generate_sample(w) for w in v]
+    elif getattr(v, "sample", None) != None:
+        return v.sample()
+    else:
+        return v
 
 from pytorch_lightning.loggers import TensorBoardLogger
 from ray.tune.integration.pytorch_lightning import TuneReportCallback, TuneReportCheckpointCallback
+
+#def make_model(config)
 
 def clip_fine_tune(config, num_epochs, num_gpus, dataset : pa.Table, init_config : CLIPConfig, init_state_dict : dict):
     if 'SLURM_NTASKS' in os.environ:
@@ -229,7 +245,7 @@ def clip_fine_tune(config, num_epochs, num_gpus, dataset : pa.Table, init_config
         gpus=math.ceil(num_gpus),
         progress_bar_refresh_rate=0,
         log_every_n_steps=1,
-        callbacks=[LearningRateMonitor(logging_interval='epoch')] + tune_cbs)
+        callbacks=[LearningRateMonitor(logging_interval='step')] + tune_cbs)
     
     trainer.validate(model, data_mod)
     trainer.fit(model, data_mod)
@@ -254,8 +270,9 @@ from ray.tune import register_trainable
 
 def load_experiment(tune_exp_dir):# can be run on ray 1.9.2
   # eg. if exp name is try5 /home/gridsan/omoll/ray_results/try5
-  register_trainable('clip_fine_tune', make_trainable(num_epochs=10, gpus_per_trial=.5))
+  register_trainable('clip_fine_tune', make_trainable(num_epochs=10, gpus_per_trial=.5, dataset=None, init_config=None, init_state_dict=None))
   exp = tune.ExperimentAnalysis(tune_exp_dir)
+  return exp
 
 def load_best_model(exp : tune.ExperimentAnalysis, metric='val_loss', mode='min'): 
   """ Loads best checkpoint overall
@@ -265,12 +282,53 @@ def load_best_model(exp : tune.ExperimentAnalysis, metric='val_loss', mode='min'
   model = CLIPFineTunedModel.load_from_checkpoint(chkpoint + '/checkpoint')
   return model
 
+# can return None (which means don't train this param at all)
+def random_rate(prob_none, prob_zero_decay=.2,  lr_scale = tune.loguniform(1e-7, 1e-2), decay_scale = tune.loguniform(1e-5, 1e-1)):
+    def random_fun(spec):
+      if tune.uniform(0,1).sample() < prob_none:
+        return None
+      else:
+        if tune.uniform(0,1).sample() < prob_zero_decay:
+          decay = 0.
+        else:
+          decay = decay_scale.sample()
+
+        return {'lr':lr_scale.sample(), 'weight_decay':decay}
+    return tune.sample_from(random_fun)
+
+
+def make_config(num_cpus):
+  config = {
+      'batch_size': tune.choice([32,64]),
+      'logit_scale_init':tune.quniform(-1., 5., q=.1), # value from checkpoint is 4.6
+      'opt_config':{ # for each parameter, will find the longest matching prefix and apply that rule.
+            'logit_scale':random_rate(.0),
+            'text_model':random_rate(.7),
+            'text_model.embeddings':random_rate(.7),
+            'text_model.encoder.layers.0.layer_norm':random_rate(.5),
+            'text_model.encoder.layers.11':random_rate(.5),
+            'text_model.encoder.layers.11.mlp':random_rate(.3),
+            'text_model.encoder.layers.11.layer_norm2':random_rate(.3),
+            'text_model.final_layer_norm':random_rate(.1),
+            'text_projection':random_rate(.1),
+            'vision_model':None,
+            'visual_projection':None
+      },
+      'num_warmup_steps':tune.choice([20,40]),
+      'num_workers':num_cpus,
+      'test_size': 1000,
+      'val_batch_size':500,
+  }
+  return config 
+
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='run a fine-tuning search')
   parser.add_argument('--num_samples', type=int, default=1, help='how many different runs to try')
   parser.add_argument('--max_epochs', type=int, default=3, help='max epochs to run each')
   parser.add_argument('--local_dir', type=str, required=True, help='tune local dir')
   parser.add_argument('--experiment_name', type=str, required=True, help='name for experiment, also for subdir within local dir where to save')
+  # parser.add_argument('--text_model_only', type=bool, default=False, required=True, help='fine tune only text model side of model')
+
   args = parser.parse_args()
 
   ray.init('auto', namespace='seesaw')
@@ -282,37 +340,10 @@ if __name__ == '__main__':
                                            is not None and tup['image_bytes'] is not None)
   bird_dataset = bird_dataset.rename_column('description', 'text')                                
 
-  lr_scale = tune.loguniform(1e-7, 1e-2)
-  decay_scale = tune.loguniform(1e-5, 1e-1)
-
-  config = {
-      'batch_size': tune.choice([64, 128, 200]),
-
-      'visual_projection_lr':lr_scale,
-      'text_projection_lr':lr_scale,
-      'vision_model_lr':lr_scale,
-      'text_model_lr':lr_scale,
-      'logit_scale_lr':lr_scale,
-      'lr': lr_scale,
-      
-      'visual_projection_decay':decay_scale,
-      'text_projection_decay':decay_scale,
-      'vision_model_decay':decay_scale,
-      'text_model_decay':decay_scale,
-      'logit_scale_decay':decay_scale,
-      'decay':decay_scale,
-
-      'init_scale':tune.loguniform(.1, 200.),
-
-      'warmup_epochs':tune.choice([0,1,2,4,8]),
-      'num_workers':8,
-      'test_size': 1000,
-      'val_batch_size':500,
-  }
-
-  grace_period=10
-  gpus_per_trial=1
   cpus_per_trial=20
+  gpus_per_trial=1
+  config = make_config(cpus_per_trial)
+  grace_period=5
 
   metric = 'val_loss'
 
@@ -322,7 +353,7 @@ if __name__ == '__main__':
         reduction_factor=2)
 
   reporter = CLIReporter(
-        parameter_columns=["batch_size", "init_scale", "vision_model_lr", 'text_model_lr', 'logit_scale_lr'],
+        parameter_columns=[],
         metric_columns=[metric, "training_iteration",],
         max_report_frequency=60,
     )
@@ -349,7 +380,9 @@ if __name__ == '__main__':
           mode="min",
           config=config,
           num_samples=args.num_samples,
+          trial_dirname_creator=lambda trial : trial.trial_id, # avoid super long name with config
           scheduler=scheduler,
+          log_to_file=True,
           progress_reporter=reporter,
           name=args.experiment_name,
           keep_checkpoints_num=1, 
