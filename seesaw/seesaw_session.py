@@ -79,10 +79,11 @@ class SeesawLoop:
                                     'lookup':None, 'label':None, 'refine':None, }    
         s.latency_profile.append(lp)
 
-        idxbatch, _ = self.q.query_stateful(mode=s.tmode, vector=s.tvec, batch_size=p.batch_size)
+        b =  self.q.query_stateful(mode=s.tmode, vector=s.tvec, batch_size=p.batch_size)
+        idxbatch = b['dbidxs']
         lp['n_images'] = idxbatch.shape[0]
         lp['lookup'] = time.time() - start_lookup
-        return idxbatch
+        return b
 
     def refine(self):
         """
@@ -166,11 +167,15 @@ class SeesawLoop:
             lp['refine'] = time.time() - start_refine
 
 
+class ActivationData(BaseModel):
+    box : Box
+    score : float
+
 class Imdata(BaseModel):
     url : str
     dbidx : int
     boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
-    refboxes : Optional[List[Box]]
+    activations : Optional[List[ActivationData]]
     marked_accepted : bool
 
 class SessionState(BaseModel):
@@ -184,6 +189,7 @@ class Session:
     current_index : str
     loop : SeesawLoop
     acc_indices : list
+    acc_activations : list
     total_results : int
     timing : list
     accepted : pr.BitMap
@@ -194,6 +200,7 @@ class Session:
         self.gdm = gdm
         self.dataset = dataset
         self.acc_indices = []
+        self.acc_activations = []
         self.accepted = pr.BitMap()
         self.params = params
         self.init_q = None
@@ -205,14 +212,15 @@ class Session:
 
     def next(self):
         start = time.time()
-        idxbatch = self.loop.next_batch()
+        r = self.loop.next_batch()
 
         delta = time.time() - start
 
-        self.acc_indices.append(idxbatch)
+        self.acc_indices.append(r['dbidxs'])
+        self.acc_activations.append(r['activations'])
         self.timing.append(delta)
 
-        return idxbatch
+        return r['dbidxs']
 
     def set_text(self, key):        
         self.init_q = key
@@ -238,8 +246,8 @@ class Session:
 
     def get_state(self) -> SessionState:
         gdata = []
-        for indices in self.acc_indices:
-            imdata = self.get_panel_data(idxbatch=indices)
+        for indices,accs in zip(self.acc_indices, self.acc_activations):
+            imdata = self.get_panel_data(idxbatch=indices, activation_batch=accs)
             gdata.append(imdata)
         
         dat = {}
@@ -249,14 +257,23 @@ class Session:
         dat['params'] = self.params
         return SessionState(**dat)
 
-    def get_panel_data(self, *, idxbatch):
+    def get_panel_data(self, *, idxbatch, activation_batch=None):
         reslabs = []
         urls = get_image_paths(self.dataset.image_root, self.dataset.paths, idxbatch)
 
-        for (url, dbidx) in zip(urls, idxbatch):
+        for i, (url, dbidx) in enumerate(zip(urls, idxbatch)):
             dbidx = int(dbidx)
             boxes = self.q.label_db.get(dbidx, format='box') # None means no annotations yet (undef), empty means no boxes.
-            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, refboxes=None, marked_accepted=dbidx in self.accepted)
+            if activation_batch is None:
+              activations = None
+            else:
+              activations = []
+              for row in activation_batch[i].to_dict(orient='records'):
+                score = row['score']
+                del row['score']
+                activations.append(ActivationData(box=Box(**row), score=score))
+
+            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, marked_accepted=dbidx in self.accepted, activations=activations)
             reslabs.append(elt)
         return reslabs
 

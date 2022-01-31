@@ -22,7 +22,7 @@
       <input 
         class="form-check-input" 
         type="checkbox" 
-        :disabled="read_only" 
+        disabled 
         v-model="this.imdata.marked_accepted"
       >
       <!-- we use the save method to sync state, so we disable this for the small vue -->
@@ -75,6 +75,10 @@ export default {
             this.clear_activation(); 
         }
     }, 
+    toggle_activation() {
+        this.show_activation = !this.show_activation
+        this.activation_press();
+    },
     draw_activation: function(){
         let img = this.$refs.image;         
         let container = this.$refs.container;
@@ -96,28 +100,23 @@ export default {
 
         paper.view.draw();
 
-        var activation = this.imdata.activation; 
-        var activation = [[.5, .2, 0], 
-                        [.2, .1, 0], 
-                        [.1, 0, 0]]; 
-        var square_width = this.$refs.image.width / activation[0].length; 
-        var square_height = this.$refs.image.height / activation.length; 
-        for (var x = 0; x < activation[0].length; x++){
-            for (var y = 0; y < activation.length; y++){
-                let paper_style = ['Rectangle', square_width * x, square_height * y, square_width, square_height];
-                let rect = paper.Rectangle.deserialize(paper_style)
-                let r = new paper.Path.Rectangle(rect);
-                r.fillColor = 'red'; 
-                r.strokeWidth = 0; 
-                r.opacity = activation[y][x]
-                this.activation_paths.push(r); 
-            }
-        } 
-        
+        console.log("activations"); 
+        console.log(this.initial_imdata.activations); 
+        for (let b of this.initial_imdata.activations){
+          let boxdict = b.box
+          let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
+          let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
+          let rect = paper.Rectangle.deserialize(paper_style)
+          let r = new paper.Path.Rectangle(rect);
+          r.fillColor = 'red'; 
+          r.strokeWidth = 0; 
+          r.opacity = b.score
+          this.activation_paths.push(r); 
+        }
+
         paper.view.draw();
         paper.view.update();
-      
-    }, 
+    },
     clear_activation: function(){
         this.activation_layer.remove(); 
         this.activation_layer = null; 
@@ -142,9 +141,11 @@ export default {
         console.log('saving state from paper to local imdata ')
         if (boxes.length == 0){
             this.imdata.boxes = null;
+            this.imdata.marked_accepted = false;
             console.log('length 0 reverts to null right now')
         } else {
             this.imdata.boxes = boxes;
+            this.imdata.marked_accepted = true;
         }
     },
     get_latest_imdata(){
@@ -298,7 +299,7 @@ export default {
       }
 
       tool.onMouseUp = () => {
-        //   this.save_current_box_data(); // auto save upon finishing changes
+          this.save() //_current_box_data(); // auto save upon finishing changes
       };
 
       tool.onKeyUp = (e) => {
@@ -307,6 +308,7 @@ export default {
               return;
           } else if (e.key === 'd') { // auto save upon deletion
               preselected.forEach(r => r.remove());
+              this.save(); // want to know if mark accept or not
             // this.save_current_box_data();
           } else {
               return;
