@@ -118,10 +118,32 @@ def add_to_group(opt_config, groups, name, param):
   else:
     gp[0]['params'].append(param)
 
+def configure_optimizer(m, h):
+    prelim_groups = {}
+    opt_config = h['opt_config']
+    for (name,param) in m.named_parameters():
+      add_to_group(opt_config, prelim_groups, name, param)
+
+    groups = []
+    for _,gps in prelim_groups.items():
+      for gp in gps:
+        if len(gp['params']) > 0:
+          groups.append(gp)
+    
+    optimizer = transformers.AdamW(params=groups)        
+
+    lr_scheduler = transformers.get_constant_schedule_with_warmup(optimizer, num_warmup_steps=h['num_warmup_steps'])
+    return {'optimizer':optimizer, 'lr_scheduler':lr_scheduler}
+
+
+
 
 class CLIPFineTunedModel(pl.LightningModule):
     def __init__(self, path_or_model, **kwargs):
         super().__init__()
+        # todo: its easier to let pl save everything so it can also restore with .load_from_checkpoint
+        # then, instead of passing a model or path, we should pass a config to construct a blank clip model,
+        # then use load weights to get the weights
         self.save_hyperparameters(ignore='path_or_model')
 
         if isinstance(path_or_model, str):
@@ -135,6 +157,12 @@ class CLIPFineTunedModel(pl.LightningModule):
                                   dtype=model.logit_scale.dtype))
         
         self.model = model
+
+    def encode_string(self, arg):
+        with torch.no_grad():
+          self.model.eval()
+          strs = self.proc.tokenizer(arg, return_tensors='pt', padding=True)
+          return self.model.get_text_features(**strs)
         
     def forward(self, inputs):
         return  self.model(**inputs, return_loss=True)
@@ -154,25 +182,8 @@ class CLIPFineTunedModel(pl.LightningModule):
         return ans
     
     def configure_optimizers(self):
-        m = self.model
-        h = self.hparams
-      
+        return configure_optimizer(self.model, self.hparams.opt_config)
 
-        prelim_groups = {}
-        for (name,param) in m.named_parameters():
-          add_to_group(self.hparams.opt_config, prelim_groups, name, param)
-
-        groups = []
-        for k,gps in prelim_groups.items():
-          for gp in gps:
-            if len(gp['params']) > 0:
-              groups.append(gp)
-        
-        optimizer = transformers.AdamW(params=groups)        
-
-        lr_scheduler = transformers.get_constant_schedule_with_warmup(optimizer, num_warmup_steps=h.num_warmup_steps)
-          # torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup(h.warmup_epochs))
-        return {'optimizer':optimizer, 'lr_scheduler':lr_scheduler}
 
 import pyarrow as pa
 from datasets import Dataset
@@ -215,17 +226,14 @@ from ray.tune.integration.pytorch_lightning import TuneReportCallback, TuneRepor
 
 #def make_model(config)
 
-def clip_fine_tune(config, num_epochs, num_gpus, dataset : pa.Table, init_config : CLIPConfig, init_state_dict : dict):
+def clip_fine_tune(config, num_epochs, num_gpus, dataset : pa.Table, init_config : CLIPConfig, init_state_dict : dict, processor : CLIPProcessor):
     if 'SLURM_NTASKS' in os.environ:
         del os.environ["SLURM_NTASKS"]
         
     if 'SLURM_JOB_NAME' in os.environ:
         del os.environ["SLURM_JOB_NAME"]
     
-    tmpdir = os.environ['TMPDIR'] + '/base'
-    bird_dataset = dataset
-    processor = CLIPProcessor.from_pretrained(f'/home/gridsan/omoll/xmodexp/notebooks/models/clip-vit-base-patch32')
-    
+    bird_dataset = dataset    
     data_mod = MultiModalDataModule(dataset=bird_dataset, processor=processor,
                            test_size=config['test_size'], batch_size=config['batch_size'],
                                     val_batch_size=config['val_batch_size'],
@@ -254,14 +262,15 @@ def clip_fine_tune(config, num_epochs, num_gpus, dataset : pa.Table, init_config
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 
-def make_trainable(*, num_epochs, gpus_per_trial, dataset, init_config, init_state_dict):
+def make_trainable(*, num_epochs, gpus_per_trial, dataset, init_config, init_state_dict, processor):
   return tune.with_parameters(
           clip_fine_tune,
           num_epochs=num_epochs,
           num_gpus=gpus_per_trial, 
           dataset=dataset,
           init_config = init_config,
-          init_state_dict = init_state_dict)
+          init_state_dict = init_state_dict, 
+          processor=processor)
 
 import ray
 import argparse
@@ -270,7 +279,8 @@ from ray.tune import register_trainable
 
 def load_experiment(tune_exp_dir):# can be run on ray 1.9.2
   # eg. if exp name is try5 /home/gridsan/omoll/ray_results/try5
-  register_trainable('clip_fine_tune', make_trainable(num_epochs=10, gpus_per_trial=.5, dataset=None, init_config=None, init_state_dict=None))
+  register_trainable('clip_fine_tune', make_trainable(num_epochs=10, gpus_per_trial=.5, dataset=None, 
+        init_config=None, init_state_dict=None, processor=None))
   exp = tune.ExperimentAnalysis(tune_exp_dir)
   return exp
 
@@ -362,11 +372,15 @@ if __name__ == '__main__':
   init_config = base_model.config
   init_state_dict = base_model.state_dict()
 
+  processor = CLIPProcessor.from_pretrained(f'/home/gridsan/omoll/xmodexp/notebooks/models/clip-vit-base-patch32')
+
+
   trainable=make_trainable(num_epochs=args.max_epochs,
                             gpus_per_trial=gpus_per_trial, 
                             dataset=bird_dataset, 
                             init_config=init_config, 
-                            init_state_dict=init_state_dict)
+                            init_state_dict=init_state_dict,
+                            processor=processor)
 
   analysis = tune.run(
           trainable,
