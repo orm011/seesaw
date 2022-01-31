@@ -29,9 +29,108 @@ class StringEncoder(object):
             text_features = model.encode_text(ttext.to(self.device))
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
             return text_features.detach().cpu().numpy()
-        
     # def reset(self):
     #     self.model.load_state_dict(copy.deepcopy(self.original_weights))
+# class StringEncoder2:
+#     def __init__(self, updater : Updater2):
+#         self.updater = updater
+        
+#     def encode_string(self, string):
+#         model = self.model.eval()
+#         with torch.no_grad():
+#             ttext = clip.tokenize([string])
+#             text_features = model.encode_text(ttext.to(self.device))
+#             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+#             return text_features.detach().cpu().numpy()
+from .clip_module import CLIPFineTunedModel, CLIPTx, MappedDataset
+import torch
+import os
+import pytorch_lightning as pl
+
+class FineTuneDataModule(pl.LightningDataModule):
+    def __init__(self, image_vectors, strings, processor, *,  test_size, batch_size, val_batch_size, num_workers):
+        super().__init__()
+        self.processor = processor
+        self.image_vectors = image_vectors
+        self.strings = strings
+        self.preproc = CLIPTx(processor)
+        self.batch_size = batch_size
+        self.val_batch_size = val_batch_size
+        self.num_workers = num_workers
+    
+    def train_dataloader(self):
+        return torch.utils.data.DataLoader(MappedDataset(self.dataset['train'], self.preproc.preprocess_tx),
+                                             batch_size=self.batch_size, 
+                                           shuffle=True, num_workers=self.num_workers, collate_fn=self.preproc.pad_collate)
+    
+    def val_dataloader(self):
+        return torch.utils.data.DataLoader(MappedDataset(self.dataset['test'], self.preproc.preprocess_tx), 
+                                            batch_size=self.val_batch_size, 
+                                           shuffle=True, num_workers=self.num_workers, collate_fn=self.preproc.pad_collate)
+
+
+import pyarrow as pa
+from datasets import Dataset
+
+class OnlineModel:
+  def __init__(self, processor, model, config):
+    self.processor = processor
+    self.config = config
+    self.fine_tuner = CLIPFineTunedModel(model, **config)
+    
+  def encode_string(self, arg):
+    self.fine_tuner.eval()
+    with torch.no_grad():
+      strs = self.processor.tokenizer(arg, return_tensors='pt', padding=True)
+      text_features =  self.fine_tuner.model.get_text_features(**strs)
+      return F.normalize(text_features).numpy()
+
+  def update(self, imagevecs, actual_strings, target_string):
+    config = self.config
+    if 'SLURM_NTASKS' in os.environ:
+        del os.environ["SLURM_NTASKS"]
+        
+    if 'SLURM_JOB_NAME' in os.environ:
+        del os.environ["SLURM_JOB_NAME"]
+    
+    tab = pa.Table.from_pydict(mapping={'image_features':list(imagevecs), 
+                                    'strings':list(actual_strings)})
+    
+    dataset = Dataset(tab)
+
+    def txfun(tup):
+      out = {**tup}
+      toks = self.proc.tokenizer(tup['strings'], return_tensors='pt')
+      out.update(toks)
+      return out
+
+    md = MappedDataset(dataset).map(txfun)
+
+    def collate_fn(tup_list):
+      token_dict = {'input_ids':[d['input_ids'][0] for d in tup_list],
+                    'attention_mask':[d['attention_mask'][0] for d in tup_list]}
+
+      ans = self.processor.tokenizer.pad(token_dict, padding='longest', return_tensors='pt')
+      for k in tup_list[0].keys():
+          ans[k] = torch.cat([d[k] for d in tup_list])
+      return ans
+
+    dl = torch.utils.data.DataLoader(md,
+                                      batch_size=self.batch_size, 
+                        shuffle=True, num_workers=self.num_workers, collate_fn=collate_fn)
+
+    trainer = pl.Trainer(
+        logger=None,
+        num_sanity_val_steps=0,
+        max_epochs=self.config['max_epochs'],
+        gpus=None,
+        progress_bar_refresh_rate=0,
+        log_every_n_steps=0,
+        callbacks=[])
+    
+    trainer.fit(self.fine_tuner, train_dataloader=dl)
+
+
 
 def get_text_features(self, actual_strings, target_string):        
     s2id = {}
@@ -78,60 +177,69 @@ def forward2(self, imagevecs, actual_strings, target_string):
     return search_score, confounder_score
     
 import torch.optim
+from .clip_module import configure_optimizer
+
+_config = {'batch_size': 64,
+ 'logit_scale_init': 3.7,
+ 'opt_config': {'logit_scale': {'lr': 0.0001415583047102676,
+   'weight_decay': 0.0017007389655182095},
+  'text_model': None,
+  'text_model.embeddings': None,
+  'text_model.encoder.layers.0.layer_norm': {'lr': 0.0007435612322566577,
+   'weight_decay': 1.5959136512232553e-05},
+  'text_model.encoder.layers.11': {'lr': 0.0001298217305130271,
+   'weight_decay': 0.015548602355938877},
+  'text_model.encoder.layers.11.mlp': {'lr': 3.258792283209162e-07,
+   'weight_decay': 0.001607367028678558},
+  'text_model.encoder.layers.11.layer_norm2': None,
+  'text_model.final_layer_norm': {'lr': 0.007707377565843718,
+   'weight_decay': 0.0},
+  'text_projection': {'lr': 2.581683501371101e-05, 'weight_decay': 0.0},
+  'vision_model': None,
+  'visual_projection': None},
+ 'num_warmup_steps': 20,
+ 'num_workers': 20,
+ 'test_size': 1000,
+ 'val_batch_size': 500}
+
 
 class Updater(object):
     se : StringEncoder
-    def __init__(self, se, lr, rounds=1, losstype='hinge'):
+    def __init__(self, se, config):
         self.se = se
-        self.losstype=losstype
-        self.opt = torch.optim.AdamW([{'params': se.model.ln_final.parameters()},
-                          {'params':se.model.text_projection},
-#                          {'params':se.model.transformer.parameters(), 'lr':lr*.01}
-                                     ], lr=lr, weight_decay=0.)
-#        self.opt = torch.optim.Adam@([{'params': se.model.parameters()}], lr=lr)
-        self.rounds = rounds
+        self.config = config
+        r = configure_optimizer(self.se.model, h=config)
+        self.opt = r['optimizer']
+        self.lr_scheduler = r['lr_scheduler']
+        self.losses = []
         
     def update(self, imagevecs, actual_strings, target_string):
         se = self.se
         se.model.train()
-        losstype = self.losstype
         opt = self.opt
-        margin = .3
+
         imagevecs = torch.from_numpy(imagevecs).to(se.device)
 
         def opt_closure():
-            opt.zero_grad()            
-            if losstype=='ce':
-                scores, stringids, rawstrs = forward(se, imagevecs, actual_strings, target_string)
-                # breakpoint()
-                iidx = torch.arange(scores.shape[0]).long()
-                actuals = scores[iidx, stringids]
-                midx = scores.argmax(dim=1)
-                maxes = scores[iidx, midx]                
-            elif losstype=='hinge':
-                #a,b = forward2(se, imagevecs, actual_strings, target_string)
-                scores, stringids, rawstrs = forward(se, imagevecs, actual_strings, target_string)
-                # breakpoint()
-                iidx = torch.arange(scores.shape[0]).long()
-                maxidx = scores.argmax(dim=1)
-                
-                actual_score = scores[iidx, stringids].reshape(-1,1)
-                #max_score = scores[iidx, maxidx]
-                
-                
-                #target_score = scores[:,0]
-                losses1 = F.relu(- (actual_score - scores - margin))
-                #losses2 = F.relu(- (actual_score - target_score - margin))
-                #losses = torch.cat([losses1, losses2])
-                losses = losses1
-            else:
-                assert False
+            scores, stringids, rawstrs = forward(se, imagevecs, actual_strings, target_string)
+            iidx = torch.arange(scores.shape[0]).long()
+            assert scores.shape[0] == imagevecs.shape[0]
+            actual_score = scores[iidx, stringids].reshape(-1,1)
+            losses = F.relu(- (actual_score - scores - self.config['margin']))
             loss = losses.mean()
-            #print(loss.detach().cpu())
-            loss.backward()
+            return loss
 
-        for _ in range(self.rounds):
-            opt.step(opt_closure)
+        losses = []
+        for _ in range(self.config['rounds']):
+            opt.zero_grad()
+            loss = opt_closure()
+            loss.backward()
+            losses.append(loss.detach().cpu().numpy())
+            opt.step()
+            self.lr_scheduler.step()
+
+        self.losses.append(losses)
+        return losses
 
 from .multiscale_index import box_iou
 
