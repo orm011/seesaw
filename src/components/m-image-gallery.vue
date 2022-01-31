@@ -6,14 +6,6 @@
           v-for="(data,index) in initial_imdata"
           :key="imdata_keys[index]"
         >
-          <!-- img is much more light weight to render, and the common case is no labels -->
-          <!-- <img
-            v-if="data.boxes == null || data.boxes.length === 0"
-            :src="data.url"
-            @click="onclick(index)"
-            :class="get_class(index)"
-          > -->
-          <!-- v-else -->
           <m-annotator
             :class="data.marked_accepted ? 'gallery-accepted':''"
             ref="annotators"
@@ -32,7 +24,7 @@ import MAnnotator from './m-annotator.vue';
  export default {
   name : 'MImageGallery',
   components: { 'm-annotator':MAnnotator },
-  props: { initial_imdata:{type:Array, default: () => []}, refmode:Boolean, imdata_keys:{type:Array} },
+  props: { initial_imdata:{type:Array, default: () => []}, imdata_keys:{type:Array} },
   emits: ['selection'],
   data : function() { return { selection:null }},
   created : function (){},

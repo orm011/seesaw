@@ -15,7 +15,8 @@
     <div class="keyword-text">
       <span> 'Esc' for going back to main view </span>
       <span> 'Left' and 'Right' arrow for previous/next image</span>
-      <span> 'D' to remove selected box </span>
+      <span> 'D' to remove currently selected box </span>
+      <span> 'Space' to show fine-grained activation </span>
     </div>
   </div>
 </template>
@@ -122,7 +123,7 @@ export default {
 
 .keyword-text > span {
   color: rgb(240,240,240);
-  font-size: 20px;
+  font-size: 15px;
   display:block;
 }
 

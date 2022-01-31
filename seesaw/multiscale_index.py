@@ -327,12 +327,16 @@ class MultiscaleIndex(AccessMethod):
     def from_path(gdm : GlobalDataManager, index_subpath : str, model_name :str):
         embedding = gdm.get_model_actor(model_name)
         cached_meta_path= f'{gdm.root}/{index_subpath}/vectors.sorted.cached'
-        vec_index_path = f'{index_subpath}/vectors.annoy'
+        
+        relpath = f'{index_subpath}/vectors.annoy'
+        fullpath = f'{gdm.root}/{relpath}'
 
-        if os.path.exists(vec_index_path):
-          vec_index = VectorIndex(base_dir=gdm.root, load_path=vec_index_path, copy_to_tmpdir=True, prefault=True)
+        print(f'looking for vector index in {fullpath}')
+        if os.path.exists(fullpath):
+          print('using optimized index...')
+          vec_index = VectorIndex(base_dir=gdm.root, load_path=relpath, copy_to_tmpdir=True, prefault=True)
         else:
-          print('no optimized index found... using vectors')
+          print('index file not found... using vectors')
           vec_index = None
 
         assert os.path.exists(cached_meta_path)
@@ -438,6 +442,7 @@ class MultiscaleIndex(AccessMethod):
         nframes = len(candidate_id)
         dbidxs = np.zeros(nframes)*-1
         dbscores = np.zeros(nframes)
+        activations = []
 
         ## for each frame, compute augmented scores for each tile and record max
         for i,(dbidx,frame_vec_meta) in enumerate(scmeta.groupby('dbidx')):
@@ -449,10 +454,13 @@ class MultiscaleIndex(AccessMethod):
                 tup = frame_vec_meta.iloc[j:j+1]
                 boxscs[j] = augment_score2(db, tup, qvec, relmeta, relvecs, rw_coarse=rel_weight_coarse)
 
+            frame_activations = frame_vec_meta.assign(score=boxscs)[['x1', 'y1', 'x2', 'y2', 'dbidx', 'score']]
+            activations.append(frame_activations)
             dbscores[i] = np.max(boxscs)
 
         topkidx = np.argsort(-dbscores)[:topk]
-        return dbidxs[topkidx].astype('int'), nextstartk # return fullmeta 
+        return {'dbidxs':dbidxs[topkidx].astype('int'), 'nextstartk':nextstartk, 
+                'activations':[activations[idx] for idx in topkidx]}
 
     def new_query(self):
         return BoxFeedbackQuery(self)

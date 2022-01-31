@@ -6,6 +6,7 @@ import math
 
 from IPython.display import display
 from plotnine import *
+from plotnine import ggplot
 
 
 def brief_formatter(num_sd):
@@ -195,40 +196,32 @@ def compute_metrics(*, hit_indices, batch_size, total_seen, total_positives, nda
 
 
 def side_by_side_comparison(stats, *, baseline_variant, metric):
+    stats = stats.assign(session_index=stats.index.values)
     v1 = stats
     metrics = list(set(['nfound', 'nfirst'] + [metric]))
 
-    v1 = v1[['dataset', 'category', 'variant', 'ntotal', 'abundance'] + metrics]
+    v1 = v1[['session_index', 'dataset', 'category', 'variant', 'ntotal', 'abundance'] + metrics]
     v2 = stats[stats.variant == baseline_variant]
     rename_dict = {}
-    for m in metrics:
-        rename_dict[metric] = f'base_{metric}'
-        
-    rename_dict['base_variant'] = baseline_variant
-    
-    v2 = v2[['dataset', 'category'] + metrics]
+    for m in metrics + ['variant', 'session_index']:
+        rename_dict[m] = f'base_{m}'
+            
+    v2 = v2[['dataset', 'category', 'variant', 'session_index'] + metrics]
     v2['base'] = v2[metric]
     v2 = v2.rename(mapper=rename_dict, axis=1)
+    assert 'variant' not in v2.columns.values
+    assert 'base_variant' in v2.columns.values
     
     sbs = v1.merge(v2, right_on=['dataset', 'category'], left_on=['dataset', 'category'], how='outer')
     sbs = sbs.assign(ratio=sbs[metric]/sbs['base'])
     sbs = sbs.assign(delta=sbs[metric] - sbs['base'])
     return sbs
 
-def better_same_worse(stats, *, variant, baseline_variant, metric, reltol,
-                     summary=True):
-    sbs = side_by_side_comparison(stats, baseline_variant=baseline_variant, metric=metric)
+def bsw_table(sbs, *, variant, metric, reltol):
     invtol = 1/reltol
     sbs = sbs.assign(better=sbs[metric] > reltol*sbs.base, worse=sbs[metric] < invtol*sbs.base,
                     same=sbs[metric].between(invtol*sbs.base, reltol*sbs.base))
     bsw = sbs[sbs.variant == variant].groupby('dataset')[['better', 'same', 'worse']].sum()
-    if summary:
-        return bsw
-    else:
-        return sbs
-
-def bsw_table(stats, *, variant, baseline_variant, metric, reltol):
-    bsw = better_same_worse(stats, metric=metric, baseline_variant=baseline_variant, variant=variant, reltol=reltol)
     dstot = bsw.sum(axis=1)
     bsw = bsw.assign(total=dstot)
     tot = bsw.sum()
@@ -312,28 +305,33 @@ def old_benchresults(resultlist):
         ans[tup[0]['dataset']].append(tup)
     return ans
 
-def print_tables(stats, *, variant,  baseline_variant, metric, reltol):
+def print_tables(stats, *, variant,  baseline_variant, metric, reltol, show_latex=False):
+    res = {}
     all_vars = stats.groupby(['dataset', 'category', 'variant',])[metric].mean().unstack(-1)
     means = all_vars.groupby('dataset').mean()
     counts = all_vars.groupby('dataset').size().rename('num_queries')
     per_dataset = pd.concat([means, counts],axis=1)
     print('by dataset')
     display(per_dataset)
-    
-    print('by query')
-    bsw_table(stats, variant=variant, baseline_variant=baseline_variant, metric=metric, reltol=reltol)
-    
-    
-    print('breakdown by initial res')
-    sbs = better_same_worse(stats, variant=variant, baseline_variant=baseline_variant, reltol=reltol, metric=metric, summary=False)
-    tot_res = summary_breakdown(sbs, metric=metric)
-    comparison_table(tot_res, variant=variant, baseline_variant=baseline_variant)
+    res['by_dataset'] = per_dataset
 
+    sbs = side_by_side_comparison(stats, baseline_variant=baseline_variant, metric=metric)
+    res['sbs'] = sbs
+    assert 'variant' in sbs.columns.values
+
+    print('bsw')
+    bsw = bsw_table(sbs, variant=variant, metric=metric, reltol=reltol)
+    res['bsw'] = bsw
+    
+    tot_res = summary_breakdown(sbs, metric=metric)
+    cmp = comparison_table(tot_res, variant=variant, baseline_variant=baseline_variant)
+    res['comparison'] = cmp
 
     print('ablation')
     if variant == 'seesaw':
       abtab = ablation_table(tot_res, variants_list=['plain', 'multiplain','seesaw',])
       display(abtab)
+      res['ablation'] = abtab
     else:
       print('skipping ablation table bc. using other variant')
 
@@ -342,17 +340,26 @@ def print_tables(stats, *, variant,  baseline_variant, metric, reltol):
     diag_df = pd.DataFrame({'x':x, 'y':y})
 
     ### plot
-
     plotdata = sbs[sbs.variant == variant]
+    xcol = 'base'
+    ycol = 'ratio'
+    plotdata = plotdata.assign(x=plotdata[xcol], y=plotdata[ycol])
+    plotdata = plotdata.assign(sbs_index=plotdata.index.values)
+    session_text = plotdata[['session_index', 'base_session_index']].apply(tuple, axis=1).map(lambda tup : f'{tup[0]} vs. {tup[1]}')
+    plotdata = plotdata.assign(session_text=session_text)
+    res['plotdata'] = plotdata
+
+
     scatterplot = (ggplot(plotdata)
-        + geom_point(aes(x='base', y='ratio', fill='dataset', color='dataset'), alpha=.6, size=1.) 
+        + geom_point(aes(x='x', y='y', fill='dataset', color='dataset'), alpha=.6, size=1.) 
     #                 shape=plotdata.dataset.map(lambda x : '.' if x in ['lvis','objectnet'] else 'o'), 
     #                 size=plotdata.dataset.map(lambda x : 1. if x in ['lvis','objectnet'] else 2.))
     #  + geom_text(aes(x='base', y='delta', label='category', color='dataset'), va='bottom', 
     #              data=plotdata1[plotdata1.ratio < .6], 
     #              position=position_jitter(.05, .05), show_legend=False)
         + geom_line(aes(x='x', y='y'), data=diag_df)
-     + ylab('VSL/baseline')
+        + geom_text(aes(x='x', y='y', label='session_text'), va='top', data=plotdata[(plotdata.y < .4) | (plotdata.y > 3)])
+     + ylab(ycol)
     #               + geom_area(aes(y2=1.1, y=.9), linetype='dashed', alpha=.7)
                    + geom_hline(aes(yintercept=1.1), linetype='dashed', alpha=.7)
                    + geom_hline(aes(yintercept=.9), linetype='dashed', alpha=.7)
@@ -363,7 +370,7 @@ def print_tables(stats, *, variant,  baseline_variant, metric, reltol):
     #+ geom_abline()
     #    + geom_point(aes(x='recall', y='precision', color='variant'), size=1.)
     #     + facet_wrap(facets=['cat'], ncol=6, scales='free_x')
-     + xlab(f'baseline {metric}')
+     + xlab(xcol)
     # +scale_color_discrete()
         + theme(figure_size=(8,5), legend_position='top',
                subplots_adjust={'hspace': 0.5}, legend_title=element_blank(),
@@ -375,8 +382,8 @@ def print_tables(stats, *, variant,  baseline_variant, metric, reltol):
         + scale_x_log10(labels=make_labeler(brief_format), breaks=[.01, .1, .3, 1.])
         + scale_y_log10(labels=make_labeler(brief_format), breaks=[.5, 0.9, 1.1, 2., 3.,6, 12])
     )
-
-    return scatterplot
+    display(scatterplot)
+    return res
 
 from tqdm.auto import tqdm
 
