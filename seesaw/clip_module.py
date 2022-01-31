@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import math
 import transformers
-from transformers import CLIPModel, CLIPProcessor
+from transformers import CLIPModel, CLIPProcessor, CLIPConfig, CLIPVisionConfig, CLIPTextConfig
 import os
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 import PIL 
@@ -11,6 +11,8 @@ import numpy as np
 import random
 import io
 from ray import tune
+from zmq import PROTOCOL_ERROR_ZMTP_MECHANISM_MISMATCH
+
 
 class MappedDataset(torch.utils.data.Dataset):
     def __init__(self, ds, tx):
@@ -87,18 +89,22 @@ def warmup(warmup_epochs, k=1.):
     return fun
 
 
-class CLIPModule(pl.LightningModule):
-    def __init__(self, path_or_model_name, text_only=False, **kwargs):
+class CLIPFineTunedModel(pl.LightningModule):
+    def __init__(self, path_or_model, **kwargs):
         super().__init__()
-        self.text_only = text_only
-        self.save_hyperparameters()
-        model = CLIPModel.from_pretrained(path_or_model_name)
+        self.save_hyperparameters(ignore='path_or_model')
+        
+        if isinstance(path_or_model, str):
+          path = path_or_model
+          model = CLIPModel.from_pretrained(path)
+        elif isinstance(path_or_model, CLIPModel):
+          model = path_or_model
+
         model.logit_scale = nn.Parameter(torch.tensor(math.log(self.hparams.init_scale), 
                                   device=model.logit_scale.device,
                                   dtype=model.logit_scale.dtype))
         
         self.model = model
-
         
     def forward(self, inputs):
         return  self.model(**inputs, return_loss=True)
@@ -158,47 +164,6 @@ import pyarrow as pa
 from datasets import Dataset
 
 
-def clip_fine_tune(config, num_epochs, num_gpus):
-  for k in ['SLURM_NTASKS', 'SLURM_JOB_NAME']:
-    if k in os.environ:
-      del os.environ[k]
-    
-  tmpdir = os.environ['TMPDIR'] + '/base'
-  
-  bird_tab = pa.parquet.read_table(f'{tmpdir}/data/bird_guide_single_parquet/',
-                                    columns=['description', 'image_bytes'])
-  bird_dataset = Dataset(bird_tab).filter(lambda tup : tup['description'] 
-                                          is not None and tup['image_bytes'] is not None)
-  bird_dataset = bird_dataset.rename_column('description', 'text')
-  
-  processor = CLIPProcessor.from_pretrained(f'{tmpdir}/xmodexp/notebooks/models/clip-vit-base-patch32')
-  
-  data_mod = MultiModalDataModule(dataset=bird_dataset, processor=processor,
-                          test_size=config['test_size'], batch_size=config['batch_size'],
-                                  val_batch_size=config['val_batch_size'],
-                                  num_workers=config['num_workers'])
-  
-  model = CLIPModule(f'{tmpdir}/xmodexp/notebooks/models/clip-vit-base-patch32', **config)
-
-  # if tune is None:
-  tune_cbs = [TuneReportCallback(["val_loss"], on="validation_end"),
-          TuneReportCheckpointCallback(['val_loss'])
-  ]    
-  logger=TensorBoardLogger(save_dir=tune.get_trial_dir(), name="", version=".")        
-      
-  trainer = pl.Trainer(
-      logger=logger,
-      num_sanity_val_steps=0,
-      max_epochs=num_epochs,
-      gpus=math.ceil(num_gpus),
-      progress_bar_refresh_rate=0,
-      log_every_n_steps=1,
-      callbacks=[LearningRateMonitor(logging_interval='epoch')]+ tune_cbs
-  )
-  trainer.validate(model, data_mod)
-  trainer.fit(model, data_mod)
-  return trainer
-
 # from finetuning previous round on bird dataset, not necessarily good for other stuff
 _best_config = {'batch_size': 128,
  'visual_projection_lr': 0.005393393095168505,
@@ -234,22 +199,15 @@ def generate_sample(config):
 from pytorch_lightning.loggers import TensorBoardLogger
 from ray.tune.integration.pytorch_lightning import TuneReportCallback, TuneReportCheckpointCallback
 
-def clip_fine_tune(config, num_epochs, num_gpus):
+def clip_fine_tune(config, num_epochs, num_gpus, dataset : pa.Table, init_config : CLIPConfig, init_state_dict : dict):
     if 'SLURM_NTASKS' in os.environ:
         del os.environ["SLURM_NTASKS"]
         
     if 'SLURM_JOB_NAME' in os.environ:
         del os.environ["SLURM_JOB_NAME"]
     
-
     tmpdir = os.environ['TMPDIR'] + '/base'
-    #tmpdir = '/home/gridsan/omoll/'
-    bird_tab = pa.parquet.read_table(f'{tmpdir}/data/bird_guide_single_parquet/',
-                                     columns=['description', 'image_bytes'])
-    bird_dataset = Dataset(bird_tab).filter(lambda tup : tup['description'] 
-                                            is not None and tup['image_bytes'] is not None)
-    bird_dataset = bird_dataset.rename_column('description', 'text')
-    
+    bird_dataset = dataset
     processor = CLIPProcessor.from_pretrained(f'/home/gridsan/omoll/xmodexp/notebooks/models/clip-vit-base-patch32')
     
     data_mod = MultiModalDataModule(dataset=bird_dataset, processor=processor,
@@ -257,12 +215,15 @@ def clip_fine_tune(config, num_epochs, num_gpus):
                                     val_batch_size=config['val_batch_size'],
                                     num_workers=config['num_workers'])
     
-    model = CLIPModule(f'/home/gridsan/omoll/xmodexp/notebooks/models/clip-vit-base-patch32', **config)
+    clip_model = CLIPModel(init_config)
+    clip_model.load_state_dict(init_state_dict)
+    model = CLIPFineTunedModel(clip_model, **config)
 
     tune_cbs = [TuneReportCheckpointCallback(["val_loss"], on="validation_end")]
     logger=TensorBoardLogger(save_dir=tune.get_trial_dir(), name="", version=".")        
         
     trainer = pl.Trainer(
+        logger=logger,
         num_sanity_val_steps=0,
         max_epochs=num_epochs,
         gpus=math.ceil(num_gpus),
@@ -277,11 +238,14 @@ def clip_fine_tune(config, num_epochs, num_gpus):
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler
 
-def make_trainable(num_epochs, gpus_per_trial):
+def make_trainable(*, num_epochs, gpus_per_trial, dataset, init_config, init_state_dict):
   return tune.with_parameters(
           clip_fine_tune,
           num_epochs=num_epochs,
-          num_gpus=gpus_per_trial)
+          num_gpus=gpus_per_trial, 
+          dataset=dataset,
+          init_config = init_config,
+          init_state_dict = init_state_dict)
 
 import ray
 import argparse
@@ -298,7 +262,7 @@ def load_best_model(exp : tune.ExperimentAnalysis, metric='val_loss', mode='min'
   """
   tr = exp.get_best_trial(metric=metric, mode=mode, scope='all')
   chkpoint = exp.get_best_checkpoint(tr, metric=metric, mode=mode)
-  model = CLIPModule.load_from_checkpoint(chkpoint + '/checkpoint')
+  model = CLIPFineTunedModel.load_from_checkpoint(chkpoint + '/checkpoint')
   return model
 
 if __name__ == '__main__':
@@ -314,6 +278,9 @@ if __name__ == '__main__':
   os.system(f'rsync -Rrv /home/gridsan/omoll/./data/bird_guide_single_parquet/ {tmpdir}')
   bird_tab = pa.parquet.read_table(f'{tmpdir}/data/bird_guide_single_parquet/',
                                   columns=['description', 'image_bytes'])
+  bird_dataset = Dataset(bird_tab).filter(lambda tup : tup['description'] 
+                                           is not None and tup['image_bytes'] is not None)
+  bird_dataset = bird_dataset.rename_column('description', 'text')                                
 
   lr_scale = tune.loguniform(1e-7, 1e-2)
   decay_scale = tune.loguniform(1e-5, 1e-1)
@@ -360,7 +327,15 @@ if __name__ == '__main__':
         max_report_frequency=60,
     )
 
-  trainable=make_trainable(num_epochs=args.max_epochs,gpus_per_trial=gpus_per_trial)
+  base_model = CLIPModel.from_pretrained(f'/home/gridsan/omoll/xmodexp/notebooks/models/clip-vit-base-patch32')
+  init_config = base_model.config
+  init_state_dict = base_model.state_dict()
+
+  trainable=make_trainable(num_epochs=args.max_epochs,
+                            gpus_per_trial=gpus_per_trial, 
+                            dataset=bird_dataset, 
+                            init_config=init_config, 
+                            init_state_dict=init_state_dict)
 
   analysis = tune.run(
           trainable,
@@ -368,13 +343,14 @@ if __name__ == '__main__':
             "cpu": cpus_per_trial,
             "gpu": gpus_per_trial
           },
+          local_dir=args.local_dir, # must be in the shared File system, else change below
+          sync_config=tune.SyncConfig(syncer=None),
           metric=metric,
           mode="min",
           config=config,
           num_samples=args.num_samples,
           scheduler=scheduler,
           progress_reporter=reporter,
-          local_dir=args.local_dir,
           name=args.experiment_name,
           keep_checkpoints_num=1, 
           checkpoint_score_attr=f"min-{metric}"
