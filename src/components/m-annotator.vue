@@ -52,11 +52,16 @@ export default {
   data : function() {
         return {height_ratio:null, width_ratio:null, 
                 paper: null, 
-                imdata : this.initial_imdata,  
+                imdata : this.initial_imdata,
                 show_activation : false,
                 annotation_paper_objs : [], // {box, description}
                 activation_paths : [], 
-                activation_layer : null, }
+                activation_layer : null, 
+                // selected_annotation : null // { box: Box, paper_obj : { paper_path, point_text }}
+                //## want, given paper obj selected => annotation
+                // also: remove removes both.
+                // also: draw adds to both lists, and to pair
+              }
   },
   created : function (){
       console.log('created annotator')
@@ -142,12 +147,18 @@ export default {
           let {x1,x2,y1,y2,...rest} = box;
           return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale, ...rest};
     },
-    paper2imdata(paper_box){
-      // {box:path, annotation:str}
-      let b = paper_box.box.bounds;       
+
+    /**
+     * @param {{box:paper.Path, description : paper.PointText}} obj
+     */
+    paper2imdata(obj){
+      let b = obj.box.bounds;
       let ret = {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}
-      ret.description = paper_box.description.content;
-      return this.rescale_box(ret, this.height_ratio, this.width_ratio)
+      let ans = this.rescale_box(ret, this.height_ratio, this.width_ratio)
+
+      ans.description = obj.description.content;
+      ans.marked_accepted = 'marked_accepted' in obj.box.data ?  obj.box.data.marked_accepted  : false
+      return ans
     },
     save : function() {
         // if (this.show_activation){
@@ -157,16 +168,19 @@ export default {
         paper.activate(); 
 
         let boxes = this.annotation_paper_objs.map(this.paper2imdata);
+        console.assert(boxes != undefined)
         console.log('saving state from paper to local imdata ')
-        if (boxes.length == 0){
+        if (boxes.length == 0) {
             this.imdata.boxes = null;
             this.imdata.marked_accepted = false;
             console.log('length 0 reverts to null right now')
         } else {
             this.imdata.boxes = boxes;
-            this.imdata.marked_accepted = true;
+            this.imdata.marked_accepted = boxes.filter(b => b.marked_accepted).length > 0
         }
     },
+
+    
     get_latest_imdata(){
       this.save();
       return this.imdata;
@@ -184,14 +198,16 @@ export default {
             let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
             let rect = paper.Rectangle.deserialize(paper_style)
             let r = new paper.Path.Rectangle(rect);
-            r.strokeColor = 'green';
-            r.strokeWidth = 2;
+            r.data.marked_accepted = boxdict.marked_accepted;
+            r.strokeColor = boxdict.marked_accepted ? 'green' : 'yellow';
+            r.strokeWidth = 4;
             r.data.state = null;
             r.selected = false;
 
             let text = new paper.PointText(new paper.Point(rdict.x1, rdict.y1));
             text.justification = 'left';
-            text.fillColor = 'red';
+            text.fillColor = r.strokeColor;
+            text.fontSize = 12; // default 10
             text.content = boxdict.description;
 
             let annot_obj = {box:r, description:text};
@@ -207,9 +223,6 @@ export default {
                 this.$refs.image.style.opacity = 1.
             }
         } 
-    },
-    toggle_accept(){
-        this.imdata.marked_accepted = this.imdata.marked_accepted ? false : true
     },
     canvas_click : function (e){
         console.log('canvas click!', e);
@@ -264,9 +277,10 @@ export default {
     makeRect(from, to){
         this.paper.activate(); 
           let r = new this.paper.Path.Rectangle(from, to);
-          r.strokeColor = 'green';
-          r.strokeWidth = 2;
+          r.strokeWidth = 4;
           r.data.state = null;
+          r.data.marked_accepted = false;
+          r.strokeColor = r.data.marked_accepted ? 'green' : 'yellow'
           r.selected = false;
           return r;
     },
@@ -287,14 +301,13 @@ export default {
 
           let rect = null;
           if (hr == null && preselected.length > 0){
-              this.$emit('selection', null);
               return ;
           } else if (hr == null){ // make a new one
               rect = makeRect(e.point.subtract(new paper.Size(1,1)),
                               e.point);
               let text = new paper.PointText(e.point);
               text.justification = 'left';
-              text.fillColor = 'red';
+              text.fillColor = rect.data.marked_accepted ? 'green' : 'yellow'
               text.content = ''
               let sel = {box:rect, description:text};
               this.annotation_paper_objs.push(sel)
@@ -305,7 +318,7 @@ export default {
           rect.selected=true; // mark selected
           let cur_sel = this.annotation_paper_objs.filter((obj) => obj.box.selected)
           if (cur_sel.length == 1){
-            this.$emit('selection', cur_sel[0]);
+            // this.$emit('selection', cur_sel[0]);
           } else {
             console.log('multiple/zero selected items')
           }
@@ -338,6 +351,12 @@ export default {
 
       tool.onMouseUp = () => {
           this.save() //_current_box_data(); // auto save upon finishing changes
+          let sels = this.annotation_paper_objs.filter(obj => obj.box.selected)
+          if (sels.length === 1){
+            this.$emit('selection', sels[0])
+          } else {
+            this.$emit('selection', null)
+          }
       };
 
       tool.onKeyUp = (e) => {

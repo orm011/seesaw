@@ -258,6 +258,7 @@ export default {
       
       this.selection = new_selection;
     },
+          this.annotator_text_pointer.box.strokeColor = 'yellow'
     handleAnnotatorSelectionChange(ev){
       console.log('annotator sel change', ev)
       if (this.annotator_text_pointer != null){ // save form state into paper box
