@@ -183,7 +183,7 @@ export default {
                 imdata_knum : {},
                 keys : {},
                 annotator_text : '',
-                annotator_text_pointer : null
+                annotator_text_pointer : null,
               }
             },
     mounted (){
@@ -258,7 +258,13 @@ export default {
       
       this.selection = new_selection;
     },
+    toggle_mark_accepted(){
+      if (this.annotator_text_pointer.box.data.marked_accepted){
+          this.annotator_text_pointer.box.strokeColor = 'green'
+      } else {
           this.annotator_text_pointer.box.strokeColor = 'yellow'
+      }
+    },
     handleAnnotatorSelectionChange(ev){
       console.log('annotator sel change', ev)
       if (this.annotator_text_pointer != null){ // save form state into paper box
