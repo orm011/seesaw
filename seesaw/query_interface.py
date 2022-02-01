@@ -1,6 +1,8 @@
 import numpy as np
 import pyroaring as pr
 import importlib
+from .basic_types import *
+
 
 def get_constructor(cons_name : str):
     pieces = cons_name.split('.', maxsplit=-1)
@@ -30,16 +32,8 @@ class AccessMethod:
         c = get_constructor(type_name)
         return c.from_path(gdm, data_path, model_name)
 
-from pydantic import BaseModel
-from typing import Optional, List
 import pandas as pd
 
-class Box(BaseModel):
-    x1 : float
-    y1 : float
-    x2 : float
-    y2 : float
-    description: Optional[str]
     
 class LabelDB:
   def __init__(self):

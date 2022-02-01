@@ -19,7 +19,8 @@ from .util import *
 import pyroaring as pr
 import importlib
 from .seesaw_session import SessionParams, Session, Imdata, Box
-from pydantic import BaseModel
+from .basic_types import *
+
 # ignore this comment
 def vls_init_logger():
     import logging
@@ -165,16 +166,6 @@ _clip_tx = T.Compose([
 
 
 
-class BenchParams(BaseModel):
-    name : str
-    ground_truth_category : str
-    qstr : str
-    n_batches : int # max number of batches to run
-    max_results : int # stop when this numbrer of results is found
-    max_feedback : Optional[int]
-    box_drop_prob : float
-
-
 def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
     imdata = imdata.copy()
     rows = box_data[box_data.dbidx == imdata.dbidx]
@@ -248,21 +239,6 @@ from .progress_bar import tqdm_map
 import os
 import string
 import time
-
-from .seesaw_session import SessionState
-
-class BenchResult(BaseModel):
-    nimages: int
-    ntotal: int
-    session: SessionState
-    run_info : dict
-    total_time : float
-
-class BenchSummary(BaseModel):
-    bench_params : BenchParams
-    session_params : SessionParams
-    timestamp : str
-    result : Optional[BenchResult]
 
 
 class BenchRunner(object):

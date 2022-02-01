@@ -7,8 +7,8 @@ from fastapi import FastAPI
 
 import os
 from .dataset_manager import GlobalDataManager, IndexSpec
-from .seesaw_bench import BenchParams
-from .seesaw_session import Session, Box, SessionState, SessionParams
+from .basic_types import Box, SessionState, SessionParams
+from .seesaw_session import Session
 
 class AppState(BaseModel): # Using this as a response for every state transition.
     indices : List[IndexSpec]

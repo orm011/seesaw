@@ -26,10 +26,11 @@ import ray
 import shutil
 import math
 
-import pyarrow
+import pandas as pd
 from pyarrow import parquet as pq
 import shutil
 import io
+from .basic_types import IndexSpec
 
 from ray.data.extensions import TensorArray
 
@@ -589,16 +590,6 @@ def ensure_db(dbpath):
         conn.close()
 
 
-import pandas as pd
-
-from typing import Optional
-from pydantic import BaseModel
-
-class IndexSpec(BaseModel):
-    d_name:str 
-    i_name:str
-    m_name:Optional[str]
-    c_name:Optional[str] # ground truth category (for lvis benchmark)
 
 class GlobalDataManager:
     global_cache : CacheStub

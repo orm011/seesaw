@@ -2,10 +2,8 @@ import json
 from seesaw.query_interface import AccessMethod
 import numpy as np
 import pandas as pd
-from .dataset_manager import GlobalDataManager, IndexSpec, SeesawDatasetManager
+from .dataset_manager import GlobalDataManager, SeesawDatasetManager
 
-from typing import Optional, List
-from pydantic import BaseModel, validator
 import os
 import time
 import numpy as np
@@ -17,6 +15,7 @@ from dataclasses import dataclass,field
 def get_image_paths(image_root, path_array, idxs):
     return [ os.path.normpath(f'{image_root}/{path_array[int(i)]}').replace('//', '/') for i in idxs ]
 
+from .basic_types import *
 from .search_loop_models import *
 from .search_loop_tools import *
 from .dataset_tools import *
@@ -25,26 +24,6 @@ from .search_loop_models import adjust_vec, adjust_vec2
 from .util import *
 from .pairwise_rank_loss import VecState
 from .query_interface import *
-        
-class SessionParams(BaseModel):
-    index_spec : IndexSpec
-    interactive : str
-    method_config : Optional[dict] # changes from method to method (interactive)
-    warm_start : str
-    batch_size : int
-    minibatch_size : int
-    learning_rate : float
-    max_examples : int
-    loss_margin : float
-    num_epochs : int
-    model_type : str
-
-    # @validator('interactive')
-    # def interactive_value_str(cls, v):
-    #   assert v in ['plain', 'pytorch', 'textual']
-    #   return v
-
-from .query_interface import AccessMethod
 from .textual_feedback_box import StringEncoder, Updater, join_vecs2annotations
 
 @dataclass
@@ -209,22 +188,6 @@ class SeesawLoop:
                 # print('missing positives or negatives to do any training', yt.shape, yt.max(), yt.min())
                 pass
 
-class ActivationData(BaseModel):
-    box : Box
-    score : float
-
-class Imdata(BaseModel):
-    url : str
-    dbidx : int
-    boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
-    activations : Optional[List[ActivationData]]
-    marked_accepted : bool
-
-class SessionState(BaseModel):
-    params : SessionParams
-    gdata : List[List[Imdata]]
-    timing : List[float]
-    reference_categories : List[str]
 
 class Session:
     current_dataset : str
