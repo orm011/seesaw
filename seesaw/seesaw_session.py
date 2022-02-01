@@ -139,9 +139,7 @@ class SeesawLoop:
             assert annot is not None
             if len(annot) == 0:
               continue
-            df = join_vecs2annotations(self.q.index, dbidx, annot)
-            vecs.append(df.vectors.values)
-            strs.append(df.descriptions.values)
+            dfvec, dfbox = join_vecs2annotations(self.q.index, dbidx, annot)
 
           if len(vecs) == 0:
             print('no annotations for update... skipping')

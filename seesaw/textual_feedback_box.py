@@ -255,12 +255,21 @@ def labelvecs(boxes, meta, iou_cutoff=.001):
     return absvecs, cats
 
 from .multiscale_index import get_boxes, add_iou_score
+from ray.data.extensions import TensorArray
 
 def join_vecs2annotations(db : MultiscaleIndex, dbidx, annotations):
-    meta = db.get_data(dbidx) 
-    meta = add_iou_score(meta, annotations)
-    meta = meta.assign(descriptions=meta.best_box_idx.map(lambda idx : annotations[idx].description))
-    return meta
+    patch_box_df = db.get_data(dbidx)
+    roi_box_df = pd.DataFrame.from_records([b.dict() for b in annotations])
+
+    dfvec = add_iou_score(patch_box_df, roi_box_df)
+    dfvec = dfvec.assign(descriptions=dfvec.best_box_idx.map(lambda idx : annotations[idx].description))
+  
+    dfbox = add_iou_score(roi_box_df, patch_box_df)
+
+    matched_vecs = np.stack([ dfvec.vectors.iloc[i].copy()  for i in dfbox.best_box_idx.values])
+    dfbox = dfbox.assign(descriptions=dfbox.description, vectors=TensorArray(matched_vecs))
+
+    return dfvec, dfbox
 
 def get_box_labels(db : MultiscaleIndex, box_data, allidxs):
     vecposns = []

@@ -482,15 +482,15 @@ class MultiscaleIndex(AccessMethod):
         vectors = self.vectors[mask]
         return MultiscaleIndex(embedding=self.embedding, vectors=vectors, vector_meta = vector_meta, vec_index=None)
         
-def add_iou_score(box_df : pd.DataFrame, roi_boxes : List[Box]):
+def add_iou_score(box_df : pd.DataFrame, roi_box_df : pd.DataFrame):
   ''' assumes vector_data is a df with box information
   '''
-  roi_box_df = pd.DataFrame.from_records([b.dict() for b in roi_boxes])
   ious = box_iou(box_df, roi_box_df)
 
   best_match=np.argmax(ious, axis=1)  #, .idxmax(axis=1)
   best_iou = np.max(ious, axis=1)  
-  return box_df.assign(best_box_iou=best_iou, best_box_idx=best_match)
+  box_df =  box_df.assign(best_box_iou=best_iou, best_box_idx=best_match)
+  return box_df
 
 
 class BoxFeedbackQuery(InteractiveQuery):
