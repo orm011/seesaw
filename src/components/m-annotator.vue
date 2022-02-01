@@ -56,12 +56,7 @@ export default {
                 show_activation : false,
                 annotation_paper_objs : [], // {box, description}
                 activation_paths : [], 
-                activation_layer : null, 
-                // selected_annotation : null // { box: Box, paper_obj : { paper_path, point_text }}
-                //## want, given paper obj selected => annotation
-                // also: remove removes both.
-                // also: draw adds to both lists, and to pair
-              }
+                activation_layer : null, }
   },
   created : function (){
       console.log('created annotator')
