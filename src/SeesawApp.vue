@@ -143,20 +143,27 @@
           :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
         />
       </div>
-      <div 
-        class="description-box"
+      <div
+        v-if="annotator_text_pointer != null"
       >
-        <input v-if="annotator_text_pointer != null"
-            class="text-input" 
-            v-model="annotator_text"
+        <input
+          class="form-check-input"
+          v-model="annotator_text_pointer.box.data.marked_accepted"
+          @change="toggle_mark_accepted"
+          type="checkbox"
         >
-        <button 
-          v-if="annotator_text_pointer != null" 
+        <input
+          class="text-input"
+          placeholder="description"
+          v-model="annotator_text"
+        >
+        <button
+          class="btn btn-danger"
           @click="delete_annotation()"
         >
-            Delete annotation
+          Delete annotation
         </button>
-    </div>
+      </div>
     </m-modal>
   </div>  
 </template>
