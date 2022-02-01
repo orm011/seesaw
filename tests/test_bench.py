@@ -63,7 +63,7 @@ configs = [
             (BenchParams(name='seesaw_test_textual', ground_truth_category='aerosol can', qstr='aerosol can', 
               n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
             SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name='aerosol can'),
-              interactive='textual', method_config=text_config, warm_start='warm', batch_size=3, 
+              interactive='textual', method_config=text_method_config, warm_start='warm', batch_size=3, 
               minibatch_size=10, learning_rate=0.005, max_examples=3, 
               loss_margin=0.1, num_epochs=2, model_type='cosine')
             ),
