@@ -15,7 +15,6 @@
     <div class="keyword-text">
       <span> 'Esc' for going back to main view </span>
       <span> 'Left' and 'Right' arrow for previous/next image</span>
-      <span> 'D' to remove currently selected box </span>
       <span> 'Space' to show fine-grained activation </span>
     </div>
   </div>

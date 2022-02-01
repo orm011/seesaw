@@ -80,6 +80,12 @@ export default {
         this.show_activation = !this.show_activation
         this.activation_press();
     },
+    delete_paper_obj(obj){
+        this.annotation_paper_objs = this.annotation_paper_objs.filter((oent) => (oent != obj))
+        obj.box.remove()
+        obj.description.remove()
+        this.save()
+    },
     draw_activation: function(){
         let img = this.$refs.image;         
         let container = this.$refs.container;
@@ -109,9 +115,15 @@ export default {
           let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
           let rect = paper.Rectangle.deserialize(paper_style)
           let r = new paper.Path.Rectangle(rect);
-          r.fillColor = 'red'; 
-          r.strokeWidth = 0; 
-          r.opacity = b.score
+          if (b.score >= 0){
+            r.fillColor = 'red'; 
+            r.strokeWidth = 0; 
+            r.opacity = b.score
+          } else { // helpful to visualize negative 
+            r.fillColor = 'blue'
+            r.strokeWidth = 0; 
+            r.opacity = -b.score
+          }
           this.activation_paths.push(r); 
         }
 
@@ -138,9 +150,9 @@ export default {
       return this.rescale_box(ret, this.height_ratio, this.width_ratio)
     },
     save : function() {
-        if (this.show_activation){
-            this.clear_activation(); 
-        }
+        // if (this.show_activation){
+        //     this.clear_activation(); 
+        // }
         let paper = this.paper
         paper.activate(); 
 

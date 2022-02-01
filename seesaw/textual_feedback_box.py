@@ -130,8 +130,6 @@ class OnlineModel:
     
     trainer.fit(self.fine_tuner, train_dataloader=dl)
 
-
-
 def get_text_features(self, actual_strings, target_string):        
     s2id = {}
     sids = []

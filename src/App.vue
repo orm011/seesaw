@@ -150,6 +150,12 @@
             class="text-input" 
             v-model="annotator_text"
         >
+        <button 
+          v-if="annotator_text_pointer != null" 
+          @click="delete_annotation()"
+        >
+            Delete annotation
+        </button>
     </div>
     </m-modal>
   </div>  
@@ -276,7 +282,7 @@ export default {
           } else if (ev.code == 'Space'){
             this.$refs.annotator.toggle_activation()
           } 
-        } else {
+        } else { // assume text
           if (ev.code == 'Escape'){
             this.handleAnnotatorSelectionChange(null) // save text
             this.close_modal();
@@ -284,6 +290,10 @@ export default {
             this.handleAnnotatorSelectionChange(this.annotator_text_pointer) 
           }
         }
+    },
+    delete_annotation(){
+          this.$refs.annotator.delete_paper_obj(this.annotator_text_pointer);
+          this.handleAnnotatorSelectionChange(null);
     },
     handle_arrow(delta){
       if (this.selection  != null){
