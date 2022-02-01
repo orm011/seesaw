@@ -29,6 +29,7 @@ from .query_interface import *
 class SessionParams(BaseModel):
     index_spec : IndexSpec
     interactive : str
+    method_config : Optional[dict] # changes from method to method (interactive)
     warm_start : str
     batch_size : int
     minibatch_size : int
@@ -61,34 +62,15 @@ class SeesawLoop:
     params : SessionParams
     state : LoopState
 
-    def __init__(self, q : InteractiveQuery, params : SessionParams):
+    def __init__(self, gdm : GlobalDataManager, q : InteractiveQuery, params : SessionParams):
         self.params = params
         self.state = LoopState()
         self.q = q
 
         if self.params.interactive == 'textual':
-          self.state.string_encoder = StringEncoder('cpu')
-
-          config = {'batch_size': 64,
-                  'logit_scale_init': 3.7,
-                  'opt_config': {'logit_scale': None, #{'lr': 0.0001415583047102676,'weight_decay': 0.0017007389655182095},
-                    'transformer': None,
-                    'transformer.resblocks.0.ln_': {'lr': 0.0007435612322566577,'weight_decay': 1.5959136512232553e-05},
-                    'transformer.resblocks.11.ln': {'lr': 0.0001298217305130271,'weight_decay': 0.015548602355938877},
-                    #'transformer.resblocks.11.mlp': None, #{'lr': 3.258792283209162e-07,'weight_decay': 0.001607367028678558},
-                    #'transformer.resblocks.11.ln_2': None,
-                    'ln_final': {'lr': 0.007707377565843718,'weight_decay': 0.0},
-                    'text_projection': {'lr': 5.581683501371101e-05, 'weight_decay': 0.0},
-                    'positional_embedding':None,
-                    'token_embedding':None,
-                    'visual': None,
-                    'positiional_embedding':None},
-                  'num_warmup_steps': 3,
-                  'num_workers': 20,
-                  'test_size': 1000,
-                  'margin':.3,
-                  'rounds':3,
-                  'val_batch_size': 500}
+          param_dict = gdm.global_cache.read_state_dict('/home/gridsan/omoll/.cache/clip/ViT-B-32.pt', jit=True)
+          self.state.string_encoder = StringEncoder(param_dict, 'cpu')
+          config = self.params.method_config
           self.state.updater = Updater(self.state.string_encoder, config)
 
     def next_batch(self):
@@ -268,7 +250,7 @@ class Session:
         self.index = hdb 
         self.q = hdb.new_query()
 
-        self.loop = SeesawLoop(self.q, params=self.params)
+        self.loop = SeesawLoop(self.gdm, self.q, params=self.params)
 
     def next(self):
         start = time.time()

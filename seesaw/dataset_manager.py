@@ -601,6 +601,8 @@ class IndexSpec(BaseModel):
     c_name:Optional[str] # ground truth category (for lvis benchmark)
 
 class GlobalDataManager:
+    global_cache : CacheStub
+
     def __init__(self, root):
         if not os.path.exists(root):
             print('creating new root folder')

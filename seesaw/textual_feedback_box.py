@@ -9,15 +9,17 @@ from .query_interface import AccessMethod
 from IPython.display import display
 import copy
 
+from clip.model import build_model
+
 def load_model(device):
     variant ="ViT-B/32"
     model,_ = clip.load(variant, device=device,  jit=False)
     return model
 
 class StringEncoder(object):
-    def __init__(self, device):
+    def __init__(self, state_dict, device):
         self.device = device #next(iter(clean_weights.items()))[1].device
-        model = load_model(device)
+        model = build_model(state_dict).float().to(self.device)
         self.model = model
         # self.original_weights = copy.deepcopy(model.state_dict())
         # self.reset() # dont update the original model
