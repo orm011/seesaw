@@ -160,9 +160,6 @@ export default {
       return ans
     },
     save : function() {
-        // if (this.show_activation){
-        //     this.clear_activation(); 
-        // }
         let paper = this.paper
         paper.activate(); 
 
@@ -351,9 +348,7 @@ export default {
       tool.onMouseUp = () => {
           console.log("Mouse up"); 
           this.save() //_current_box_data(); // auto save upon finishing changes
-          if (this.show_activation){
-              this.draw_activation(); 
-          }
+          
           let sels = this.annotation_paper_objs.filter(obj => obj.box.selected)
           if (sels.length === 1){
             this.$emit('selection', sels[0])
