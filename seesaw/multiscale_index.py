@@ -16,7 +16,6 @@ import torch
 from .query_interface import *
 
 from .embeddings import ModelService, make_clip_transform, ImTransform, XEmbedding
-from .vloop_dataset_loaders import get_class_ev
 from .dataset_search_terms import  *
 import pyroaring as pr
 from operator import itemgetter
@@ -26,8 +25,8 @@ import math
 import annoy
 
 import os
-import ray
 
+from typing import List
 
 def _postprocess_results(acc):
     flat_acc = {'iis':[], 'jjs':[], 'dbidx':[], 'vecs':[], 'zoom_factor':[], 'zoom_level':[]}
@@ -306,8 +305,7 @@ def build_index(vecs, file_name):
     u = annoy.AnnoyIndex(512, 'dot')
     u.load(file_name) # verify can load.
     return u
-
-
+    
 class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup
     """
@@ -465,6 +463,13 @@ class MultiscaleIndex(AccessMethod):
     def new_query(self):
         return BoxFeedbackQuery(self)
 
+    def get_data(self, dbidx) -> pd.DataFrame:
+        vmeta = self.vector_meta[self.vector_meta.dbidx == dbidx]
+        vectors = self.vectors[vmeta.index]
+
+        return vmeta.assign(vectors=TensorArray(vectors))
+
+
     def subset(self, indices : pr.BitMap) -> AccessMethod:
         mask = self.vector_meta.dbidx.isin(indices)
         if mask.all():
@@ -477,6 +482,17 @@ class MultiscaleIndex(AccessMethod):
         vectors = self.vectors[mask]
         return MultiscaleIndex(embedding=self.embedding, vectors=vectors, vector_meta = vector_meta, vec_index=None)
         
+def add_iou_score(box_df : pd.DataFrame, roi_box_df : pd.DataFrame):
+  ''' assumes vector_data is a df with box information
+  '''
+  ious = box_iou(box_df, roi_box_df)
+
+  best_match=np.argmax(ious, axis=1)  #, .idxmax(axis=1)
+  best_iou = np.max(ious, axis=1)  
+  box_df =  box_df.assign(best_box_iou=best_iou, best_box_idx=best_match)
+  return box_df
+
+
 class BoxFeedbackQuery(InteractiveQuery):
     def __init__(self, db):
         super().__init__(db)

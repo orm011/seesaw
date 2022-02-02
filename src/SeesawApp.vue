@@ -139,8 +139,30 @@
           ref="annotator"
           :initial_imdata="this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx]"
           :read_only="false"
+          @selection="handleAnnotatorSelectionChange($event)"
           :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
         />
+      </div>
+      <div
+        v-if="annotator_text_pointer != null"
+      >
+        <input
+          class="form-check-input"
+          v-model="annotator_text_pointer.box.data.marked_accepted"
+          @change="toggle_mark_accepted"
+          type="checkbox"
+        >
+        <input
+          class="text-input"
+          placeholder="description"
+          v-model="annotator_text"
+        >
+        <button
+          class="btn btn-danger"
+          @click="delete_annotation()"
+        >
+          Delete annotation
+        </button>
       </div>
     </m-modal>
   </div>  
@@ -158,7 +180,7 @@ export default {
     data () { return { 
                 client_data : { session : { params :{ index_spec : {d_name:'', i_name:'', m_name:''}}, 
                                             gdata : [] 
-                                          }, 
+                                          },
                                 indices : [] 
                               },
                 current_index : null,
@@ -166,7 +188,9 @@ export default {
                 selection: null, 
                 text_query:null,
                 imdata_knum : {},
-                keys : {}
+                keys : {},
+                annotator_text : '',
+                annotator_text_pointer : null,
               }
             },
     mounted (){
@@ -241,8 +265,29 @@ export default {
       
       this.selection = new_selection;
     },
+    toggle_mark_accepted(){
+      if (this.annotator_text_pointer.box.data.marked_accepted){
+          this.annotator_text_pointer.box.strokeColor = 'green'
+      } else {
+          this.annotator_text_pointer.box.strokeColor = 'yellow'
+      }
+    },
+    handleAnnotatorSelectionChange(ev){
+      console.log('annotator sel change', ev)
+      if (this.annotator_text_pointer != null){ // save form state into paper box
+          this.annotator_text_pointer.description.content = this.annotator_text
+      }
+
+      if (ev != null){ 
+        this.annotator_text_pointer = ev
+        this.annotator_text = this.annotator_text_pointer.description.content;
+      } else {
+        this.annotator_text_pointer = null;
+      }
+    },
     handleModalKeyUp(ev){
-          console.log('within modalKeyUp handler', ev)
+        console.log('within modalKeyUp handler', ev)
+        if (this.annotator_text_pointer == null){ // ie if text is being entered ignore this
           if (ev.code === 'ArrowLeft' || ev.code === 'ArrowRight'){
             let delta = (ev.code === 'ArrowLeft') ? -1 : 1
             this.handle_arrow(delta);
@@ -250,7 +295,19 @@ export default {
             this.close_modal()
           } else if (ev.code == 'Space'){
             this.$refs.annotator.toggle_activation()
+          } 
+        } else { // assume text
+          if (ev.code == 'Escape'){
+            this.handleAnnotatorSelectionChange(null) // save text
+            this.close_modal();
+          } else if (ev.code == 'Enter'){ // show the text in the
+            this.handleAnnotatorSelectionChange(this.annotator_text_pointer) 
           }
+        }
+    },
+    delete_annotation(){
+          this.$refs.annotator.delete_paper_obj(this.annotator_text_pointer);
+          this.handleAnnotatorSelectionChange(null);
     },
     handle_arrow(delta){
       if (this.selection  != null){

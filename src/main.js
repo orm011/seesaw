@@ -1,6 +1,6 @@
 import {createApp} from 'vue'
-import App from './App.vue'
+import SeesawApp from './SeesawApp.vue'
 import 'bootstrap/dist/css/bootstrap.min.css';
 
-let app = createApp(App);
+let app = createApp(SeesawApp);
 app.mount('#app')

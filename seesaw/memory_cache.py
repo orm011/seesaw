@@ -43,6 +43,7 @@ class MemoryCache:
   def releaseref(self, path : str, ref : ray.ObjectRef):
     pass
 
+import torch
 import time
 
 class CacheStub:
@@ -77,34 +78,65 @@ class CacheStub:
     self.local[std_path] = obj
     return obj
 
-  def read_parquet(self, path: str):
+  def _with_lock(self, path : str, init_fun):
     while True:
       state = self.pathstate(path, lock=True)
       if state == -1: # only one process will see this
-        ds = ray.data.read_parquet(path)
-        df = pd.concat(ray.get(ds.to_pandas_refs()))
-        self.savepath(path, df)
-        assert self.pathstate(path) == 1  
+        obj = init_fun()
+        self.savepath(path, obj)
       elif state == 0: # someone else is loading, cannot call yet
+        print(f'{path} is locked by someone else... waiting')
         time.sleep(1)
-        print(f'waiting on loader for {path}...')
-      else: # common case
-        df = self.getobject(path)
+      elif state == 1: # common case
+        obj = self.getobject(path)
         break
+      else:
+        assert False, 'unknown cache state'
 
-    return df
-      
+    return obj
 
+  def read_parquet(self, path: str):
+    def _init_fun():
+      ds = ray.data.read_parquet(path)
+      df = pd.concat(ray.get(ds.to_pandas_refs()))
+      return df
+
+    return self._with_lock(path, _init_fun)
+
+  def read_state_dict(self, path : str, jit : bool):
+    def _init_fun():
+      if jit:
+        return torch.jit.load(path, map_location='cpu').state_dict()
+      else: # the result of a torch load could already be a state dict, right?
+        mod = torch.load(path, map_location='cpu')
+        if isinstance(mod, torch.nn.Module):
+          return mod.state_dict()
+        else: # not sure what else to do here
+          return mod
+
+    return self._with_lock(path, _init_fun)    
+
+
+import argparse
 if __name__ == '__main__':
-    actor_name = 'actor#cache'
-    ray.init('auto', namespace='seesaw')
-    try:
-      ray.get_actor(actor_name)
-      print('cache actor already exists')
-    except ValueError:
-      print('creating cache actor')
+    parser = argparse.ArgumentParser(description='control the data cache. calling it again will restart the cache')
+    #parser.add_argument('--restart', type=int, action='store_true',  help='restart the cache')
+    args = parser.parse_args()
 
+    ray.init('auto', namespace='seesaw')
+
+    actor_name = 'actor#cache'
+    try:
+      oldh = ray.get_actor(actor_name)
+      print('found old cache actor, destroying it')
+      ray.kill(oldh)
+      print('ended previous cache actor')
+    except:
+      pass
+      # no actor to kill
+
+    print('starting new cache actor')
     h = ray.remote(MemoryCache).options(name=actor_name, num_cpus=1, lifetime='detached').remote()
     r = h.ready.remote()
     ray.get(r)
-    print('cache actor ready')
+    print('new cache actor ready')
