@@ -87,6 +87,7 @@ export default {
         this.save()
     },
     draw_activation: function(){
+        console.log("Beginning"); 
         let img = this.$refs.image;         
         let container = this.$refs.container;
         
@@ -102,7 +103,16 @@ export default {
         let paper = this.paper;
         paper.activate(); 
 
-        this.activation_layer = new paper.Layer()
+        let layer = null; 
+        console.log("before if"); 
+        if (paper.project !== null){
+            console.log("not null"); 
+            layer = paper.project.activeLayer; 
+        }
+        console.log("after if"); 
+
+        this.activation_layer = new paper.Layer({locked: true}); 
+        paper.project.insertLayer(0, this.activation_layer); 
         this.activation_layer.activate(); 
 
         paper.view.draw();
@@ -127,6 +137,9 @@ export default {
           this.activation_paths.push(r); 
         }
 
+        if (layer !== null){
+            layer.activate(); 
+        }
         paper.view.draw();
         paper.view.update();
     },
@@ -156,9 +169,6 @@ export default {
       return ans
     },
     save : function() {
-        // if (this.show_activation){
-        //     this.clear_activation(); 
-        // }
         let paper = this.paper
         paper.activate(); 
 
@@ -238,9 +248,6 @@ export default {
         container.style.setProperty('height', height + 'px')
         img.style.setProperty('display', 'block')
 
-        if (this.read_only && (this.initial_imdata.boxes === null || this.initial_imdata.boxes.length === 0)){
-            return;
-        }
         // call some code to draw activation array 
         // on top of canvas 
         // ctx
@@ -256,6 +263,9 @@ export default {
         this.width_ratio = width / img.naturalWidth
         this.paper.view.draw();
         
+        if (this.read_only && (this.initial_imdata.boxes === null || this.initial_imdata.boxes.length === 0)){
+            return;
+        }
         this.load_current_box_data();
 
 
@@ -345,7 +355,9 @@ export default {
       }
 
       tool.onMouseUp = () => {
+          console.log("Mouse up"); 
           this.save() //_current_box_data(); // auto save upon finishing changes
+          
           let sels = this.annotation_paper_objs.filter(obj => obj.box.selected)
           if (sels.length === 1){
             this.$emit('selection', sels[0])
