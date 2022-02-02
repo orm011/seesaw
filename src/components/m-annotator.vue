@@ -87,6 +87,7 @@ export default {
         this.save()
     },
     draw_activation: function(){
+        console.log("Beginning"); 
         let img = this.$refs.image;         
         let container = this.$refs.container;
         
@@ -101,8 +102,14 @@ export default {
 
         let paper = this.paper;
         paper.activate(); 
-
-        let layer = paper.project.activeLayer; 
+        
+        let layer = null; 
+        console.log("before if"); 
+        if (paper.project !== null){
+            console.log("not null"); 
+            layer = paper.project.activeLayer; 
+        }
+        console.log("after if"); 
 
         this.activation_layer = new paper.Layer({locked: true}); 
         paper.project.insertLayer(0, this.activation_layer); 
@@ -130,7 +137,9 @@ export default {
           this.activation_paths.push(r); 
         }
 
-        layer.activate(); 
+        if (layer !== null){
+            layer.activate(); 
+        }
         paper.view.draw();
         paper.view.update();
     },
@@ -240,6 +249,16 @@ export default {
         img.style.setProperty('display', 'block')
 
         if (this.read_only && (this.initial_imdata.boxes === null || this.initial_imdata.boxes.length === 0)){
+            let paper = this.paper;      
+            paper.activate(); 
+            let cnv = this.$refs.canvas;
+            console.log('drawing canvas', img.height, img.width, img)
+            cnv.height = height;
+            cnv.width = width;
+            this.paper.setup(cnv);
+            this.height_ratio = height / img.naturalHeight
+            this.width_ratio = width / img.naturalWidth
+            this.paper.view.draw();
             return;
         }
         // call some code to draw activation array 
