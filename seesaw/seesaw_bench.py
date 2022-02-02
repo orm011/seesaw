@@ -19,7 +19,8 @@ from .util import *
 import pyroaring as pr
 import importlib
 from .seesaw_session import SessionParams, Session, Imdata, Box
-from pydantic import BaseModel
+from .basic_types import *
+
 # ignore this comment
 def vls_init_logger():
     import logging
@@ -165,21 +166,12 @@ _clip_tx = T.Compose([
 
 
 
-class BenchParams(BaseModel):
-    name : str
-    ground_truth_category : str
-    qstr : str
-    n_batches : int # max number of batches to run
-    max_results : int # stop when this numbrer of results is found
-    max_feedback : Optional[int]
-    box_drop_prob : float
-
-
 def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
     imdata = imdata.copy()
     rows = box_data[box_data.dbidx == imdata.dbidx]
     if rows.shape[0] > 0:
-      rows = rows[['x1', 'x2', 'y1', 'y2', 'category']]
+      rows = rows.assign(description=rows.category, marked_accepted=(rows.category == b.ground_truth_category))
+      rows = rows[['x1', 'x2', 'y1', 'y2', 'description', 'marked_accepted']]
 
       ## drop some boxes based on b.box_drop_prob 
       rnd = np.random.rand(rows.shape[0])
@@ -188,12 +180,16 @@ def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
     else:
       filling = []
     imdata.boxes = filling
-    imdata.marked_accepted = len(filling) > 0
+    imdata.marked_accepted = is_accepted(imdata)
     return imdata
 
 def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : pd.DataFrame,
                       b : BenchParams, p : SessionParams):
+
+    all_box_data = box_data
+    box_data = box_data[box_data.category==b.ground_truth_category]
     positives = pr.FrozenBitMap(box_data.dbidx.values)
+
     assert positives.intersection(subset) == positives, 'index mismatch'
     max_results = min(len(positives),b.max_results)
     assert max_results > 0
@@ -211,7 +207,10 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
         s = copy.deepcopy(session.get_state())
         last_batch = s.gdata[-1]
         for j, imdata in enumerate(last_batch):
-          last_batch[j] = fill_imdata(imdata, box_data, b)
+          if p.interactive == 'textual':
+            last_batch[j] = fill_imdata(imdata, all_box_data, b)
+          else:            
+            last_batch[j] = fill_imdata(imdata, box_data, b)
 
         session.update_state(s)
         batch_pos = np.array([imdata.marked_accepted for imdata in last_batch])
@@ -240,21 +239,6 @@ from .progress_bar import tqdm_map
 import os
 import string
 import time
-
-from .seesaw_session import SessionState
-
-class BenchResult(BaseModel):
-    nimages: int
-    ntotal: int
-    session: SessionState
-    run_info : dict
-    total_time : float
-
-class BenchSummary(BaseModel):
-    bench_params : BenchParams
-    session_params : SessionParams
-    timestamp : str
-    result : Optional[BenchResult]
 
 
 class BenchRunner(object):
@@ -315,7 +299,6 @@ def get_metric_summary(session : SessionState):
     hit_indices = []
     for ent in session.gdata:
         for imdata in ent:
-            assert (len(imdata.boxes) == 0) == (not imdata.marked_accepted)
             if imdata.marked_accepted:
                 hit_indices.append(curr_idx)
             curr_idx +=1
@@ -356,10 +339,10 @@ def get_metrics_table(base_path, at_N):
 def prep_bench_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()
     catgt = qgt[p.index_spec.c_name]    
-    box_data = box_data[box_data.category == p.index_spec.c_name]
     
+    positive_box_data = box_data[box_data.category == p.index_spec.c_name]
     present = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
-    positive = pr.FrozenBitMap(box_data.dbidx.values)
+    positive = pr.FrozenBitMap(positive_box_data.dbidx.values)
 
     assert positive.intersection(present) == positive    
     return box_data, present, positive

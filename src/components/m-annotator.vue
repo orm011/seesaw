@@ -48,12 +48,13 @@ import paper from 'paper/dist/paper-core';
 export default { 
   name: "MAnnotator", // used by ipyvue?
   props: ['initial_imdata', 'read_only'],
-  emits: ['cclick'],
+  emits: ['cclick', 'selection'],
   data : function() {
         return {height_ratio:null, width_ratio:null, 
                 paper: null, 
-                imdata : this.initial_imdata,  
+                imdata : this.initial_imdata,
                 show_activation : false,
+                annotation_paper_objs : [], // {box, description}
                 activation_paths : [], 
                 activation_layer : null, }
   },
@@ -78,6 +79,12 @@ export default {
     toggle_activation() {
         this.show_activation = !this.show_activation
         this.activation_press();
+    },
+    delete_paper_obj(obj){
+        this.annotation_paper_objs = this.annotation_paper_objs.filter((oent) => (oent != obj))
+        obj.box.remove()
+        obj.description.remove()
+        this.save()
     },
     draw_activation: function(){
         let img = this.$refs.image;         
@@ -111,9 +118,15 @@ export default {
           let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
           let rect = paper.Rectangle.deserialize(paper_style)
           let r = new paper.Path.Rectangle(rect);
-          r.fillColor = 'red'; 
-          r.strokeWidth = 0; 
-          r.opacity = b.score
+          if (b.score >= 0){
+            r.fillColor = 'red'; 
+            r.strokeWidth = 0; 
+            r.opacity = b.score
+          } else { // helpful to visualize negative 
+            r.fillColor = 'blue'
+            r.strokeWidth = 0; 
+            r.opacity = -b.score
+          }
           this.activation_paths.push(r); 
         }
 
@@ -130,28 +143,43 @@ export default {
         }
     }, 
     rescale_box : function(box, height_scale, width_scale) {
-          let {x1,x2,y1,y2} = box;
-          return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale};
+          let {x1,x2,y1,y2,...rest} = box;
+          return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale, ...rest};
+    },
+
+    /**
+     * @param {{box:paper.Path, description : paper.PointText}} obj
+     */
+    paper2imdata(obj){
+      let b = obj.box.bounds;
+      let ret = {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}
+      let ans = this.rescale_box(ret, this.height_ratio, this.width_ratio)
+
+      ans.description = obj.description.content;
+      ans.marked_accepted = 'marked_accepted' in obj.box.data ?  obj.box.data.marked_accepted  : false
+      return ans
     },
     save : function() {
-        if (this.show_activation){
-            this.clear_activation(); 
-        }
+        // if (this.show_activation){
+        //     this.clear_activation(); 
+        // }
         let paper = this.paper
         paper.activate(); 
-        let boxes = (paper.project.getItems({className:'Path'})
-                          .map(x =>  {let b = x.bounds; return {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}})
-                          .map(box => this.rescale_box(box, this.height_ratio, this.width_ratio)))
+
+        let boxes = this.annotation_paper_objs.map(this.paper2imdata);
+        console.assert(boxes != undefined)
         console.log('saving state from paper to local imdata ')
-        if (boxes.length == 0){
+        if (boxes.length == 0) {
             this.imdata.boxes = null;
             this.imdata.marked_accepted = false;
             console.log('length 0 reverts to null right now')
         } else {
             this.imdata.boxes = boxes;
-            this.imdata.marked_accepted = true;
+            this.imdata.marked_accepted = boxes.filter(b => b.marked_accepted).length > 0
         }
     },
+
+    
     get_latest_imdata(){
       this.save();
       return this.imdata;
@@ -169,12 +197,21 @@ export default {
             let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
             let rect = paper.Rectangle.deserialize(paper_style)
             let r = new paper.Path.Rectangle(rect);
-            r.strokeColor = 'green';
-            r.strokeWidth = 2;
+            r.data.marked_accepted = boxdict.marked_accepted;
+            r.strokeColor = boxdict.marked_accepted ? 'green' : 'yellow';
+            r.strokeWidth = 4;
             r.data.state = null;
             r.selected = false;
-            console.log('drew rect ', r)
-            }
+
+            let text = new paper.PointText(new paper.Point(rdict.x1, rdict.y1));
+            text.justification = 'left';
+            text.fillColor = r.strokeColor;
+            text.fontSize = 12; // default 10
+            text.content = boxdict.description;
+
+            let annot_obj = {box:r, description:text};
+            this.annotation_paper_objs.push(annot_obj);
+          }
       }
     },
     hover : function (start) {
@@ -185,9 +222,6 @@ export default {
                 this.$refs.image.style.opacity = 1.
             }
         } 
-    },
-    toggle_accept(){
-        this.imdata.marked_accepted = this.imdata.marked_accepted ? false : true
     },
     canvas_click : function (e){
         console.log('canvas click!', e);
@@ -242,9 +276,10 @@ export default {
     makeRect(from, to){
         this.paper.activate(); 
           let r = new this.paper.Path.Rectangle(from, to);
-          r.strokeColor = 'green';
-          r.strokeWidth = 2;
+          r.strokeWidth = 4;
           r.data.state = null;
+          r.data.marked_accepted = false;
+          r.strokeColor = r.data.marked_accepted ? 'green' : 'yellow'
           r.selected = false;
           return r;
     },
@@ -258,7 +293,7 @@ export default {
                           fill: true,
                           class : paper.Path,
                           tolerance: 10};
-
+            console.log('mouse down')
           let hr = paper.project.hitTest(e.point, hit_opts);
           let preselected = paper.project.getSelectedItems()
           preselected.map(r => r.selected = false); // unselect previous
@@ -266,21 +301,32 @@ export default {
           let rect = null;
           if (hr == null && preselected.length > 0){
               return ;
-          } else if (hr == null){
+          } else if (hr == null){ // make a new one
               rect = makeRect(e.point.subtract(new paper.Size(1,1)),
                               e.point);
+              let text = new paper.PointText(e.point);
+              text.justification = 'left';
+              text.fillColor = rect.data.marked_accepted ? 'green' : 'yellow'
+              text.content = ''
+              let sel = {box:rect, description:text};
+              this.annotation_paper_objs.push(sel)
           } else { // existing rect
-            //  console.log(hr.item);
               rect = hr.item;
           }
 
-          rect.selected=true; // select this
+          rect.selected=true; // mark selected
+          let cur_sel = this.annotation_paper_objs.filter((obj) => obj.box.selected)
+          if (cur_sel.length == 1){
+            // this.$emit('selection', cur_sel[0]);
+          } else {
+            console.log('multiple/zero selected items')
+          }
 
           if (hr != null && hr.type === 'stroke') {
               rect.data.state = 'moving';
               return;
-          }
-
+          } 
+          
           if (hr == null || hr.type === 'segment') {
               rect.data.state = 'resizing';
               let r = rect.bounds
@@ -308,24 +354,40 @@ export default {
           if (this.show_activation){
               this.draw_activation(); 
           }
-
+          let sels = this.annotation_paper_objs.filter(obj => obj.box.selected)
+          if (sels.length === 1){
+            this.$emit('selection', sels[0])
+          } else {
+            this.$emit('selection', null)
+          }
       };
 
       tool.onKeyUp = (e) => {
-          let preselected = paper.project.getSelectedItems();
-          if (preselected.length === 0){
-              return;
-          } else if (e.key === 'd') { // auto save upon deletion
-              preselected.forEach(r => r.remove());
-              this.save(); // want to know if mark accept or not
-              if (this.show_activation){
-                  this.draw_activation(); 
-              }
-            // this.save_current_box_data();
-          } else {
-              return;
-          }
-      }
+        //   if (this.being_edited == null){
+        //   let preselected = paper.project.getSelectedItems();
+        //   if (preselected.length === 0){
+        //       return;
+        //   } else if (e.key === 'd') { // auto save upon deletion
+        //       preselected.forEach(r => r.remove());
+        //       this.save(); // want to know if mark accept or not
+        //     // this.save_current_box_data();
+        //   } 
+        //   else if (e.key == 'enter'){
+        //       // if (preselected.length == 1){
+        //       //   let item = preselected[0];
+        //       //   let matched = this.annotation_paper_objs.filter(x => x.box == item);
+        //       //   if (matched.length == 1){
+        //       //       this.being_edited = matched[0];
+        //       //   }
+        //       // } else{
+        //       //   console.log('need at least one selected')
+        //       // }
+        //   }
+        //    else {
+        //       return;
+        //   }
+        // } else{ 
+        }
 
       tool.onMouseDrag = (e) => {
            // console.log('drag');
@@ -346,6 +408,8 @@ export default {
               }
           }
       };
+
+    console.log('finished setting up box annotation tool ')
     }
     }
 }
@@ -366,7 +430,6 @@ export default {
     /* height:fit-content; */
     /* display:inline-block;*/  /* let this decision be done elsewhere, just like with an image */
 }
-
 
 .annotator_image {
     /* max-width:100%; */

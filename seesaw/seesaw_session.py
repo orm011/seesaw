@@ -2,70 +2,55 @@ import json
 from seesaw.query_interface import AccessMethod
 import numpy as np
 import pandas as pd
-from .dataset_manager import GlobalDataManager, IndexSpec, SeesawDatasetManager
+from .dataset_manager import GlobalDataManager, SeesawDatasetManager
 
-from typing import Optional, List
-from pydantic import BaseModel
 import os
 import time
+import numpy as np
+import sklearn.metrics
+import math
 import pyroaring as pr
+from dataclasses import dataclass,field
 
 def get_image_paths(image_root, path_array, idxs):
     return [ os.path.normpath(f'{image_root}/{path_array[int(i)]}').replace('//', '/') for i in idxs ]
 
+from .basic_types import *
 from .search_loop_models import *
 from .search_loop_tools import *
-
-import time
-
 from .dataset_tools import *
-from .vloop_dataset_loaders import EvDataset, get_class_ev
 from .fine_grained_embedding import *
 from .search_loop_models import adjust_vec, adjust_vec2
-import numpy as np
-import sklearn.metrics
-import math
 from .util import *
 from .pairwise_rank_loss import VecState
-import pyroaring as pr
-from .dataset_manager import VectorIndex
 from .query_interface import *
-from .multiscale_index import MultiscaleIndex
-from .coarse_index import CoarseIndex
-from dataclasses import dataclass,field
-        
-class SessionParams(BaseModel):
-    index_spec : IndexSpec
-    interactive : str
-    warm_start : str
-    batch_size : int
-    minibatch_size : int
-    learning_rate : float
-    max_examples : int
-    loss_margin : float
-    num_epochs : int
-    model_type : str
-
-from .query_interface import AccessMethod
+from .textual_feedback_box import OnlineModel,  join_vecs2annotations
 
 @dataclass
 class LoopState:
+    curr_str : str = None
     tvec : np.ndarray = None
     tmod : str = None
     latency_profile : list = field(default_factory=list)
     vec_state : VecState = None
+    model : OnlineModel = None
 
 class SeesawLoop:
     q : InteractiveQuery
     params : SessionParams
     state : LoopState
 
-    def __init__(self, q : InteractiveQuery, params : SessionParams):
+    def __init__(self, gdm : GlobalDataManager, q : InteractiveQuery, params : SessionParams):
         self.params = params
         self.state = LoopState()
         self.q = q
 
-                #res = {'indices':acc_indices, 'results':acc_results}#, 'gt':gt.values.copy()}
+        if self.params.interactive == 'textual':
+          param_dict = gdm.global_cache.read_state_dict('/home/gridsan/omoll/.cache/clip/ViT-B-32.pt', jit=True)
+          config = self.params.method_config
+          if not torch.cuda.is_available():
+            config = {**config, 'device':'cpu'} # overrule gpu if not available
+          self.state.model = OnlineModel(param_dict, config)
 
     def next_batch(self):
         """
@@ -79,7 +64,12 @@ class SeesawLoop:
                                     'lookup':None, 'label':None, 'refine':None, }    
         s.latency_profile.append(lp)
 
-        b =  self.q.query_stateful(mode=s.tmode, vector=s.tvec, batch_size=p.batch_size)
+        if p.interactive == 'textual':
+          vec = s.model.encode_string(s.curr_str)
+        else:
+          vec = s.tvec
+
+        b =  self.q.query_stateful(mode=s.tmode, vector=vec, batch_size=p.batch_size)
         idxbatch = b['dbidxs']
         lp['n_images'] = idxbatch.shape[0]
         lp['lookup'] = time.time() - start_lookup
@@ -96,8 +86,45 @@ class SeesawLoop:
         lp = s.latency_profile[-1]
         
         lp['label'] = start_refine - lp['lookup']
+        
+        if p.interactive == 'plain':
+          return
+        elif p.interactive == 'textual':
+          # get vectors and string corresponding to current annotations
+          # run the updater.
+          print('textual update')
+          vecs = []
+          strs = []
+          acc = []
+          for dbidx in self.q.label_db.get_seen():
+            annot = self.q.label_db.get(dbidx, format='box')
+            assert annot is not None
+            if len(annot) == 0:
+              continue
 
-        if p.interactive != 'plain':
+            dfvec, dfbox = join_vecs2annotations(self.q.index, dbidx, annot)
+            # best_box_iou, best_box_idx
+            
+            ## vectors with overlap
+            df = dfbox # use boxes as guide for now
+            print(dfbox[['best_box_iou', 'description', 'x1', 'y1', 'x2', 'y2']])
+            df = df[df.best_box_iou > .3]
+            if df.shape[0] > 0:
+              print(df[['best_box_iou', 'description', 'x1', 'y1', 'x2', 'y2']])
+              vecs.append(df.vectors.values)
+              strs.append(df.descriptions.values)
+              acc.append(df.marked_accepted.values)
+
+          if len(vecs) == 0:
+            print('no annotations for update... skipping')
+            return
+
+          all_vecs = np.concatenate(vecs)
+          all_strs = np.concatenate(strs)
+          marked_accepted = np.concatenate(acc)
+          losses = s.model.update(all_vecs, marked_accepted, all_strs, s.curr_str)
+          print('done with update', losses)
+        else:
             Xt,yt = self.q.getXy()
             lp['n_posvecs'] = (yt == 1).sum()#.shape[0]
             lp['n_negvecs'] = (yt != 1).sum()
@@ -164,25 +191,6 @@ class SeesawLoop:
                 # print('missing positives or negatives to do any training', yt.shape, yt.max(), yt.min())
                 pass
 
-            lp['refine'] = time.time() - start_refine
-
-
-class ActivationData(BaseModel):
-    box : Box
-    score : float
-
-class Imdata(BaseModel):
-    url : str
-    dbidx : int
-    boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
-    activations : Optional[List[ActivationData]]
-    marked_accepted : bool
-
-class SessionState(BaseModel):
-    params : SessionParams
-    gdata : List[List[Imdata]]
-    timing : List[float]
-    reference_categories : List[str]
 
 class Session:
     current_dataset : str
@@ -208,7 +216,7 @@ class Session:
         self.index = hdb 
         self.q = hdb.new_query()
 
-        self.loop = SeesawLoop(self.q, params=self.params)
+        self.loop = SeesawLoop(self.gdm, self.q, params=self.params)
 
     def next(self):
         start = time.time()
@@ -226,17 +234,12 @@ class Session:
         self.init_q = key
         p = self.loop.params
         s = self.loop.state
-
-        if key == 'nolang':
-            s.tvec = None
-            s.tmode = 'random'
-        else:
-            init_vec = self.index.string2vec(string=key)
-            s.tvec = init_vec
-            s.tmode = 'dot'
-            if p.model_type == 'multirank2':
-                s.vec_state = VecState(init_vec, margin=p.loss_margin, opt_class=torch.optim.SGD, 
-                opt_params={'lr':p.learning_rate})
+        s.curr_str = key
+        s.tvec = self.index.string2vec(string=key)
+        s.tmode = 'dot'
+        if p.model_type == 'multirank2':
+            s.vec_state = VecState(s.tvec, margin=p.loss_margin, opt_class=torch.optim.SGD, 
+            opt_params={'lr':p.learning_rate})
 
     def update_state(self, state: SessionState):
         self._update_labeldb(state.gdata)

@@ -7,8 +7,8 @@ from fastapi import FastAPI
 
 import os
 from .dataset_manager import GlobalDataManager, IndexSpec
-from .seesaw_bench import BenchParams
-from .seesaw_session import Session, Box, SessionState, SessionParams
+from .basic_types import Box, SessionState, SessionParams
+from .seesaw_session import Session
 
 class AppState(BaseModel): # Using this as a response for every state transition.
     indices : List[IndexSpec]
@@ -40,6 +40,8 @@ def prep_db(gdm, index_spec):
     # TODO: add subsetting here
     return hdb
 
+from .textual_feedback_box import std_textual_config
+
 def add_routes(app : FastAPI):
   class WebSeesaw:
       def __init__(self, root_dir, save_path):
@@ -49,7 +51,9 @@ def add_routes(app : FastAPI):
           self.gdm = GlobalDataManager(root_dir)
           self.indices = self.gdm.list_indices()
           self.params = SessionParams(index_spec=self.indices[0],
-                                    interactive='pytorch', 
+                                    # interactive='pytorch', 
+                                    interactive='textual', 
+                                    method_config=std_textual_config,
                                     warm_start='warm', batch_size=3, 
                                     minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
                                     num_epochs=2, model_type='multirank2')
