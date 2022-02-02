@@ -95,6 +95,7 @@ class SeesawLoop:
           print('textual update')
           vecs = []
           strs = []
+          acc = []
           for dbidx in self.q.label_db.get_seen():
             annot = self.q.label_db.get(dbidx, format='box')
             assert annot is not None
@@ -112,6 +113,7 @@ class SeesawLoop:
               print(df[['best_box_iou', 'description', 'x1', 'y1', 'x2', 'y2']])
               vecs.append(df.vectors.values)
               strs.append(df.descriptions.values)
+              acc.append(df.marked_accepted.values)
 
           if len(vecs) == 0:
             print('no annotations for update... skipping')
@@ -119,7 +121,8 @@ class SeesawLoop:
 
           all_vecs = np.concatenate(vecs)
           all_strs = np.concatenate(strs)
-          losses = s.updater.update(all_vecs, all_strs, s.curr_str)
+          marked_accepted = np.concatenate(acc)
+          losses = s.updater.update(all_vecs, marked_accepted, all_strs, s.curr_str)
           print('done with update', losses)
         else:
             Xt,yt = self.q.getXy()

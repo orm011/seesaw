@@ -148,7 +148,7 @@ def get_text_features(self, actual_strings, target_string):
     tstrings = clip.tokenize(ustrings)
     text_features = self.model.encode_text(tstrings.to(self.device))
     text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-    return text_features, stringids, ustrings
+    return text_features, stringids, np.array(ustrings)
         
 def forward(self, imagevecs, actual_strings, target_string):
     ## uniquify strings    
@@ -161,6 +161,8 @@ def forward(self, imagevecs, actual_strings, target_string):
     scores = image_features @ text_features.t()
     
     assert scores.shape[0] == stringids.shape[0]
+    assert scores.shape[1] == ustrings.shape[0]
+
     return scores, stringids.to(self.device), ustrings
 
 def forward2(self, imagevecs, actual_strings, target_string):
@@ -213,7 +215,7 @@ class Updater(object):
         self.lr_scheduler = r['lr_scheduler']
         self.losses = []
         
-    def update(self, imagevecs, actual_strings, target_string):
+    def update(self, imagevecs, marked_accepted, actual_strings, target_string):
         se = self.se
         se.model.train()
         opt = self.opt
@@ -221,12 +223,41 @@ class Updater(object):
         imagevecs = torch.from_numpy(imagevecs).to(se.device)
 
         def opt_closure():
-            scores, stringids, rawstrs = forward(se, imagevecs, actual_strings, target_string)
+            scores, stringids, unique_strs = forward(se, imagevecs, actual_strings, target_string)
             iidx = torch.arange(scores.shape[0]).long()
-            assert scores.shape[0] == imagevecs.shape[0]
-            actual_score = scores[iidx, stringids].reshape(-1,1)
-            losses = F.relu(- (actual_score - scores - self.config['margin']))
-            loss = losses.mean()
+
+            assert scores.shape == (imagevecs.shape[0], unique_strs.shape[0])
+
+            orig_strings = unique_strs[stringids]
+
+            described = orig_strings != ''
+            non_default = orig_strings != target_string
+            better_described = described & non_default
+
+            score_for_string_label = scores[iidx, stringids].reshape(-1,1)
+            score_for_target_string = scores[:,0]            
+
+            if better_described.sum() > 0:
+              # the given label should score higher than the search query
+              label_rank_losses = F.relu(- (score_for_string_label[better_described] - score_for_target_string[better_described] - self.config['margin']))
+              label_rank_loss = label_rank_losses.mean()
+            else:
+              label_rank_loss = 0.
+
+            total_pos = marked_accepted.sum()
+            if total_pos > 0 and total_pos < imagevecs.shape[0]:
+              pos_scores = score_for_target_string[marked_accepted]
+              neg_scores = score_for_target_string[~marked_accepted]
+
+              image_rank_losses = F.relu(- (pos_scores.reshape(-1,1) - neg_scores.reshape(1,-1) - self.config['margin']))
+              image_rank_loss = image_rank_losses.reshape(-1).mean()
+            else:
+              image_rank_loss = 0.
+
+            print('label loss', label_rank_loss.detach().cpu() if torch.is_tensor(label_rank_loss) else label_rank_loss)
+            print('image_loss', image_rank_loss.detach().cpu() if torch.is_tensor(image_rank_loss) else image_rank_loss)
+
+            loss = label_rank_loss + self.config['image_loss_weight']*image_rank_loss
             return loss
 
         losses = []

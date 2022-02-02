@@ -42,6 +42,7 @@ def prep_db(gdm, index_spec):
 
 textual_config = {'batch_size': 64,
                   'logit_scale_init': 3.7,
+                  'image_loss_weight':1.,
                   'opt_config': {'logit_scale': None, #{'lr': 0.0001415583047102676,'weight_decay': 0.0017007389655182095},
                     'transformer': None,
                     'transformer.resblocks.0.ln_': {'lr': 0.0007435612322566577,'weight_decay': 1.5959136512232553e-05},

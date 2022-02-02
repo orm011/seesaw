@@ -170,8 +170,8 @@ def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
     imdata = imdata.copy()
     rows = box_data[box_data.dbidx == imdata.dbidx]
     if rows.shape[0] > 0:
-      rows = rows.assign(description=rows.category)
-      rows = rows[['x1', 'x2', 'y1', 'y2', 'description']]
+      rows = rows.assign(description=rows.category, marked_accepted=(rows.category == b.ground_truth_category))
+      rows = rows[['x1', 'x2', 'y1', 'y2', 'description', 'marked_accepted']]
 
       ## drop some boxes based on b.box_drop_prob 
       rnd = np.random.rand(rows.shape[0])
@@ -180,7 +180,7 @@ def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
     else:
       filling = []
     imdata.boxes = filling
-    imdata.marked_accepted = len(filling) > 0
+    imdata.marked_accepted = is_accepted(imdata)
     return imdata
 
 def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : pd.DataFrame,
@@ -299,7 +299,6 @@ def get_metric_summary(session : SessionState):
     hit_indices = []
     for ent in session.gdata:
         for imdata in ent:
-            assert (len(imdata.boxes) == 0) == (not imdata.marked_accepted)
             if imdata.marked_accepted:
                 hit_indices.append(curr_idx)
             curr_idx +=1
