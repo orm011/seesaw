@@ -132,7 +132,7 @@ if __name__ == '__main__':
       ray.kill(oldh)
       print('ended previous cache actor')
     except:
-      password_option
+      pass
       # no actor to kill
 
     print('starting new cache actor')
