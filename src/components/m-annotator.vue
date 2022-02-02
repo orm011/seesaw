@@ -102,7 +102,7 @@ export default {
 
         let paper = this.paper;
         paper.activate(); 
-        
+
         let layer = null; 
         console.log("before if"); 
         if (paper.project !== null){
@@ -248,19 +248,6 @@ export default {
         container.style.setProperty('height', height + 'px')
         img.style.setProperty('display', 'block')
 
-        if (this.read_only && (this.initial_imdata.boxes === null || this.initial_imdata.boxes.length === 0)){
-            let paper = this.paper;      
-            paper.activate(); 
-            let cnv = this.$refs.canvas;
-            console.log('drawing canvas', img.height, img.width, img)
-            cnv.height = height;
-            cnv.width = width;
-            this.paper.setup(cnv);
-            this.height_ratio = height / img.naturalHeight
-            this.width_ratio = width / img.naturalWidth
-            this.paper.view.draw();
-            return;
-        }
         // call some code to draw activation array 
         // on top of canvas 
         // ctx
@@ -276,6 +263,9 @@ export default {
         this.width_ratio = width / img.naturalWidth
         this.paper.view.draw();
         
+        if (this.read_only && (this.initial_imdata.boxes === null || this.initial_imdata.boxes.length === 0)){
+            return;
+        }
         this.load_current_box_data();
 
 
