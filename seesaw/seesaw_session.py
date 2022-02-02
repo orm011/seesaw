@@ -24,7 +24,7 @@ from .search_loop_models import adjust_vec, adjust_vec2
 from .util import *
 from .pairwise_rank_loss import VecState
 from .query_interface import *
-from .textual_feedback_box import StringEncoder, Updater, join_vecs2annotations
+from .textual_feedback_box import OnlineModel,  join_vecs2annotations
 
 @dataclass
 class LoopState:
@@ -33,8 +33,7 @@ class LoopState:
     tmod : str = None
     latency_profile : list = field(default_factory=list)
     vec_state : VecState = None
-    string_encoder :StringEncoder  = None
-    updater: Updater = None
+    model : OnlineModel = None
 
 class SeesawLoop:
     q : InteractiveQuery
@@ -48,9 +47,8 @@ class SeesawLoop:
 
         if self.params.interactive == 'textual':
           param_dict = gdm.global_cache.read_state_dict('/home/gridsan/omoll/.cache/clip/ViT-B-32.pt', jit=True)
-          self.state.string_encoder = StringEncoder(param_dict, 'cpu')
           config = self.params.method_config
-          self.state.updater = Updater(self.state.string_encoder, config)
+          self.state.model = OnlineModel(param_dict, config)
 
     def next_batch(self):
         """
@@ -65,7 +63,7 @@ class SeesawLoop:
         s.latency_profile.append(lp)
 
         if p.interactive == 'textual':
-          vec = s.string_encoder.encode_string(s.curr_str)
+          vec = s.model.encode_string(s.curr_str)
         else:
           vec = s.tvec
 
@@ -122,7 +120,7 @@ class SeesawLoop:
           all_vecs = np.concatenate(vecs)
           all_strs = np.concatenate(strs)
           marked_accepted = np.concatenate(acc)
-          losses = s.updater.update(all_vecs, marked_accepted, all_strs, s.curr_str)
+          losses = s.model.update(all_vecs, marked_accepted, all_strs, s.curr_str)
           print('done with update', losses)
         else:
             Xt,yt = self.q.getXy()

@@ -181,6 +181,8 @@ def forward2(self, imagevecs, actual_strings, target_string):
 import torch.optim
 from .clip_module import configure_optimizer
 
+
+# using huggingface clip param names.
 _config = {'batch_size': 64,
  'logit_scale_init': 3.7,
  'opt_config': {'logit_scale': {'lr': 0.0001415583047102676,
@@ -204,26 +206,64 @@ _config = {'batch_size': 64,
  'test_size': 1000,
  'val_batch_size': 500}
 
+# using open ai clip model param names
+std_textual_config = {'batch_size': 64,
+                  'logit_scale_init': 3.7,
+                  'image_loss_weight':1.,
+                  'device':'cuda:0',
+                  'opt_config': {'logit_scale': None, #{'lr': 0.0001415583047102676,'weight_decay': 0.0017007389655182095},
+                    'transformer': None,
+                    'transformer.resblocks.0.ln_': {'lr': 0.0007435612322566577,'weight_decay': 1.5959136512232553e-05},
+                    'transformer.resblocks.11.ln': {'lr': 0.0001298217305130271,'weight_decay': 0.015548602355938877},
+                    #'transformer.resblocks.11.mlp': None, #{'lr': 3.258792283209162e-07,'weight_decay': 0.001607367028678558},
+                    #'transformer.resblocks.11.ln_2': None,
+                    'ln_final': {'lr': 0.007707377565843718,'weight_decay': 0.0},
+                    'text_projection': {'lr': 5.581683501371101e-05, 'weight_decay': 0.0},
+                    'positional_embedding':None,
+                    'token_embedding':None,
+                    'visual': None,
+                    'positiional_embedding':None},
+                  'num_warmup_steps': 5,
+                  'num_workers': 20,
+                  'test_size': 1000,
+                  'margin':.3,
+                  'rounds':8,
+                  'val_batch_size': 500}
 
-class Updater(object):
-    se : StringEncoder
-    def __init__(self, se, config):
-        self.se = se
-        self.config = config
-        r = configure_optimizer(self.se.model, h=config)
-        self.opt = r['optimizer']
-        self.lr_scheduler = r['lr_scheduler']
-        self.losses = []
+
+class OnlineModel(object):
+    def __init__(self, state_dict, config):
+      self.original_weights = state_dict
+      self.device = config['device']
+      self.model = None
+      self.config = config
+      self._reset_model()
+      self.losses = []
+
+    def _reset_model(self): # resets model and optimizers
+      print('restting model state')
+      self.model = build_model(self.original_weights).float().to(self.device)
+
+    def encode_string(self, string):
+        model = self.model.eval()
+        with torch.no_grad():
+            ttext = clip.tokenize([string])
+            text_features = model.encode_text(ttext.to(self.device))
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+            return text_features.detach().cpu().numpy()
         
     def update(self, imagevecs, marked_accepted, actual_strings, target_string):
-        se = self.se
-        se.model.train()
-        opt = self.opt
+        self._reset_model()
+        self.model.train()
 
-        imagevecs = torch.from_numpy(imagevecs).to(se.device)
+        r = configure_optimizer(self.model, self.config)
+        opt : torch.optim.Optimizer = r['optimizer']
+        lr_scheduler = r['lr_scheduler']
+
+        imagevecs = torch.from_numpy(imagevecs).to(self.device)
 
         def opt_closure():
-            scores, stringids, unique_strs = forward(se, imagevecs, actual_strings, target_string)
+            scores, stringids, unique_strs = forward(self, imagevecs, actual_strings, target_string)
             iidx = torch.arange(scores.shape[0]).long()
 
             assert scores.shape == (imagevecs.shape[0], unique_strs.shape[0])
@@ -267,7 +307,7 @@ class Updater(object):
             loss.backward()
             losses.append(loss.detach().cpu().numpy())
             opt.step()
-            self.lr_scheduler.step()
+            lr_scheduler.step()
 
         self.losses.append(losses)
         return losses
