@@ -40,27 +40,27 @@
               </div>
               <div class="row">
                 <select
-                  v-model="current_index"
-                  @change="reset(current_index)"
+                  v-model="selected_index"
+                  @change="reset(selected_index)"
                 >
                   <option
-                    v-for="(idxspec,idx) in client_data.indices"
+                    v-for="(idxspec,idx) in [null, ...client_data.indices]"
                     :key="idx"
                     :value="idxspec"
                   >
-                    {{ idxspec }}
+                    {{ idxspec != null ? `${idxspec.d_name}:${idxspec.i_name}` : '' }}
                   </option>
                 </select>
               </div>
             </div>
           </div>
-          <div class="row">
+          <div class="row" v-if="client_data.session != null">
             <span>Total images shown: {{ total_images() }}</span>
           </div>
-          <div class="row">
+          <div class="row" v-if="client_data.session != null">
             <span>Total images accepted: {{ total_accepted() }}</span>
           </div>
-          <div class="row">
+          <div class="row" v-if="client_data.session != null">
             <button 
               class="btn btn-dark btn-block" 
               @click="save()"
@@ -68,10 +68,10 @@
               Save 
             </button>
           </div>
-          <div class="row">
+          <div class="row" v-if="client_data.session != null">
             <button
               class="btn btn-dark btn-block"
-              @click="reset(current_index)"
+              @click="reset(client_data.session.index_spec)"
             >
               Reset
             </button>
@@ -93,7 +93,7 @@
           </div>
         </div>
       </nav>
-      <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+      <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" v-if="client_data.session != null">
         <div
           class="row"
           v-for="(imdata,idx) in client_data.session.gdata"
@@ -172,18 +172,18 @@ import MImageGallery from './components/m-image-gallery.vue';
 import MAnnotator from './components/m-annotator.vue';
 import MModal from './components/m-modal.vue';
 
-import _ from 'lodash';
-
 export default {
     components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator},
     props: {},
     data () { return { 
-                client_data : { session : { params :{ index_spec : {d_name:'', i_name:'', m_name:''}}, 
-                                            gdata : [] 
-                                          },
+                client_data : { session : null,
+                              // WHEN NOT NULL, SESSION HAS THIS SHAPE  
+                              // { params :{ index_spec : {d_name:'', i_name:'', m_name:''}}, 
+                              //                     gdata : [] 
+                              //                     },
                                 indices : [] 
                               },
-                current_index : null,
+                selected_index : null,
                 session_path : null,
                 selection: null, 
                 text_query:null,
@@ -351,13 +351,13 @@ export default {
           console.log('current data', this.$data);
           console.log('update client data', data, reset);
           this.client_data = data;
-          this.current_index = data.session.params.index_spec;
           this.handle_selection_change(null);
         },
         reset(index){
           console.log('start reset...', index, {...this.$data});
           let reqdata = {index:index};
           // this.$data = this.data()
+          this.client_data.session = null; // clear current screen
           
           fetch(`/api/reset`,   
               {method: 'POST', 

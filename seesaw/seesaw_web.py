@@ -12,7 +12,7 @@ from .seesaw_session import Session
 
 class AppState(BaseModel): # Using this as a response for every state transition.
     indices : List[IndexSpec]
-    session : SessionState
+    session : Optional[SessionState] #sometimes there is no active session
 
 class SessionReq(BaseModel):
     client_data : AppState
@@ -78,7 +78,7 @@ def add_routes(app : FastAPI):
 
       def _getstate(self):
           return AppState(indices=self.indices, 
-                              session=self.session.get_state())
+                          session=self.session.get_state() if self.session is not None else None)
 
       @app.get('/getstate', response_model=AppState)
       def getstate(self):
