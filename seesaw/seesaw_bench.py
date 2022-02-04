@@ -164,28 +164,47 @@ _clip_tx = T.Compose([
                     lambda x : x.type(torch.float16)
                     ])
 
-
-
 def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
     imdata = imdata.copy()
     rows = box_data[box_data.dbidx == imdata.dbidx]
     if rows.shape[0] > 0:
-      rows = rows.assign(description=rows.category, marked_accepted=(rows.category == b.ground_truth_category))
-      rows = rows[['x1', 'x2', 'y1', 'y2', 'description', 'marked_accepted']]
+
+      positives = rows[rows.category == b.ground_truth_category]
+      negatives = rows[rows.category != b.ground_truth_category]
+      # find the anotations that overlap with activation boxes
+      activation_df = pd.DataFrame([act.box.dict() for act in imdata.activations])
+      
+      ious = box_iou(negatives, activation_df)
+      
+      highlighted_area = np.sum(ious, axis=1)
+      
+      annotated_negatives = negatives[highlighted_area > .1]
+
+      positives = positives.assign(marked_accepted=True)
+      annotated_negatives = annotated_negatives.assign(marked_accepted=False)
+
+      feedback_df = pd.concat([positives, annotated_negatives], axis=0, ignore_index=True)
+      feedback_df = feedback_df[['x1', 'x2', 'y1', 'y2', 'description', 'marked_accepted']]
 
       ## drop some boxes based on b.box_drop_prob 
-      rnd = np.random.rand(rows.shape[0])
-      kept_rows = rows[rnd >=  b.box_drop_prob]
-      filling = [Box(**b) for b in kept_rows.to_dict(orient='records')]
+      rnd = np.random.rand(feedback_df.shape[0])
+      kept_rows = feedback_df[rnd >=  b.box_drop_prob]
+      boxes = [Box(**b) for b in kept_rows.to_dict(orient='records')]
     else:
-      filling = []
-    imdata.boxes = filling
+      boxes = []
+    imdata.boxes = boxes
     imdata.marked_accepted = is_accepted(imdata)
     return imdata
 
 def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : pd.DataFrame,
                       b : BenchParams, p : SessionParams):
 
+
+    def annotation_fun(cat):
+      dataset_name = p.index_spec.d_name.split('/')[-2]
+      return category2query(dataset_name, cat)
+
+    box_data = box_data.assign(description=box_data.category.map(annotation_fun))
     all_box_data = box_data
     box_data = box_data[box_data.category==b.ground_truth_category]
     positives = pr.FrozenBitMap(box_data.dbidx.values)
@@ -217,11 +236,11 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
         total_results += batch_pos.sum()
         total_seen += idxbatch.shape[0]
 
-        if total_results == max_results:
-            print(f'Found all {total_results} possible results for {b.ground_truth_category} after {batch_num} batches. stopping...')
+        if total_results >= max_results: # one batch may have more than 1, so it could go beyond desired limit
+            print(f'Found {total_results} (>= limit of {max_results}) for {b.ground_truth_category} after {batch_num} batches. stopping...')
             break
 
-        if batch_num == b.n_batches:
+        if batch_num == b.n_batches:  
             print(f'iter {batch_num} = {b.n_batches}. ending...')
             break 
         
