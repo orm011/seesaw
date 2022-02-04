@@ -467,7 +467,7 @@ class CLIPWrapper(XEmbedding):
                     return image_features.cpu().numpy()
 
 
-class ModelService(XEmbedding):
+class ModelStub(XEmbedding):
     def __init__(self, model_ref):
         self.model_ref = model_ref
 

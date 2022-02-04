@@ -1,14 +1,14 @@
 import os
 import ray
 import pandas as pd
-
+from typing import Union
 
 class WrappedRef:
   def __init__(self, ref):
     assert isinstance(ref, ray.ObjectRef)
     self.ref = ref
 
-class MemoryCache:
+class ReferenceCache:
   mapping : dict
   '''
     global store for reference to paths (outlives any single session)
@@ -114,8 +114,7 @@ class CacheStub:
         else: # not sure what else to do here
           return mod
 
-    return self._with_lock(path, _init_fun)    
-
+    return self._with_lock(path, _init_fun)
 
 import argparse
 if __name__ == '__main__':
@@ -136,7 +135,7 @@ if __name__ == '__main__':
       # no actor to kill
 
     print('starting new cache actor')
-    h = ray.remote(MemoryCache).options(name=actor_name, num_cpus=1, lifetime='detached').remote()
+    h = ray.remote(ReferenceCache).options(name=actor_name, num_cpus=1, lifetime='detached').remote()
     r = h.ready.remote()
     ray.get(r)
     print('new cache actor ready')

@@ -610,11 +610,12 @@ class GlobalDataManager:
             os.makedirs(p, exist_ok=True)
 
         self.dbpath = f'{root}/meta.sqlite'
-        self.dburi = f'file:{self.dbpath}?nolock=1'
+        self.dburi = f'file:{self.dbpath}?nolock=1&mode=ro'
         ensure_db(self.dbpath)
 
-    def _get_connection(self):
-        return sqlite3.connect(self.dburi, uri=True)
+    def _get_connection(self, mode='ro'):
+        dburi = f'file:{self.dbpath}?nolock=1&mode={mode}'
+        return sqlite3.connect(dburi, uri=True)
 
     def _fetch(self, sql, *args, mode='plain', **kwargs):
         try:
@@ -667,19 +668,21 @@ class GlobalDataManager:
     def _get_model_path(self, model_name : str) -> str :
         return self._fetch_unique('''select m_path from models where m_name == ?''', (model_name,))[0]
 
-    def _create_model_actor(self, model_name : str, actor_name : str):
-        if not torch.cuda.is_available():
-            device = 'cpu'
-            num_gpus = 0
-            num_cpus = 4
-        else:
-            device = 'cuda:0'
-            num_gpus = .3
-            num_cpus = 2
+    def get_model_actor(self, model_name : str):
+      actor_name = f'/model_actor#{model_name}' # the slash is important
 
+      def _init_model_actor():
         m_path = self._get_model_path(model_name)
         full_path = f'{self.root}/{m_path}'
-        print(full_path)
+
+        if ray.cluster_resources().get('GPU', 0) == 0:
+            device = 'cpu'
+            num_gpus = 0
+            num_cpus = 8
+        else:
+            device = 'cuda:0'
+            num_gpus = .5
+            num_cpus = 4
 
         r = (ray.remote(HGWrapper)
                 .options(name=actor_name, num_gpus=num_gpus, num_cpus=num_cpus, lifetime='detached')
@@ -687,15 +690,8 @@ class GlobalDataManager:
         
         return r
 
-    def get_model_actor(self, model_name : str):
-        actor_name = 'model_manager#{model_name}'
-    
-        try:
-            return ModelService(ray.get_actor(name=actor_name))
-        except ValueError:
-            pass # handle this specific error due to actor not existing
-
-        return ModelService(self._create_model_actor(model_name, actor_name))
+      actor_ref = self.global_cache._with_lock(actor_name, _init_model_actor)
+      return ModelStub(actor_ref)
 
     
     def create_dataset(self, image_src, dataset_name, paths=[]) -> SeesawDatasetManager:
