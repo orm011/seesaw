@@ -609,12 +609,13 @@ class GlobalDataManager:
         for p in paths:
             os.makedirs(p, exist_ok=True)
 
-        self.dbpath = f'{root}/meta.sqlite'
+        self.dbpath = f'{self.root}/meta.sqlite'
         self.dburi = f'file:{self.dbpath}?nolock=1&mode=ro'
+        print(self.dburi)
         ensure_db(self.dbpath)
 
-    def _get_connection(self, mode='ro'):
-        dburi = f'file:{self.dbpath}?nolock=1&mode={mode}'
+    def _get_connection(self, url_mode='ro'):
+        dburi = f'file:{self.dbpath}?nolock=1&mode={url_mode}'
         return sqlite3.connect(dburi, uri=True)
 
     def _fetch(self, sql, *args, mode='plain', **kwargs):
@@ -662,7 +663,9 @@ class GlobalDataManager:
                         ''', (dataset_name, index_name))
 
     def load_index(self, dataset_name, index_name) -> AccessMethod:
+        print('loading index')
         cons_name, data_path, model_name = self.get_index_construction_data(dataset_name, index_name)
+        print('got index data')
         return AccessMethod.restore(self, cons_name, data_path, model_name)
 
     def _get_model_path(self, model_name : str) -> str :

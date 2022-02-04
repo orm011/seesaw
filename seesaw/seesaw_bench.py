@@ -260,8 +260,12 @@ import string
 import time
 
 class BenchRunner(object):
-    def __init__(self, seesaw_root, results_dir):
+    def __init__(self, seesaw_root, results_dir, num_cpus=None):
         assert os.path.isdir(results_dir)
+        if num_cpus is not None:
+          os.environ["OMP_NUM_THREADS"] = str(num_cpus)
+          print('OMP_NUM_THREADS=', os.environ.get("OMP_NUM_THREADS",None))
+
         vls_init_logger()
         self.gdm = GlobalDataManager(seesaw_root)
         self.results_dir = results_dir
@@ -394,21 +398,27 @@ def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : Sessio
                 configs.append((b,s))
     return configs
 
-RemoteBenchRunner = ray.remote(BenchRunner)
 
-def make_bench_actors(resources_per_bench, bench_constructor_args):
+def make_bench_actors(bench_constructor_args, actor_options,num_actors=None):
     #dict(num_cpus=4, memory=15*(2**30))
-    resources = resources_per_bench
+    resources = actor_options
 
-    avail_res = ray.available_resources()
-    num_nodes = len(ray.nodes())
+    RemoteBenchRunner = ray.remote(BenchRunner) # may update the definiton
 
-    max_mem = math.floor(avail_res['memory']//num_nodes//resources['memory'])
-    max_cpu = math.floor(avail_res['CPU']//num_nodes//resources['num_cpus'])
+    if num_actors is None:
 
-    num_actors_per_node = min(max_mem, max_cpu) - 2
-    num_actors = num_actors_per_node * num_nodes
-    print(f'creating {num_actors} based on available shares: mem {max_mem} cpu {max_cpu}')
+      avail_res = ray.available_resources()
+      num_nodes = len(ray.nodes())
+
+      max_mem = math.floor(avail_res['memory']//num_nodes//resources['memory'])
+      max_cpu = math.floor(avail_res['CPU']//num_nodes//resources['num_cpus'])
+
+      num_actors_per_node = min(max_mem, max_cpu) - 2
+      num_actors = num_actors_per_node * num_nodes
+      print(f'creating {num_actors} based on available shares: mem {max_mem} cpu {max_cpu}')
+    else:
+      print(f'starting {num_actors}')
+    
     actors = []
     try:
         for i in range(num_actors):

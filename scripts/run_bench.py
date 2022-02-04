@@ -11,8 +11,10 @@ import argparse
 
 
 parser = argparse.ArgumentParser('runs benchmark tests and stores metrics in folder')
-parser.add_argument('--debug', action='store_true', help='run the script locally to attach a debugger')
 parser.add_argument('--limit', type=int, default=None, help='limit the number of benchmarks run (per dataset), helpful for debug')
+parser.add_argument('--num_actors', type=int, default=None, help='amount of actors created. leave blank for auto. 0 for local')
+parser.add_argument('--num_cpus', type=int, default=8, help='number of cpus per actor')
+parser.add_argument('--exp_name', type=str, default=None, help='some mnemonic for experiment')
 args = parser.parse_args()
 
 ray.init('auto', namespace='seesaw', log_to_driver=False, ignore_reinit_error=True)
@@ -44,18 +46,18 @@ random.shuffle(cfgs)
 print(f'{len(cfgs)} generated')
 
 key = ''.join([random.choice(string.ascii_letters) for _ in range(10)])
-results_dir = f'/home/gridsan/omoll/bench_results/bench_{key}/'
+exp_name = (args.exp_name + '_' if args.exp_name is not None else '') + key
+results_dir = f'/home/gridsan/omoll/bench_results/bench_{args.exp_name}/'
 os.makedirs(results_dir, exist_ok=True)
 print(f'outputting benchmark results to file:/{results_dir}')
 
 
-if args.debug:
+if args.num_actors == 0:
   br = BenchRunner(gdm.root, results_dir=results_dir)
   for cfg in cfgs:
     br.run_loop(*cfg)
-  sys.exit()
-
-actors = make_bench_actors(resources_per_bench=dict(num_cpus=16, memory=12*(2**30)), 
-                          bench_constructor_args=dict(seesaw_root=gdm.root, results_dir=results_dir))
-_ = ray.get([a.ready.remote()  for a in actors])
-parallel_run(actors=actors, tups=cfgs)
+else:
+  actors = make_bench_actors(num_actors=args.num_actors, actor_options=dict(name=exp_name, num_cpus=args.num_cpus, memory=8*(2**30)), 
+                            bench_constructor_args=dict(seesaw_root=gdm.root, results_dir=results_dir, num_cpus=args.num_cpus))
+  _ = ray.get([a.ready.remote()  for a in actors])
+  parallel_run(actors=actors, tups=cfgs)

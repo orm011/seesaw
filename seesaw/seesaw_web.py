@@ -36,6 +36,7 @@ class SaveResp(BaseModel):
     path : str
 
 def prep_db(gdm, index_spec):
+    print('call load index')
     hdb = gdm.load_index(index_spec.d_name, index_spec.i_name)
     # TODO: add subsetting here
     return hdb
@@ -44,26 +45,36 @@ from .textual_feedback_box import std_textual_config
 
 def add_routes(app : FastAPI):
   class WebSeesaw:
-      def __init__(self, root_dir, save_path):
+      def __init__(self, root_dir, save_path, num_cpus=None):
+          if num_cpus is not None:
+            os.environ["OMP_NUM_THREADS"] = str(num_cpus)
+            print("OMP_NUM_THREADS", os.environ.get("OMP_NUM_THREADS", None))
+
           self.root_dir = root_dir
           self.save_path = save_path
 
           self.gdm = GlobalDataManager(root_dir)
+          print('gdm done')
           self.indices = self.gdm.list_indices()
-          self.params = SessionParams(index_spec=self.indices[0],
+          print(self.indices)
+          print('indices done')
+          self.params = SessionParams(index_spec=self.indices[0], # will be reset later
                                     # interactive='pytorch', 
                                     interactive='textual', 
                                     method_config=std_textual_config,
                                     warm_start='warm', batch_size=3, 
                                     minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
                                     num_epochs=2, model_type='multirank2')
+          print('params done')
+          self.session = None
 
-          self._reset_dataset(self.params.index_spec)
 
       def _reset_dataset(self, index_spec : IndexSpec):
           hdb = prep_db(self.gdm, index_spec)
+          print('prep db done')
           self.params.index_spec = index_spec
           self.session = Session(gdm=self.gdm, dataset=self.gdm.get_dataset(index_spec.d_name), hdb=hdb, params=self.params)
+          print('new session ready')
 
       def _getstate(self):
           return AppState(indices=self.indices, 
