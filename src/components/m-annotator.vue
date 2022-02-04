@@ -199,27 +199,32 @@ export default {
       if (this.initial_imdata.boxes != null) {
           console.log('drawing boxes', this.initial_imdata.boxes)
         for (const boxdict of this.initial_imdata.boxes) {
-            let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
-            let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
-            let rect = paper.Rectangle.deserialize(paper_style)
-            let r = new paper.Path.Rectangle(rect);
-            r.data.marked_accepted = boxdict.marked_accepted;
-            r.strokeColor = boxdict.marked_accepted ? 'green' : 'yellow';
-            r.strokeWidth = 4;
-            r.data.state = null;
-            r.selected = false;
-
-            let text = new paper.PointText(new paper.Point(rdict.x1, rdict.y1));
-            text.justification = 'left';
-            text.fillColor = r.strokeColor;
-            text.fontSize = 12; // default 10
-            text.content = boxdict.description;
-
-            let annot_obj = {box:r, description:text};
-            this.annotation_paper_objs.push(annot_obj);
+            this.draw_box(boxdict, paper); 
           }
       }
     },
+
+    draw_box : function(boxdict, paper) {
+        let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
+        let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
+        let rect = paper.Rectangle.deserialize(paper_style)
+        let r = new paper.Path.Rectangle(rect);
+        r.data.marked_accepted = boxdict.marked_accepted;
+        r.strokeColor = boxdict.marked_accepted ? 'green' : 'yellow';
+        r.strokeWidth = 4;
+        r.data.state = null;
+        r.selected = false;
+
+        let text = new paper.PointText(new paper.Point(rdict.x1, rdict.y1));
+        text.justification = 'left';
+        text.fillColor = r.strokeColor;
+        text.fontSize = 12; // default 10
+        text.content = boxdict.description;
+
+        let annot_obj = {box:r, description:text};
+        this.annotation_paper_objs.push(annot_obj);
+    }, 
+
     hover : function (start) {
         if (this.read_only) {
             if (start) {
@@ -278,6 +283,10 @@ export default {
     },
     draw_full_frame_box(){
       // implement me
+      let paper = this.paper; 
+      paper.activate(); 
+
+
     },
     makeRect(from, to){
         this.paper.activate(); 
