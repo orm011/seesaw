@@ -259,7 +259,6 @@ import os
 import string
 import time
 
-
 class BenchRunner(object):
     def __init__(self, seesaw_root, results_dir):
         assert os.path.isdir(results_dir)
@@ -272,9 +271,6 @@ class BenchRunner(object):
         return True
 
     def run_loop(self, b : BenchParams, p : SessionParams):
-        import seesaw
-        importlib.reload(seesaw)
-        from seesaw import prep_bench_data, benchmark_loop
         start = time.time()
 
         random_suffix = ''.join([random.choice(string.ascii_lowercase) for _ in range(10)])
@@ -379,7 +375,7 @@ def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : Sessio
         ctpos = qgt.sum()
         classes = ctpos.index[(ctpos > 0)]
         for i,c in enumerate(classes):
-            if i > max_classes_per_dataset:
+            if i == max_classes_per_dataset:
                 break
             for var in variants:
                 update_b = {}
