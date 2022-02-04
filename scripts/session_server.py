@@ -9,6 +9,7 @@ import torch
 parser = argparse.ArgumentParser(description='start a seesaw session server')
 parser.add_argument('--seesaw_root', type=str, help='Seesaw root folder')
 parser.add_argument('--save_path', type=str, help='folder to save sessions in')
+parser.add_argument('--num_cpus', type=int, default=16, help='cpus assigned to worker')
 args = parser.parse_args()
 
 os.makedirs(args.save_path, exist_ok=True)
@@ -20,14 +21,18 @@ serve.start(http_options={'port':8000})
 app = FastAPI()
 WebSeesaw = add_routes(app)
 
-if torch.cuda.is_available():
-  num_gpus = 1
+if ray.available_resources().get('GPU', 0) > .5:
+  num_gpus = .5
 else:
   num_gpus = 0
 
-deploy_options = dict(name="seesaw_deployment", ray_actor_options={'num_cpus': 16, 'num_gpus':num_gpus}, route_prefix='/')
+seesaw_root = os.path.abspath(os.path.expanduser(args.seesaw_root))
+save_path = os.path.abspath(os.path.expanduser(args.save_path))
+
+
+deploy_options = dict(name="seesaw_deployment", ray_actor_options={'num_cpus': args.num_cpus, 'num_gpus':num_gpus}, route_prefix='/')
 WebSeesawServe = serve.deployment(**deploy_options)(serve.ingress(app)(WebSeesaw))
-WebSeesawServe.deploy(root_dir=args.seesaw_root, save_path=args.save_path)
+WebSeesawServe.deploy(root_dir=seesaw_root, save_path=save_path, num_cpus=args.num_cpus)
 
 print('sessionserver is ready. visit it through http://localhost:9000')
 while True: # wait 
