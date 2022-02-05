@@ -76,21 +76,6 @@
               Reset
             </button>
           </div>
-
-          <div class="row">
-            <input
-              v-model="session_path" 
-              placeholder="session path"
-            >
-          </div>
-          <div class="row">
-            <button 
-              class="btn btn-dark btn-block" 
-              @click="load_session(session_path)"
-            > 
-              Load Session
-            </button>
-          </div>
         </div>
       </nav>
       <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" v-if="client_data.session != null">
@@ -196,9 +181,16 @@ export default {
     mounted (){
         console.log('Vue App object avail in window.VueApp');
         window.VueApp = this;
-        fetch('/api/getstate', {cache: "reload"})
-            .then(response => response.json())
-            .then(this._update_client_data)
+        if (window.location.pathname.startsWith('/session/')){
+            // doing this so I can link to session histories  
+            // then load session state instead.
+            let session_path = window.location.pathname.slice('/session'.length)
+            this.load_session(session_path)
+        } else {
+          fetch('/api/getstate', {cache: "reload"})
+              .then(response => response.json())
+              .then(this._update_client_data)
+        }
     },
     methods : {
         total_images() {
