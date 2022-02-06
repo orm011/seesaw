@@ -498,7 +498,7 @@ class BoxFeedbackQuery(InteractiveQuery):
         # self.acc_neg = []
 
     def getXy(self):
-        pos, neg = get_pos_negs_all_v2(self.label_db.seen, self.label_db, self.index.vector_meta)
+        pos, neg = get_pos_negs_all_v2(self.label_db.get_seen(), self.label_db, self.index.vector_meta)
  
         ## we are currently ignoring these positives
         # self.acc_pos.append(batchpos)

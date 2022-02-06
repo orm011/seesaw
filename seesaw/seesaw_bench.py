@@ -170,20 +170,20 @@ def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
     if rows.shape[0] > 0:
 
       positives = rows[rows.category == b.ground_truth_category]
-      negatives = rows[rows.category != b.ground_truth_category]
-      # find the anotations that overlap with activation boxes
-      activation_df = pd.DataFrame([act.box.dict() for act in imdata.activations])
-      
-      ious = box_iou(negatives, activation_df)
-      
-      highlighted_area = np.sum(ious, axis=1)
-      
-      annotated_negatives = negatives[highlighted_area > .1]
-
       positives = positives.assign(marked_accepted=True)
-      annotated_negatives = annotated_negatives.assign(marked_accepted=False)
 
-      feedback_df = pd.concat([positives, annotated_negatives], axis=0, ignore_index=True)
+      # find the anotations that overlap with activation boxes
+      if b.provide_textual_feedback:
+        negatives = rows[rows.category != b.ground_truth_category]
+        activation_df = pd.DataFrame([act.box.dict() for act in imdata.activations])
+        ious = box_iou(negatives, activation_df)
+        highlighted_area = np.sum(ious, axis=1)
+        annotated_negatives = negatives[highlighted_area > .1]
+        annotated_negatives = annotated_negatives.assign(marked_accepted=False)
+        feedback_df = pd.concat([positives, annotated_negatives], axis=0, ignore_index=True)
+      else:
+        feedback_df = positives
+
       feedback_df = feedback_df[['x1', 'x2', 'y1', 'y2', 'description', 'marked_accepted']]
 
       ## drop some boxes based on b.box_drop_prob 
@@ -313,7 +313,8 @@ class BenchRunner(object):
 
 import glob
 
-def get_metric_summary(session : SessionState):
+def get_metric_summary(res : BenchResult):
+    session = res.session
     curr_idx = 0
     hit_indices = []
     for ent in session.gdata:
@@ -323,37 +324,59 @@ def get_metric_summary(session : SessionState):
             curr_idx +=1
     index_set = pr.BitMap(hit_indices)
     assert len(index_set) == len(hit_indices)
-    return dict(hit_indices=np.array(index_set), total_seen=curr_idx)
+    return dict(hit_indices=np.array(index_set), total_seen=curr_idx, nimages=res.nimages, ntotal=res.ntotal, total_time=res.total_time)
 
-def process_one_row(obj, path, at_N):
-    base_path = path[:-len('summary.json')]
-    bs = BenchSummary(**json.load(open(path)))
-    b = bs.bench_params
-    s = bs.session_params
+def parse_batch(batch):
+    acc = []
+    for (path,b) in batch:
+        try:
+            obj = json.loads(b)
+        except json.decoder.JSONDecodeError:
+            obj = {}
+            
+        obj['session_path'] = path[:-len('summary.json')]
+        acc.append(obj)
+        
+    return acc
 
-    res = {**b.dict(), **s.index_spec.dict(), **s.dict()}
-    res['session_path'] = base_path
-
-    if bs.result is not None:
-        summary = get_metric_summary(bs.result.session)
-        mets = compute_metrics(**summary, batch_size=s.batch_size, total_positives=bs.result.ntotal, ndatabase=bs.result.nimages, at_N=at_N)
-        res.update(**mets)
-
+def load_session_data(base_dir):
+    summary_paths = glob.glob(base_dir + '/**/summary.json')
+    r = ray.data.read_binary_files(summary_paths, include_paths=True)
+    res = r.map_batches(parse_batch)
     return res
 
-def get_metrics_table(base_path, at_N):
-    summary_paths = glob.glob(base_path + '/**/summary.json')
-    res = []
+def process_dict(obj):
+    if len(obj) != 1: 
+        bs = BenchSummary(**obj)
+        b = bs.bench_params
+        s = bs.session_params
+        r = bs.result
+        res = {**b.dict(), **s.index_spec.dict(), **s.dict()}
+        if bs.result is not None:
+            summary = get_metric_summary(bs.result)
+            res.update(summary)
+    else:
+        res = obj
+        
+    res['session_path'] = obj['session_path']
+    return res
 
-    r = ray.data.read_binary_files(summary_paths)
-    mp = r.map(lambda b : json.loads(b.decode()))
-
+def _summarize(res):
     acc = []
-    for obj,path in zip(mp.iter_rows(), summary_paths):
-      res = process_one_row(obj, path, at_N)
-      acc.append(res)
+    for obj in tqdm(res.iter_rows()):
+        obj2 = process_dict(obj)
+        acc.append(obj2)
+    
+    return pd.DataFrame.from_records(acc)
 
-    return pd.DataFrame(acc)
+def get_all_session_summaries(base_dir, force_recompute=False):
+    sumpath = base_dir + '/summary.parquet'
+    if not os.path.exists(sumpath) or force_recompute:  
+      res = load_session_data(base_dir)
+      df = _summarize(res)
+      df.to_parquet(sumpath)
+
+    return pd.read_parquet(sumpath)
 
 def prep_bench_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()
@@ -422,7 +445,10 @@ def make_bench_actors(bench_constructor_args, actor_options,num_actors=None):
     actors = []
     try:
         for i in range(num_actors):
-            a = RemoteBenchRunner.options(**resources).remote(**bench_constructor_args)
+            options = actor_options.copy()
+            del options['name']
+            # options['name'] = f'bench_{actor_options["name"]}_{i:03d}_of_{num_actors}'
+            a = RemoteBenchRunner.options(**options).remote(**bench_constructor_args)
             actors.append(a)
     except Exception as e:
         for a in actors:
