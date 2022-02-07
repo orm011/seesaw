@@ -24,11 +24,15 @@ export default defineComponent({
   setup (props) {
     function onJsonChange (value) {
       console.log('value:', value)
+      state.json = value; 
     }
-
-    let temp; 
+    function currentConfig(){
+      return state.json; 
+    }
+ 
+    var state; 
     if (props.session === null){
-      temp = reactive({
+      state = reactive({
         json: {'batch_size': 64,
                     'logit_scale_init': 3.7,
                     'image_loss_weight':1.,
@@ -51,15 +55,15 @@ export default defineComponent({
                     'val_batch_size': 500}
       });
     } else { 
-      temp = reactive({
+      state = reactive({
         json: props.session.params.method_config, 
       });
     }
-    const state = temp; 
 
     return {
       ...toRefs(state),
-      onJsonChange
+      onJsonChange, 
+      currentConfig,
     }
   }
 })

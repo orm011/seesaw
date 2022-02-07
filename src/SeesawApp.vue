@@ -27,10 +27,12 @@
       </button>
       <div class="navbar-nav col-lg-1 px-3" />
     </header>
-    <div v-if="show_config" 
+    <div v-show="show_config" 
       class="container"> 
       <m-config-vue-3
-      v-bind:session="client_data.session"/>
+        ref="config"
+        v-bind:session="client_data.session"
+      />
     </div>
     <div class="container-fluid">
       <nav
@@ -372,6 +374,9 @@ export default {
           this.handle_selection_change(null);
         },
         reset(index){
+          console.log("Current Config"); 
+          let config = this.$refs.config.currentConfig(); 
+          console.log(config); 
           console.log('start reset...', index, {...this.$data});
           let reqdata = {index:index};
           // this.$data = this.data()
