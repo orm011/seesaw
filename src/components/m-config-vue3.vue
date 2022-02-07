@@ -14,13 +14,11 @@
 import { defineComponent, reactive, toRefs } from 'vue'
 import { Vue3JsonEditor } from 'vue3-json-editor'
 
-import JsonEditorVue from 'json-editor-vue3'
 
 
 export default defineComponent({
   components: {
     Vue3JsonEditor, 
-    JsonEditorVue,
   },
   setup () {
     function onJsonChange (value) {
