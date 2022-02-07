@@ -27,6 +27,10 @@
       </button>
       <div class="navbar-nav col-lg-1 px-3" />
     </header>
+    <div v-if="show_config" 
+      class="container"> 
+      <m-config-vue-3/>
+    </div>
     <div class="container-fluid">
       <nav
         id="sidebarMenu"
@@ -74,6 +78,20 @@
               @click="reset(client_data.session.index_spec)"
             >
               Reset
+            </button>
+          </div>
+          <div class="row">
+            <button
+              v-if="show_config"
+              class="btn btn-dark btn-block" 
+              @click="toggle_config()"> 
+              Hide Config
+            </button>
+            <button
+              v-else
+              class="btn btn-dark btn-block" 
+              @click="toggle_config()"> 
+              Show Config
             </button>
           </div>
         </div>
@@ -157,8 +175,11 @@ import MImageGallery from './components/m-image-gallery.vue';
 import MAnnotator from './components/m-annotator.vue';
 import MModal from './components/m-modal.vue';
 
+import _ from 'lodash';
+import MConfigVue3 from './components/m-config-vue3.vue';
+
 export default {
-    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator},
+    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3},
     props: {},
     data () { return { 
                 client_data : { session : null,
@@ -176,6 +197,7 @@ export default {
                 keys : {},
                 annotator_text : '',
                 annotator_text_pointer : null,
+                show_config : false, 
               }
             },
     mounted (){
@@ -196,6 +218,9 @@ export default {
         total_images() {
             return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
         },
+        toggle_config() { 
+          this.show_config = !this.show_config; 
+        }, 
         load_session(session_path){
             fetch(`/api/session_info`,   
                 {method: 'POST', 
@@ -515,6 +540,10 @@ img {
     background-color: #eee;
     margin-bottom: 10px;
     padding: 10px;
+  }
+
+  .container {
+    margin-left:20%; 
   }
 
   .drag-el {

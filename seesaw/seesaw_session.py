@@ -46,7 +46,7 @@ class SeesawLoop:
         self.q = q
 
         if self.params.interactive == 'textual':
-          param_dict = gdm.global_cache.read_state_dict('/home/gridsan/omoll/.cache/clip/ViT-B-32.pt', jit=True)
+          param_dict = gdm.global_cache.read_state_dict('/home/gridsan/groups/fastai/omoll/seesaw_root/models/clip/ViT-B-32.pt', jit=True)
           config = self.params.method_config
           if not torch.cuda.is_available():
             config = {**config, 'device':'cpu'} # overrule gpu if not available
