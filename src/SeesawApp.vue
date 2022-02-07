@@ -75,7 +75,7 @@
           <div class="row" v-if="client_data.session != null">
             <button
               class="btn btn-dark btn-block"
-              @click="reset(client_data.session.index_spec)"
+              @click="reset(client_data.session.params.index_spec)"
             >
               Reset
             </button>
@@ -187,7 +187,8 @@ export default {
                               // { params :{ index_spec : {d_name:'', i_name:'', m_name:''}}, 
                               //                     gdata : [] 
                               //                     },
-                                indices : [] 
+                                indices : [],
+                                default_params : {}
                               },
                 selected_index : null,
                 session_path : null,
@@ -195,6 +196,7 @@ export default {
                 text_query:null,
                 imdata_knum : {},
                 keys : {},
+                new_session_params : null,
                 annotator_text : '',
                 annotator_text_pointer : null,
                 show_config : false, 
@@ -368,11 +370,22 @@ export default {
           console.log('current data', this.$data);
           console.log('update client data', data, reset);
           this.client_data = data;
+          if (this.client_data.session != null){
+            this.selected_index = this.client_data.session.params.index_spec;
+          } else {
+            this.selected_index = null
+          }
           this.handle_selection_change(null);
         },
         reset(index){
-          console.log('start reset...', index, {...this.$data});
-          let reqdata = {index:index};
+          console.log('start reset...', index, {...this.$data});      
+
+          let reqdata = {config: null};
+          if (index != null){
+            reqdata.config = {...this.client_data.default_params};
+            reqdata.config.index_spec = index;
+          }
+
           // this.$data = this.data()
           this.client_data.session = null; // clear current screen
           

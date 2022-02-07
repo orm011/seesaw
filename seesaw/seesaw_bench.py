@@ -18,7 +18,7 @@ import math
 from .util import *
 import pyroaring as pr
 import importlib
-from .seesaw_session import SessionParams, Session, Imdata, Box
+from .seesaw_session import SessionParams, Session, Imdata, Box, make_session
 from .basic_types import *
 
 # ignore this comment
@@ -291,20 +291,9 @@ class BenchRunner(object):
         assert p.index_spec.c_name is not None, 'need category for benchmark'
 
         try:
-          ds = self.gdm.get_dataset(p.index_spec.d_name)
-          hdb = self.gdm.load_index(p.index_spec.d_name, p.index_spec.i_name)
-
-          box_data, subset, positive  = prep_bench_data(ds, p)
-          
-          if len(positive) == 0:
-            print('no frames available, exiting')
-            return output_dir 
-
-          hdb = hdb.subset(subset)
-
-          session = Session(self.gdm, ds, hdb, p)          
-          run_info = benchmark_loop(session=session, box_data=box_data, subset=subset, b=b, p=p)
-          summary.result = BenchResult(ntotal=len(positive), nimages = len(subset), 
+          ret = make_session(self.gdm, p)
+          run_info = benchmark_loop(session=ret['session'], box_data=ret['box_data'], subset=ret['subset'], b=b, p=p)
+          summary.result = BenchResult(ntotal=len(ret['positive']), nimages = len(ret['subset']), 
                                       session=session.get_state(), run_info=run_info, total_time=time.time() - start)
         finally:
           json.dump(summary.dict(), open(output_path, 'w'))
@@ -381,13 +370,14 @@ def get_all_session_summaries(base_dir, force_recompute=False):
 def prep_bench_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()
     catgt = qgt[p.index_spec.c_name]    
-    
+
     positive_box_data = box_data[box_data.category == p.index_spec.c_name]
     present = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
     positive = pr.FrozenBitMap(positive_box_data.dbidx.values)
 
     assert positive.intersection(present) == positive    
     return box_data, present, positive
+    
 
 from .dataset_manager import IndexSpec
 from .dataset_search_terms import category2query
