@@ -59,6 +59,7 @@ class BenchParams(BaseModel):
     name : str
     ground_truth_category : str
     qstr : str
+    provide_textual_feedback : bool = False
     n_batches : int # max number of batches to run
     max_results : int # stop when this numbrer of results is found
     max_feedback : Optional[int]

@@ -1,6 +1,4 @@
-from seesaw.memory_cache import CacheStub
 from seesaw.dataset_manager import GlobalDataManager
-from types import prepare_class
 from ray.data.extensions import TensorArray
 
 import torchvision
@@ -15,7 +13,7 @@ from tqdm.auto import tqdm
 import torch
 from .query_interface import *
 
-from .embeddings import ModelService, make_clip_transform, ImTransform, XEmbedding
+from .embeddings import make_clip_transform, ImTransform, XEmbedding
 from .dataset_search_terms import  *
 import pyroaring as pr
 from operator import itemgetter
@@ -500,7 +498,7 @@ class BoxFeedbackQuery(InteractiveQuery):
         # self.acc_neg = []
 
     def getXy(self):
-        pos, neg = get_pos_negs_all_v2(self.label_db.seen, self.label_db, self.index.vector_meta)
+        pos, neg = get_pos_negs_all_v2(self.label_db.get_seen(), self.label_db, self.index.vector_meta)
  
         ## we are currently ignoring these positives
         # self.acc_pos.append(batchpos)

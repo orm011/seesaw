@@ -164,28 +164,47 @@ _clip_tx = T.Compose([
                     lambda x : x.type(torch.float16)
                     ])
 
-
-
 def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
     imdata = imdata.copy()
     rows = box_data[box_data.dbidx == imdata.dbidx]
     if rows.shape[0] > 0:
-      rows = rows.assign(description=rows.category, marked_accepted=(rows.category == b.ground_truth_category))
-      rows = rows[['x1', 'x2', 'y1', 'y2', 'description', 'marked_accepted']]
+
+      positives = rows[rows.category == b.ground_truth_category]
+      positives = positives.assign(marked_accepted=True)
+
+      # find the anotations that overlap with activation boxes
+      if b.provide_textual_feedback:
+        negatives = rows[rows.category != b.ground_truth_category]
+        activation_df = pd.DataFrame([act.box.dict() for act in imdata.activations])
+        ious = box_iou(negatives, activation_df)
+        highlighted_area = np.sum(ious, axis=1)
+        annotated_negatives = negatives[highlighted_area > .1]
+        annotated_negatives = annotated_negatives.assign(marked_accepted=False)
+        feedback_df = pd.concat([positives, annotated_negatives], axis=0, ignore_index=True)
+      else:
+        feedback_df = positives
+
+      feedback_df = feedback_df[['x1', 'x2', 'y1', 'y2', 'description', 'marked_accepted']]
 
       ## drop some boxes based on b.box_drop_prob 
-      rnd = np.random.rand(rows.shape[0])
-      kept_rows = rows[rnd >=  b.box_drop_prob]
-      filling = [Box(**b) for b in kept_rows.to_dict(orient='records')]
+      rnd = np.random.rand(feedback_df.shape[0])
+      kept_rows = feedback_df[rnd >=  b.box_drop_prob]
+      boxes = [Box(**b) for b in kept_rows.to_dict(orient='records')]
     else:
-      filling = []
-    imdata.boxes = filling
+      boxes = []
+    imdata.boxes = boxes
     imdata.marked_accepted = is_accepted(imdata)
     return imdata
 
 def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : pd.DataFrame,
                       b : BenchParams, p : SessionParams):
 
+
+    def annotation_fun(cat):
+      dataset_name = p.index_spec.d_name.split('/')[-2]
+      return category2query(dataset_name, cat)
+
+    box_data = box_data.assign(description=box_data.category.map(annotation_fun))
     all_box_data = box_data
     box_data = box_data[box_data.category==b.ground_truth_category]
     positives = pr.FrozenBitMap(box_data.dbidx.values)
@@ -217,11 +236,11 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
         total_results += batch_pos.sum()
         total_seen += idxbatch.shape[0]
 
-        if total_results == max_results:
-            print(f'Found all {total_results} possible results for {b.ground_truth_category} after {batch_num} batches. stopping...')
+        if total_results >= max_results: # one batch may have more than 1, so it could go beyond desired limit
+            print(f'Found {total_results} (>= limit of {max_results}) for {b.ground_truth_category} after {batch_num} batches. stopping...')
             break
 
-        if batch_num == b.n_batches:
+        if batch_num == b.n_batches:  
             print(f'iter {batch_num} = {b.n_batches}. ending...')
             break 
         
@@ -240,10 +259,13 @@ import os
 import string
 import time
 
-
 class BenchRunner(object):
-    def __init__(self, seesaw_root, results_dir):
+    def __init__(self, seesaw_root, results_dir, num_cpus=None):
         assert os.path.isdir(results_dir)
+        if num_cpus is not None:
+          os.environ["OMP_NUM_THREADS"] = str(num_cpus)
+          print('OMP_NUM_THREADS=', os.environ.get("OMP_NUM_THREADS",None))
+
         vls_init_logger()
         self.gdm = GlobalDataManager(seesaw_root)
         self.results_dir = results_dir
@@ -253,9 +275,6 @@ class BenchRunner(object):
         return True
 
     def run_loop(self, b : BenchParams, p : SessionParams):
-        import seesaw
-        importlib.reload(seesaw)
-        from seesaw import prep_bench_data, benchmark_loop
         start = time.time()
 
         random_suffix = ''.join([random.choice(string.ascii_lowercase) for _ in range(10)])
@@ -294,7 +313,8 @@ class BenchRunner(object):
 
 import glob
 
-def get_metric_summary(session : SessionState):
+def get_metric_summary(res : BenchResult):
+    session = res.session
     curr_idx = 0
     hit_indices = []
     for ent in session.gdata:
@@ -304,37 +324,59 @@ def get_metric_summary(session : SessionState):
             curr_idx +=1
     index_set = pr.BitMap(hit_indices)
     assert len(index_set) == len(hit_indices)
-    return dict(hit_indices=np.array(index_set), total_seen=curr_idx)
+    return dict(hit_indices=np.array(index_set), total_seen=curr_idx, nimages=res.nimages, ntotal=res.ntotal, total_time=res.total_time)
 
-def process_one_row(obj, path, at_N):
-    base_path = path[:-len('summary.json')]
-    bs = BenchSummary(**json.load(open(path)))
-    b = bs.bench_params
-    s = bs.session_params
+def parse_batch(batch):
+    acc = []
+    for (path,b) in batch:
+        try:
+            obj = json.loads(b)
+        except json.decoder.JSONDecodeError:
+            obj = {}
+            
+        obj['session_path'] = path[:-len('summary.json')]
+        acc.append(obj)
+        
+    return acc
 
-    res = {**b.dict(), **s.index_spec.dict(), **s.dict()}
-    res['session_path'] = base_path
-
-    if bs.result is not None:
-        summary = get_metric_summary(bs.result.session)
-        mets = compute_metrics(**summary, batch_size=s.batch_size, total_positives=bs.result.ntotal, ndatabase=bs.result.nimages, at_N=at_N)
-        res.update(**mets)
-
+def load_session_data(base_dir):
+    summary_paths = glob.glob(base_dir + '/**/summary.json')
+    r = ray.data.read_binary_files(summary_paths, include_paths=True)
+    res = r.map_batches(parse_batch)
     return res
 
-def get_metrics_table(base_path, at_N):
-    summary_paths = glob.glob(base_path + '/**/summary.json')
-    res = []
+def process_dict(obj):
+    if len(obj) != 1: 
+        bs = BenchSummary(**obj)
+        b = bs.bench_params
+        s = bs.session_params
+        r = bs.result
+        res = {**b.dict(), **s.index_spec.dict(), **s.dict()}
+        if bs.result is not None:
+            summary = get_metric_summary(bs.result)
+            res.update(summary)
+    else:
+        res = obj
+        
+    res['session_path'] = obj['session_path']
+    return res
 
-    r = ray.data.read_binary_files(summary_paths)
-    mp = r.map(lambda b : json.loads(b.decode()))
-
+def _summarize(res):
     acc = []
-    for obj,path in zip(mp.iter_rows(), summary_paths):
-      res = process_one_row(obj, path, at_N)
-      acc.append(res)
+    for obj in tqdm(res.iter_rows()):
+        obj2 = process_dict(obj)
+        acc.append(obj2)
+    
+    return pd.DataFrame.from_records(acc)
 
-    return pd.DataFrame(acc)
+def get_all_session_summaries(base_dir, force_recompute=False):
+    sumpath = base_dir + '/summary.parquet'
+    if not os.path.exists(sumpath) or force_recompute:  
+      res = load_session_data(base_dir)
+      df = _summarize(res)
+      df.to_parquet(sumpath)
+
+    return pd.read_parquet(sumpath)
 
 def prep_bench_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()
@@ -360,7 +402,7 @@ def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : Sessio
         ctpos = qgt.sum()
         classes = ctpos.index[(ctpos > 0)]
         for i,c in enumerate(classes):
-            if i > max_classes_per_dataset:
+            if i == max_classes_per_dataset:
                 break
             for var in variants:
                 update_b = {}
@@ -379,25 +421,34 @@ def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : Sessio
                 configs.append((b,s))
     return configs
 
-RemoteBenchRunner = ray.remote(BenchRunner)
 
-def make_bench_actors(resources_per_bench, bench_constructor_args):
+def make_bench_actors(bench_constructor_args, actor_options,num_actors=None):
     #dict(num_cpus=4, memory=15*(2**30))
-    resources = resources_per_bench
+    resources = actor_options
 
-    avail_res = ray.available_resources()
-    num_nodes = len(ray.nodes())
+    RemoteBenchRunner = ray.remote(BenchRunner) # may update the definiton
 
-    max_mem = math.floor(avail_res['memory']//num_nodes//resources['memory'])
-    max_cpu = math.floor(avail_res['CPU']//num_nodes//resources['num_cpus'])
+    if num_actors is None:
 
-    num_actors_per_node = min(max_mem, max_cpu) - 2
-    num_actors = num_actors_per_node * num_nodes
-    print(f'creating {num_actors} based on available shares: mem {max_mem} cpu {max_cpu}')
+      avail_res = ray.available_resources()
+      num_nodes = len(ray.nodes())
+
+      max_mem = math.floor(avail_res['memory']//num_nodes//resources['memory'])
+      max_cpu = math.floor(avail_res['CPU']//num_nodes//resources['num_cpus'])
+
+      num_actors_per_node = min(max_mem, max_cpu) - 2
+      num_actors = num_actors_per_node * num_nodes
+      print(f'creating {num_actors} based on available shares: mem {max_mem} cpu {max_cpu}')
+    else:
+      print(f'starting {num_actors}')
+    
     actors = []
     try:
         for i in range(num_actors):
-            a = RemoteBenchRunner.options(**resources).remote(**bench_constructor_args)
+            options = actor_options.copy()
+            del options['name']
+            # options['name'] = f'bench_{actor_options["name"]}_{i:03d}_of_{num_actors}'
+            a = RemoteBenchRunner.options(**options).remote(**bench_constructor_args)
             actors.append(a)
     except Exception as e:
         for a in actors:

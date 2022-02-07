@@ -46,7 +46,8 @@ def deduplicate_strings(string_list):
 # using open ai clip model param names
 std_textual_config = {'batch_size': 64,
                   'logit_scale_init': 3.7,
-                  'image_loss_weight':1.,
+                  'image_loss_weight':1., # 
+                  'vector_box_min_iou':.2, # when matching vectors to user boxes what to use
                   'device':'cuda:0',
                   'opt_config': {'logit_scale': None, #{'lr': 0.0001415583047102676,'weight_decay': 0.0017007389655182095},
                     'transformer': None,
