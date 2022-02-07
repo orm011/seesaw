@@ -29,7 +29,8 @@
     </header>
     <div v-if="show_config" 
       class="container"> 
-      <m-config-vue-3/>
+      <m-config-vue-3
+      v-bind:session="client_data.session"/>
     </div>
     <div class="container-fluid">
       <nav
