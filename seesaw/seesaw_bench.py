@@ -1,13 +1,10 @@
 from dataclasses import dataclass
 import random
 import copy
-from seesaw.figures import compute_metrics
-
 
 from .search_loop_models import *
 from .search_loop_tools import *
 
-import inspect
 from .dataset_tools import *
 from .fine_grained_embedding import *
 from .multiscale_index import *
@@ -17,9 +14,9 @@ import numpy as np
 import math
 from .util import *
 import pyroaring as pr
-import importlib
 from .seesaw_session import SessionParams, Session, Imdata, Box, make_session
 from .basic_types import *
+from .metrics import compute_metrics
 
 # ignore this comment
 def vls_init_logger():
@@ -313,7 +310,7 @@ def get_metric_summary(res : BenchResult):
             curr_idx +=1
     index_set = pr.BitMap(hit_indices)
     assert len(index_set) == len(hit_indices)
-    return dict(hit_indices=np.array(index_set), total_seen=curr_idx, nimages=res.nimages, ntotal=res.ntotal, total_time=res.total_time)
+    return dict(hit_indices=np.array(index_set), nseen=curr_idx, nimages=res.nimages, ntotal=res.ntotal, total_time=res.total_time)
 
 def parse_batch(batch):
     acc = []
@@ -366,6 +363,21 @@ def get_all_session_summaries(base_dir, force_recompute=False):
       df.to_parquet(sumpath)
 
     return pd.read_parquet(sumpath)
+
+def compute_stats(summ):
+  summ = summ[~summ.ntotal.isna()]
+  summ = summ.reset_index(drop=True)
+
+  nums = summ[['batch_size', 'nseen', 'ntotal']].astype('int')
+  all_mets = []
+  for tup in nums.itertuples():
+      mets = compute_metrics(hit_indices=summ.hit_indices.iloc[tup.Index], 
+              nseen=tup.nseen, batch_size=tup.batch_size, ntotal=tup.ntotal)
+      all_mets.append(mets)
+      
+  metrics = pd.DataFrame(all_mets)
+  stats = pd.concat([summ, metrics], axis=1)
+  return stats
 
 def prep_bench_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()
