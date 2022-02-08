@@ -48,8 +48,6 @@ class SeesawLoop:
         if self.params.interactive == 'textual':
           param_dict = gdm.global_cache.read_state_dict('/home/gridsan/groups/fastai/omoll/seesaw_root/models/clip/ViT-B-32.pt', jit=True)
           config = self.params.method_config
-          if not torch.cuda.is_available():
-            config = {**config, 'device':'cpu'} # overrule gpu if not available
           self.state.model = OnlineModel(param_dict, config)
 
     def next_batch(self):
@@ -294,6 +292,17 @@ class Session:
         return dict(session_params=self.params.dict(), session_state=st.dict())
 
 
+def prep_data(ds, p : SessionParams):
+    box_data, qgt = ds.load_ground_truth()
+    catgt = qgt[p.index_spec.c_name]    
+
+    positive_box_data = box_data[box_data.category == p.index_spec.c_name]
+    present = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
+    positive = pr.FrozenBitMap(positive_box_data.dbidx.values)
+
+    assert positive.intersection(present) == positive    
+    return box_data, present, positive
+
 def make_session(gdm, p : SessionParams):
     ds = gdm.get_dataset(p.index_spec.d_name)
     hdb = gdm.load_index(p.index_spec.d_name, p.index_spec.i_name)
@@ -302,7 +311,7 @@ def make_session(gdm, p : SessionParams):
     positive = None
 
     if p.index_spec.c_name is not None:
-      box_data, subset, positive  = prep_bench_data(ds, p)
+      box_data, subset, positive  = prep_data(ds, p)
       assert len(positive) != 0
       hdb = hdb.subset(subset)
     

@@ -290,6 +290,7 @@ class BenchRunner(object):
         try:
           ret = make_session(self.gdm, p)
           run_info = benchmark_loop(session=ret['session'], box_data=ret['box_data'], subset=ret['subset'], b=b, p=p)
+          session = ret['session']
           summary.result = BenchResult(ntotal=len(ret['positive']), nimages = len(ret['subset']), 
                                       session=session.get_state(), run_info=run_info, total_time=time.time() - start)
         finally:
@@ -378,17 +379,6 @@ def compute_stats(summ):
   metrics = pd.DataFrame(all_mets)
   stats = pd.concat([summ, metrics], axis=1)
   return stats
-
-def prep_bench_data(ds, p : SessionParams):
-    box_data, qgt = ds.load_ground_truth()
-    catgt = qgt[p.index_spec.c_name]    
-
-    positive_box_data = box_data[box_data.category == p.index_spec.c_name]
-    present = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
-    positive = pr.FrozenBitMap(positive_box_data.dbidx.values)
-
-    assert positive.intersection(present) == positive    
-    return box_data, present, positive
     
 
 from .dataset_manager import IndexSpec

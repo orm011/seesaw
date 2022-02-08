@@ -53,7 +53,7 @@ def test_ndcg():
     assert ndcg_01 < ndcg_1
 
     # unnormalized. check index 0 is handled properly
-    dcg = dcg_score(np.array([0]), nseen=10, npositive=3)
+    dcg = dcg_score(np.array([0]))
     assert dcg == 1.
     
 def test_time_to_kth():

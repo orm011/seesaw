@@ -57,13 +57,13 @@ for (b,p) in configs:
   path = br.run_loop(b,p)
   bs = json.load(open(path + '/summary.json'))
   bs = BenchSummary(**bs)
-  summ = get_metric_summary(bs.result.session)
+  summ = get_metric_summary(bs.result)
   # check termination makes sense
 
   reached_batch_max = len(bs.result.session.gdata) == bs.bench_params.n_batches
   reached_max_results = bs.bench_params.max_results <= len(summ['hit_indices']) # could excced due to batching
   reached_all_results = bs.result.ntotal == len(summ['hit_indices'])
-  reached_all_images = summ['total_seen'] == bs.result.nimages
+  reached_all_images = summ['nseen'] == bs.result.nimages
 
   satisfied_batch_max = len(bs.result.session.gdata) <= bs.bench_params.n_batches
   assert satisfied_batch_max  
