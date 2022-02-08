@@ -194,8 +194,8 @@ def print_tables(stats, *, variant,  baseline_variant, metric, reltol, show_late
     #              data=plotdata1[plotdata1.ratio < .6], 
     #              position=position_jitter(.05, .05), show_legend=False)
         + geom_line(aes(x='x', y='y'), data=diag_df)
-        + geom_text(aes(x='x', y='y', label='session_text'), va='top', data=plotdata[(plotdata.y < .4) | (plotdata.y > 3)])
-     + ylab(ycol)
+        # + geom_text(aes(x='x', y='y', label='session_text'), va='top', data=plotdata[(plotdata.y < .4) | (plotdata.y > 3)])
+         + ylab(ycol)
     #               + geom_area(aes(y2=1.1, y=.9), linetype='dashed', alpha=.7)
                    + geom_hline(aes(yintercept=1.1), linetype='dashed', alpha=.7)
                    + geom_hline(aes(yintercept=.9), linetype='dashed', alpha=.7)
