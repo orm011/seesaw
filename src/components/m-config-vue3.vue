@@ -20,7 +20,7 @@ export default defineComponent({
   components: {
     Vue3JsonEditor, 
   },
-  props: ['client_data'], 
+  props: ['default_params'], 
   setup (props) {
     function onJsonChange (value) {
       console.log('value:', value)
@@ -29,29 +29,14 @@ export default defineComponent({
     function currentConfig(){
       return state.json; 
     }
-    function updateClientData(client_data){
+    function updateClientData(default_params){
       console.log("Update called in config"); 
-      if (client_data.session === null){
-        console.log("default params"); 
-        state.json = client_data.default_params; 
-      } else { 
-        console.log("current params"); 
-        state.json = client_data.session.params; 
-      }
+      state.json = default_params; 
     }
  
-    var state; 
-    if (props.client_data.session === null){
-      console.log("default params"); 
-      state = reactive({
-        json: props.client_data.default_params,
-      });
-    } else { 
-      console.log("current params"); 
-      state = reactive({
-        json: props.client_data.session.params, 
-      });
-    }
+    const state = reactive({
+      json: props.default_params,
+    });
 
     return {
       ...toRefs(state),
