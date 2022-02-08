@@ -56,7 +56,7 @@ export default defineComponent({
       });
     } else { 
       state = reactive({
-        json: props.session.params.method_config, 
+        json: props.session.params, 
       });
     }
 

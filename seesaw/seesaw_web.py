@@ -8,17 +8,18 @@ from fastapi import FastAPI
 import os
 from .dataset_manager import GlobalDataManager, IndexSpec
 from .basic_types import Box, SessionState, SessionParams
-from .seesaw_session import Session
+from .seesaw_session import Session, make_session
 
 class AppState(BaseModel): # Using this as a response for every state transition.
     indices : List[IndexSpec]
+    default_params : SessionParams
     session : Optional[SessionState] #sometimes there is no active session
 
 class SessionReq(BaseModel):
     client_data : AppState
 
 class ResetReq(BaseModel):
-    index : IndexSpec
+    config : Optional[SessionParams]
 
 class GroundTruthReq(BaseModel):
     dataset_name : str
@@ -58,26 +59,26 @@ def add_routes(app : FastAPI):
           self.indices = self.gdm.list_indices()
           print(self.indices)
           print('indices done')
-          self.params = SessionParams(index_spec=self.indices[0], # will be reset later
-                                    # interactive='pytorch', 
+          self.default_params = dict(
+                                    index_spec=self.indices[0],
                                     interactive='textual', 
                                     method_config=std_textual_config,
                                     warm_start='warm', batch_size=3, 
                                     minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
-                                    num_epochs=2, model_type='multirank2')
-          print('params done')
+                                    num_epochs=2, model_type='cosine')
           self.session = None
 
 
-      def _reset_dataset(self, index_spec : IndexSpec):
-          hdb = prep_db(self.gdm, index_spec)
+      def _reset_dataset(self,  s: SessionParams):
+          hdb = prep_db(self.gdm, s.index_spec)
           print('prep db done')
-          self.params.index_spec = index_spec
-          self.session = Session(gdm=self.gdm, dataset=self.gdm.get_dataset(index_spec.d_name), hdb=hdb, params=self.params)
+          res = make_session(self.gdm, s)
+          self.session = res['session']
           print('new session ready')
 
       def _getstate(self):
           return AppState(indices=self.indices, 
+                          default_params=self.default_params,
                           session=self.session.get_state() if self.session is not None else None)
 
       @app.get('/getstate', response_model=AppState)
@@ -86,8 +87,11 @@ def add_routes(app : FastAPI):
 
       @app.post('/reset', response_model=AppState)
       def reset(self, r : ResetReq):
-          print(f'resetting state with freshly constructed one for {r.index}')
-          self._reset_dataset(r.index)
+          if r.config is None:
+            self.session = None
+          else:
+            self._reset_dataset(r.config)
+
           return self._getstate()
 
       @app.post('/get_ground_truth', response_model=GroundTruthResp)
@@ -125,8 +129,8 @@ def add_routes(app : FastAPI):
           sum_path = f'{body.path}/summary.json'
           all_info  = json.load(open(sum_path, 'r'))
           if 'bench_params' in all_info: # saved benchmark
-            return AppState(indices=[], session=all_info['result']['session'])
+            return AppState(indices=[], session=all_info['result']['session'], default_params=all_info['result']['session']['params'])
           else: # saved web session
-            return AppState(indices=all_info['indices'], session=all_info['session'])
+            return AppState(indices=all_info['indices'], session=all_info['session'], default_params=all_info['session']['params'])
 
   return WebSeesaw
