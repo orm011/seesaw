@@ -29,13 +29,25 @@ export default defineComponent({
     function currentConfig(){
       return state.json; 
     }
+    function updateClientData(client_data){
+      console.log("Update called in config"); 
+      if (client_data.session === null){
+        console.log("default params"); 
+        state.json = client_data.default_params; 
+      } else { 
+        console.log("current params"); 
+        state.json = client_data.session.params; 
+      }
+    }
  
     var state; 
     if (props.client_data.session === null){
+      console.log("default params"); 
       state = reactive({
-        json: client_data.default_params,
+        json: props.client_data.default_params,
       });
     } else { 
+      console.log("current params"); 
       state = reactive({
         json: props.client_data.session.params, 
       });
@@ -45,6 +57,7 @@ export default defineComponent({
       ...toRefs(state),
       onJsonChange, 
       currentConfig,
+      updateClientData, 
     }
   }
 })
