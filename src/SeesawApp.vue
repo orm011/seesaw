@@ -27,9 +27,12 @@
       </button>
       <div class="navbar-nav col-lg-1 px-3" />
     </header>
-    <div v-if="show_config" 
+    <div v-show="show_config" 
       class="container"> 
-      <m-config-vue-3/>
+      <m-config-vue-3
+        ref="config"
+        v-bind:client_data="client_data"
+      />
     </div>
     <div class="container-fluid">
       <nav
@@ -370,6 +373,7 @@ export default {
           console.log('current data', this.$data);
           console.log('update client data', data, reset);
           this.client_data = data;
+          this.$refs.config.updateClientData(data); 
           if (this.client_data.session != null){
             this.selected_index = this.client_data.session.params.index_spec;
           } else {
@@ -378,6 +382,10 @@ export default {
           this.handle_selection_change(null);
         },
         reset(index){
+          console.log("Current Config"); 
+          let config = this.$refs.config.currentConfig(); 
+          console.log(config);
+          
           console.log('start reset...', index, {...this.$data});      
 
           let reqdata = {config: null};
