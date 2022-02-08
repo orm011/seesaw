@@ -31,7 +31,7 @@
       class="container"> 
       <m-config-vue-3
         ref="config"
-        v-bind:client_data="client_data"
+        v-bind:client_data="client_data.default_params"
       />
     </div>
     <div class="container-fluid">
@@ -373,7 +373,7 @@ export default {
           console.log('current data', this.$data);
           console.log('update client data', data, reset);
           this.client_data = data;
-          this.$refs.config.updateClientData(data); 
+          this.$refs.config.updateClientData(data.default_params); 
           if (this.client_data.session != null){
             this.selected_index = this.client_data.session.params.index_spec;
           } else {
