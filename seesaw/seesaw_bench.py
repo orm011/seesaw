@@ -255,14 +255,14 @@ from .progress_bar import tqdm_map
 import os
 import string
 import time
+from .util import reset_num_cpus
 
 class BenchRunner(object):
-    def __init__(self, seesaw_root, results_dir, num_cpus=None):
+    def __init__(self, seesaw_root, results_dir, num_cpus : int =None ):
         assert os.path.isdir(results_dir)
         if num_cpus is not None:
-          os.environ["OMP_NUM_THREADS"] = str(num_cpus)
-          print('OMP_NUM_THREADS=', os.environ.get("OMP_NUM_THREADS",None))
-
+          reset_num_cpus(num_cpus)
+  
         vls_init_logger()
         self.gdm = GlobalDataManager(seesaw_root)
         self.results_dir = results_dir
