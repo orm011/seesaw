@@ -396,7 +396,7 @@ class SeesawDatasetManager:
 
     def load_eval_categories(self):
         assert os.path.exists(f'{self.dataset_root}/ground_truth')
-        return json.load(open('{self.dataset_root}/ground_truth/categories.json'))
+        return json.load(open(f'{self.dataset_root}/ground_truth/categories.json'))
 
     def load_ground_truth(self):
         assert os.path.exists(f'{self.dataset_root}/ground_truth')
