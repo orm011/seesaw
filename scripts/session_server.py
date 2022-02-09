@@ -15,7 +15,7 @@ args = parser.parse_args()
 os.makedirs(args.save_path, exist_ok=True)
 assert os.path.isdir(args.seesaw_root)
 
-ray.init('auto', namespace="seesaw")
+ray.init('auto', namespace="seesaw", log_to_driver=False)
 serve.start(http_options={'port':8000})
 
 app = FastAPI()
