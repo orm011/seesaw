@@ -170,6 +170,14 @@
           Delete annotation
         </button>
       </div>
+      <div> 
+        <button
+          class="btn btn-danger"
+          @click="create_full_box()"
+        >
+          Full Box
+        </button>
+      </div>
     </m-modal>
   </div>  
 </template>
@@ -331,6 +339,10 @@ export default {
           this.$refs.annotator.delete_paper_obj(this.annotator_text_pointer);
           this.handleAnnotatorSelectionChange(null);
     },
+    create_full_box(){
+      //TODO
+      this.$refs.annotator.draw_full_frame_box(); 
+    }, 
     handle_arrow(delta){
       if (this.selection  != null){
           let {gdata_idx:idx, local_idx} = this.selection;
