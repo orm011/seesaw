@@ -267,34 +267,46 @@ class BenchRunner(object):
         self.gdm = GlobalDataManager(seesaw_root)
         self.results_dir = results_dir
         random.seed(int(f'{time.time_ns()}{os.getpid()}'))
+        self.stdout = sys.stdout
+        self.stderr = sys.stdin
         
     def ready(self):
         return True
 
     def run_loop(self, b : BenchParams, p : SessionParams):
         start = time.time()
-
         random_suffix = ''.join([random.choice(string.ascii_lowercase) for _ in range(10)])
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         output_dir = f'{self.results_dir}/session_{timestamp}_{random_suffix}'
         os.mkdir(output_dir)
-        summary = BenchSummary(bench_params=b, session_params=p, 
-          timestamp = timestamp, result=None)
-
-        output_path = f'{output_dir}/summary.json'
-        json.dump(summary.dict(),open(output_path, 'w'))
         print(f'saving output to {output_dir}')
 
-        assert p.index_spec.c_name is not None, 'need category for benchmark'
+        with open(f'{output_dir}/stdout', 'w') as stdout, open(f'{output_dir}/stderr', 'w') as stderr:
+          try: ## print the log to the output folder as well
+            sys.stdout = stdout
+            sys.stderr = stderr
 
-        try:
-          ret = make_session(self.gdm, p)
-          run_info = benchmark_loop(session=ret['session'], box_data=ret['box_data'], subset=ret['subset'], b=b, p=p)
-          session = ret['session']
-          summary.result = BenchResult(ntotal=len(ret['positive']), nimages = len(ret['subset']), 
-                                      session=session.get_state(), run_info=run_info, total_time=time.time() - start)
-        finally:
-          json.dump(summary.dict(), open(output_path, 'w'))
+            summary = BenchSummary(bench_params=b, session_params=p, 
+              timestamp = timestamp, result=None)
+            output_path = f'{output_dir}/summary.json'
+            json.dump(summary.dict(),open(output_path, 'w'))
+
+            assert p.index_spec.c_name is not None, 'need category for benchmark'
+
+            ret = make_session(self.gdm, p)
+            run_info = benchmark_loop(session=ret['session'], box_data=ret['box_data'], subset=ret['subset'], b=b, p=p)
+            session = ret['session']
+            summary.result = BenchResult(ntotal=len(ret['positive']), nimages = len(ret['subset']), 
+                                        session=session.get_state(), run_info=run_info, total_time=time.time() - start)
+
+            json.dump(summary.dict(), open(output_path, 'w'))
+
+          except Exception as e:
+            print(e, file=sys.stderr)
+          finally: ## restore
+              sys.stdout = self.stdout
+              sys.stderr = self.stderr
+
         
         return output_dir
 
@@ -411,39 +423,35 @@ def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : Sessio
                 configs.append((b,s))
     return configs
 
-
-def make_bench_actors(bench_constructor_args, actor_options,num_actors=None):
-    #dict(num_cpus=4, memory=15*(2**30))
-    resources = actor_options
-
+def make_bench_actors(*, bench_constructor_args, actor_options, num_actors=None, timeout=20):
     RemoteBenchRunner = ray.remote(BenchRunner) # may update the definiton
 
+    ready = {}
+
     if num_actors is None:
-
+      resources = actor_options
       avail_res = ray.available_resources()
-      num_nodes = len(ray.nodes())
+      mem_ceiling = math.ceil(avail_res['memory']/resources['memory'])
+      cpu_ceiling = math.ceil(avail_res['CPU']/resources['num_cpus'])
+      num_actors = min(mem_ceiling, cpu_ceiling)
 
-      max_mem = math.floor(avail_res['memory']//num_nodes//resources['memory'])
-      max_cpu = math.floor(avail_res['CPU']//num_nodes//resources['num_cpus'])
 
-      num_actors_per_node = min(max_mem, max_cpu) - 2
-      num_actors = num_actors_per_node * num_nodes
-      print(f'creating {num_actors} based on available shares: mem {max_mem} cpu {max_cpu}')
-    else:
-      print(f'starting {num_actors}')
-    
+    print(f'will try making {num_actors}')
+    for i in range(num_actors):
+      options = actor_options.copy()
+      options['name'] = f'{actor_options["name"]}_{i}'
+      a = RemoteBenchRunner.options(**options).remote(**bench_constructor_args)
+      ready[a.ready.remote()] = a
+
     actors = []
-    try:
-        for i in range(num_actors):
-            options = actor_options.copy()
-            del options['name']
-            # options['name'] = f'bench_{actor_options["name"]}_{i:03d}_of_{num_actors}'
-            a = RemoteBenchRunner.options(**options).remote(**bench_constructor_args)
-            actors.append(a)
-    except Exception as e:
-        for a in actors:
-            ray.kill(a)
-        raise e 
+    print(f'waiting for actors to be ready or for timeout {timeout} s')
+    done, not_done = ray.wait(list(ready.keys()), timeout=timeout)
+    for d in done:
+      actors.append(ready[d])
+
+    ## clean up other actors
+    for d in not_done:
+      ray.kill(ready[d])
 
     return actors
 

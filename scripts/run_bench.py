@@ -14,6 +14,7 @@ parser = argparse.ArgumentParser('runs benchmark tests and stores metrics in fol
 parser.add_argument('--limit', type=int, default=None, help='limit the number of benchmarks run (per dataset), helpful for debug')
 parser.add_argument('--num_actors', type=int, default=None, help='amount of actors created. leave blank for auto. 0 for local')
 parser.add_argument('--num_cpus', type=int, default=8, help='number of cpus per actor')
+parser.add_argument('--timeout', type=int, default=20, help='how long to wait for actor creation')
 parser.add_argument('--exp_name', type=str, default=None, help='some mnemonic for experiment')
 args = parser.parse_args()
 
@@ -29,11 +30,11 @@ s0 = dict(warm_start='warm', model_type='cosine',
 b0 = dict(n_batches=200,max_feedback=None,box_drop_prob=0., max_results=5)
 
 variants = [
-    dict(name='seesaw', interactive='pytorch', index_name='multiscale'),
-    dict(name='multi', interactive='plain', index_name='multiscale'),
-    dict(name='baseline', interactive='plain', index_name='coarse'),
-    dict(name='refine', interactive='pytorch', index_name='coarse'),
-    # dict(name='textual_multi', interactive='textual', index_name='multiscale', method_config=std_textual_config, provide_textual_feedback=True),
+    # dict(name='seesaw', interactive='pytorch', index_name='multiscale'),
+    # dict(name='multi', interactive='plain', index_name='multiscale'),
+    # dict(name='baseline', interactive='plain', index_name='coarse'),
+    # dict(name='refine', interactive='pytorch', index_name='coarse'),
+    dict(name='textual_multi', interactive='textual', index_name='multiscale', method_config=std_textual_config, provide_textual_feedback=True),
 ]
 
 # datasets = ['data/lvis/', 'data/bdd/', 'data/coco/', 'data/dota/', 'data/objectnet/']
@@ -57,7 +58,10 @@ if args.num_actors == 0:
   for cfg in cfgs:
     br.run_loop(*cfg)
 else:
-  actors = make_bench_actors(num_actors=args.num_actors, actor_options=dict(name=exp_name, num_cpus=args.num_cpus, memory=8*(2**30)), 
-                            bench_constructor_args=dict(seesaw_root=gdm.root, results_dir=results_dir, num_cpus=args.num_cpus))
-  _ = ray.get([a.ready.remote()  for a in actors])
+  actors = make_bench_actors(actor_options=dict(name=exp_name, num_cpus=args.num_cpus, memory=10*(2**30)), 
+                            bench_constructor_args=dict(seesaw_root=gdm.root, results_dir=results_dir, num_cpus=args.num_cpus),
+                            num_actors=args.num_actors,
+                            timeout=args.timeout,
+                            )
+  print(f'made {len(actors)} actors')
   parallel_run(actors=actors, tups=cfgs)
