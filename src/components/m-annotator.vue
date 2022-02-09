@@ -286,6 +286,24 @@ export default {
       let paper = this.paper; 
       paper.activate(); 
 
+      let draw = true; 
+      let boxes = this.annotation_paper_objs.map(this.paper2imdata);
+      let img = this.$refs.image;         
+      let height = img.height;
+      let width = img.width;
+
+      for (var box of boxes){
+        console.log(box); 
+        if (box.x1 == 0 && box.x2 == width && box.y1 == 0 && box.y2 == height){
+          draw = false; 
+        }
+      }
+      if (draw){
+        let boxdict = {x1: 0, x2: width, y1: 0, y2: height, description: '', marked_accepted: false}
+        this.draw_box(boxdict, paper); 
+      } else {
+        console.log("Box not drawn"); 
+      }
 
     },
     makeRect(from, to){
