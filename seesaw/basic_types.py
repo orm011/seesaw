@@ -54,6 +54,7 @@ class SessionState(BaseModel):
     gdata : List[List[Imdata]]
     timing : List[float]
     reference_categories : List[str]
+    query_string : Optional[str]
 
 class BenchParams(BaseModel):
     name : str

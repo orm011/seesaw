@@ -390,9 +390,7 @@ def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : Sessio
     for d in datasets:
         assert d in avail_datasets
         ds = gdm.get_dataset(d)
-        _,qgt=ds.load_ground_truth()
-        ctpos = qgt.sum()
-        classes = ctpos.index[(ctpos > 0)]
+        classes = ds.load_eval_categories()
         for i,c in enumerate(classes):
             if i == max_classes_per_dataset:
                 break

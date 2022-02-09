@@ -292,7 +292,7 @@ def extract_seesaw_meta(dataset, output_dir, output_name, num_workers, batch_siz
 #     gdm.create_dataset(image_src=image_src, dataset_name=dataset_name)
 #     mc = gdm.get_dataset(dataset_name)
 #     mc.preprocess()
-
+import json
 
 class SeesawDatasetManager:
     def __init__(self, root, dataset_name, dataset_path, cache):
@@ -393,6 +393,10 @@ class SeesawDatasetManager:
     def load_vec_table(self):
         ds = ray.data.read_parquet(self.vector_path())
         return ds
+
+    def load_eval_categories(self):
+        assert os.path.exists(f'{self.dataset_root}/ground_truth')
+        return json.load(open('{self.dataset_root}/ground_truth/categories.json'))
 
     def load_ground_truth(self):
         assert os.path.exists(f'{self.dataset_root}/ground_truth')

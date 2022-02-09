@@ -256,6 +256,7 @@ class Session:
         dat['timing']  = self.timing
         dat['reference_categories'] = []
         dat['params'] = self.params
+        dat['query_string'] = self.loop.state.curr_str
         return SessionState(**dat)
 
     def get_panel_data(self, *, idxbatch, activation_batch=None):
