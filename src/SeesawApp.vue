@@ -202,7 +202,9 @@ export default {
                               // WHEN NOT NULL, SESSION HAS THIS SHAPE  
                               // { params :{ index_spec : {d_name:'', i_name:'', m_name:''}}, 
                               //                     gdata : [] 
+                              //  query_string
                               //                     },
+
                                 indices : [],
                                 default_params : {}
                               },
@@ -429,6 +431,7 @@ export default {
           this.updateRecommendations(); 
           if (this.client_data.session != null){
             this.selected_index = this.client_data.session.params.index_spec;
+            this.text_query = this.client_data.session.query_string;
           } else {
             this.selected_index = null
           }
