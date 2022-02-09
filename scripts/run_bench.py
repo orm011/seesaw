@@ -47,7 +47,7 @@ print(f'{len(cfgs)} generated')
 
 key = ''.join([random.choice(string.ascii_letters) for _ in range(10)])
 exp_name = (args.exp_name + '_' if args.exp_name is not None else '') + key
-results_dir = f'/home/gridsan/omoll/bench_results/bench_{args.exp_name}/'
+results_dir = f'/home/gridsan/omoll/bench_results/bench_{exp_name}/'
 os.makedirs(results_dir, exist_ok=True)
 print(f'outputting benchmark results to file:/{results_dir}')
 

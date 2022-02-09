@@ -1,13 +1,10 @@
 from dataclasses import dataclass
 import random
 import copy
-from seesaw.figures import compute_metrics
-
 
 from .search_loop_models import *
 from .search_loop_tools import *
 
-import inspect
 from .dataset_tools import *
 from .fine_grained_embedding import *
 from .multiscale_index import *
@@ -17,9 +14,9 @@ import numpy as np
 import math
 from .util import *
 import pyroaring as pr
-import importlib
 from .seesaw_session import SessionParams, Session, Imdata, Box, make_session
 from .basic_types import *
+from .metrics import compute_metrics
 
 # ignore this comment
 def vls_init_logger():
@@ -258,14 +255,14 @@ from .progress_bar import tqdm_map
 import os
 import string
 import time
+from .util import reset_num_cpus
 
 class BenchRunner(object):
-    def __init__(self, seesaw_root, results_dir, num_cpus=None):
+    def __init__(self, seesaw_root, results_dir, num_cpus : int =None ):
         assert os.path.isdir(results_dir)
         if num_cpus is not None:
-          os.environ["OMP_NUM_THREADS"] = str(num_cpus)
-          print('OMP_NUM_THREADS=', os.environ.get("OMP_NUM_THREADS",None))
-
+          reset_num_cpus(num_cpus)
+  
         vls_init_logger()
         self.gdm = GlobalDataManager(seesaw_root)
         self.results_dir = results_dir
@@ -293,6 +290,7 @@ class BenchRunner(object):
         try:
           ret = make_session(self.gdm, p)
           run_info = benchmark_loop(session=ret['session'], box_data=ret['box_data'], subset=ret['subset'], b=b, p=p)
+          session = ret['session']
           summary.result = BenchResult(ntotal=len(ret['positive']), nimages = len(ret['subset']), 
                                       session=session.get_state(), run_info=run_info, total_time=time.time() - start)
         finally:
@@ -313,7 +311,7 @@ def get_metric_summary(res : BenchResult):
             curr_idx +=1
     index_set = pr.BitMap(hit_indices)
     assert len(index_set) == len(hit_indices)
-    return dict(hit_indices=np.array(index_set), total_seen=curr_idx, nimages=res.nimages, ntotal=res.ntotal, total_time=res.total_time)
+    return dict(hit_indices=np.array(index_set), nseen=curr_idx, nimages=res.nimages, ntotal=res.ntotal, total_time=res.total_time)
 
 def parse_batch(batch):
     acc = []
@@ -367,16 +365,20 @@ def get_all_session_summaries(base_dir, force_recompute=False):
 
     return pd.read_parquet(sumpath)
 
-def prep_bench_data(ds, p : SessionParams):
-    box_data, qgt = ds.load_ground_truth()
-    catgt = qgt[p.index_spec.c_name]    
+def compute_stats(summ):
+  summ = summ[~summ.ntotal.isna()]
+  summ = summ.reset_index(drop=True)
 
-    positive_box_data = box_data[box_data.category == p.index_spec.c_name]
-    present = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
-    positive = pr.FrozenBitMap(positive_box_data.dbidx.values)
-
-    assert positive.intersection(present) == positive    
-    return box_data, present, positive
+  nums = summ[['batch_size', 'nseen', 'ntotal']].astype('int')
+  all_mets = []
+  for tup in nums.itertuples():
+      mets = compute_metrics(hit_indices=summ.hit_indices.iloc[tup.Index], 
+              nseen=tup.nseen, batch_size=tup.batch_size, ntotal=tup.ntotal)
+      all_mets.append(mets)
+      
+  metrics = pd.DataFrame(all_mets)
+  stats = pd.concat([summ, metrics], axis=1)
+  return stats
     
 
 from .dataset_manager import IndexSpec

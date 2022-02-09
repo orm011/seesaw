@@ -394,21 +394,14 @@ export default {
           this.handle_selection_change(null);
         },
         reset(index){
-          console.log("Current Config"); 
-          let config = this.$refs.config.currentConfig(); 
-          console.log(config);
-          
-          console.log('start reset...', index, {...this.$data});      
-
+          let config = this.$refs.config.currentConfig();           
           let reqdata = {config: null};
           if (index != null){
-            reqdata.config = {...this.client_data.default_params};
-            reqdata.config.index_spec = index;
+            reqdata.config = {...config};
           }
-
           // this.$data = this.data()
           this.client_data.session = null; // clear current screen
-          
+          console.log('reset request', reqdata)
           fetch(`/api/reset`,   
               {method: 'POST', 
               headers: {'Content-Type': 'application/json'},

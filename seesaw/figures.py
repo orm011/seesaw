@@ -4,6 +4,8 @@ import sklearn.metrics
 import pyroaring as pr
 import math
 
+from collections import defaultdict
+
 from IPython.display import display
 from plotnine import *
 from plotnine import ggplot
@@ -40,167 +42,12 @@ def make_labeler(fmt_func):
         return list(map(fmt_func, arrlike))
     return fun
 
-def ndcg_score_fn(*, hit_indices, total_frames_seen, at_k_frames, total_positives):
-    hit_indices = hit_indices.astype('int')
-    assert (hit_indices < total_frames_seen).all()
-    assert total_positives > 0, 'undefined if no positives'
-    assert at_k_frames > 0, 'undefined if no frames'
-    if at_k_frames > total_frames_seen:
-      at_k_frames = total_frames_seen # decide what to do in the calling code (can do this check)
-      #assert hit_indices.shape[0] == total_positives, 'no data available for k larger than total_frames_seen'
-        
-    assert at_k_frames <= total_frames_seen
-    best_hits = np.zeros(at_k_frames)
-    best_hits[:total_positives] = 1.
-
-    hits = np.zeros(at_k_frames)
-    rel_indices = hit_indices[hit_indices < at_k_frames]    
-    hits[rel_indices] = 1.
-    
-    wi = np.arange(at_k_frames)
-    ws = 1./np.log2(wi+2)
-    # following https://github.com/scikit-learn/scikit-learn/blob/0d378913b/sklearn/metrics/_ranking.py#L1239
-    top = hits @ ws
-    best = best_hits @ ws
-    return top/best
-
-def ndcg_rank_score(ytrue, ordered_idxs):
-    '''
-        wraps sklearn.metrics.ndcg_score to grade a ranking given as an ordered array of k indices,
-        rather than as a score over the full dataset.
-    '''
-    ytrue = ytrue.astype('float')
-    # create a score that is consistent with the ranking.
-    ypred = np.zeros_like(ytrue)
-    fake_scores = np.arange(ordered_idxs.shape[0],0,-1)/ordered_idxs.shape[0]
-    assert (fake_scores > 0).all()
-    ypred[ordered_idxs] = fake_scores
-    return sklearn.metrics.ndcg_score(ytrue.reshape(1,-1), y_score=ypred.reshape(1,-1), k=ordered_idxs.shape[0])
-
-def test_score_sanity():
-    ytrue = np.zeros(10000)
-    randorder = np.random.permutation(10000)
-    
-    numpos = 100
-    posidxs = randorder[:numpos]
-    negidxs = randorder[numpos:]
-    numneg = negidxs.shape[0]
-
-    ytrue[posidxs] = 1.
-    perfect_rank = np.argsort(-ytrue)
-    bad_rank = np.argsort(ytrue)
-
-    ## check score for a perfect result set is  1
-    ## regardless of whether the rank is computed when k < numpos or k >> numpos
-    assert np.isclose(ndcg_rank_score(ytrue,perfect_rank[:numpos//2]),1.)
-    assert np.isclose(ndcg_rank_score(ytrue,perfect_rank[:numpos]),1.)
-    assert np.isclose(ndcg_rank_score(ytrue,perfect_rank[:numpos*2]),1.)    
-    
-        ## check score for no results is 0    
-    assert np.isclose(ndcg_rank_score(ytrue,bad_rank[:-numpos]),0.)
-
-  
-    ## check score for same amount of results worsens if they are shifted    
-    gr = perfect_rank[:numpos//2]
-    br = bad_rank[:numpos//2]
-    rank1 = np.concatenate([gr,br])
-    rank2 = np.concatenate([br,gr])
-    assert ndcg_rank_score(ytrue, rank1) > .5, 'half of entries being relevant, but first half'
-    assert ndcg_rank_score(ytrue, rank2) < .5
-
-def test_score_rare():
-    n = 10000 # num items
-    randorder = np.random.permutation(n)
-
-    ## check in a case with only few positives
-    for numpos in [0,1,2]:
-        ytrue = np.zeros_like(randorder)
-        posidxs = randorder[:numpos]
-        negidxs = randorder[numpos:]
-        numneg = negidxs.shape[0]
-    
-        ytrue[posidxs] = 1.
-        perfect_rank = np.argsort(-ytrue)
-        bad_rank = np.argsort(ytrue)
-    
-        scores = []
-        k = 200
-        for i in range(k):
-            test_rank = bad_rank[:k].copy()
-            if len(posidxs) > 0:
-                test_rank[i] = posidxs[0]
-            sc = ndcg_rank_score(ytrue,test_rank)
-            scores.append(sc)
-        scores = np.array(scores)
-        if numpos == 0:
-            assert np.isclose(scores ,0).all()
-        else:
-            assert (scores > 0 ).all()
-
-# test_score_sanity()
-# test_score_rare()
-def compute_metrics(*, hit_indices, batch_size, total_seen, total_positives, ndatabase, at_N):
-    ndcg_score = ndcg_score_fn(hit_indices=hit_indices, total_frames_seen=total_seen, 
-                      total_positives=total_positives, at_k_frames=at_N)
-
-    ntotal=total_positives
-  
-    hpos_full = np.ones(total_positives)*np.inf
-    hpos_full[:hit_indices.shape[0]] = hit_indices
-    nseen = hpos_full + 1
-
-    nfound = np.arange(total_positives) + 1
-    
-    precisions = nfound/nseen
-    AP = np.mean(precisions)
-
-    best_possible_seen = (np.arange(total_positives) + 1).astype('float')
-    best_possible_seen[total_seen:] = np.inf # cannot get instances beyond what is seen
-    best_precisions = best_possible_seen/nfound
-    bestAP = np.mean(best_precisions)
-    relAP = AP/bestAP
-
-    ## a key metric: how long did it take to find the second thing after feedback...
-    batch_no = nseen//batch_size
-    nfirst_batch = batch_no[0]
-    nfirst = nseen[0]
-
-    if (batch_no > batch_no[0]).any():
-      gtpos = np.where(batch_no > batch_no[0])[0]
-      assert gtpos.shape[0] > 0
-      first_after_feedback = gtpos[0]
-      nfirst2second_batch = batch_no[first_after_feedback] - nfirst_batch
-      nfirst2second = nseen[first_after_feedback] - nfirst
-    else:
-            # only one batch contains all positives (or maybe no positives at all)
-      # this metric is not well defined.
-      nfirst2second = np.nan
-      nfirst2second_batch = np.nan
-
-
-    # fbatch = batchno[0]
-    # laterbatch = batchno > fbatch
-  
-    return dict(ntotal=ntotal, nfound=nfound, 
-                ndcg_score=ndcg_score,
-                ndatabase=ndatabase, abundance=ntotal/ndatabase,
-                nframes=total_seen,
-                AP=AP,
-                bestAP=bestAP,
-                relAP=relAP,
-                nfirst = nseen[0], 
-                nfirst_batch = nfirst_batch,
-                nfirst2second = nfirst2second,
-                nfirst2second_batch = nfirst2second_batch,
-                reciprocal_rank=precisions[0])
-
-
 def side_by_side_comparison(stats, *, baseline_variant, metric):
     stats = stats.assign(session_index=stats.index.values)
     v1 = stats
     metrics = list(set(['nfound', 'nfirst'] + [metric]))
 
-    v1 = v1[['session_index', 'dataset', 'category', 'variant', 'ntotal', 'abundance'] + metrics]
+    v1 = v1[['session_index', 'dataset', 'category', 'variant', 'ntotal'] + metrics]
     v2 = stats[stats.variant == baseline_variant]
     rename_dict = {}
     for m in metrics + ['variant', 'session_index']:
@@ -242,10 +89,6 @@ def summary_breakdown(sbs, metric):
     
     tr = tr.assign(counts=count_col)[['counts'] + tr.columns.values.tolist()].transpose()
     return tr
-#display(tot_res.style.highlight_max(axis=0))
-# print(res)
-# print(tot_res.to_latex())
-# tot_res = pd.concat(acc, axis=1)
 
 def remove_leading_zeros(fmtr):
     def fun(x):
@@ -297,13 +140,6 @@ def ablation_table(tot_res, variants_list):
     
     return ablation
 
-from collections import defaultdict
-
-def old_benchresults(resultlist):
-    ans = defaultdict(lambda : [])
-    for tup in resultlist:
-        ans[tup[0]['dataset']].append(tup)
-    return ans
 
 def print_tables(stats, *, variant,  baseline_variant, metric, reltol, show_latex=False):
     res = {}
@@ -358,8 +194,8 @@ def print_tables(stats, *, variant,  baseline_variant, metric, reltol, show_late
     #              data=plotdata1[plotdata1.ratio < .6], 
     #              position=position_jitter(.05, .05), show_legend=False)
         + geom_line(aes(x='x', y='y'), data=diag_df)
-        + geom_text(aes(x='x', y='y', label='session_text'), va='top', data=plotdata[(plotdata.y < .4) | (plotdata.y > 3)])
-     + ylab(ycol)
+        # + geom_text(aes(x='x', y='y', label='session_text'), va='top', data=plotdata[(plotdata.y < .4) | (plotdata.y > 3)])
+         + ylab(ycol)
     #               + geom_area(aes(y2=1.1, y=.9), linetype='dashed', alpha=.7)
                    + geom_hline(aes(yintercept=1.1), linetype='dashed', alpha=.7)
                    + geom_hline(aes(yintercept=.9), linetype='dashed', alpha=.7)
@@ -384,32 +220,3 @@ def print_tables(stats, *, variant,  baseline_variant, metric, reltol, show_late
     )
     display(scatterplot)
     return res
-
-from tqdm.auto import tqdm
-
-def latency_table(ldf, variant, evs2):
-    #v = 'multiplain_warm_vec_fast'
-    #v = 'multiplain_warm_vec_only'
-    v = variant
-    gps = ldf.groupby(['dataset', 'category','variant'])[['lookup', 'label', 'refine']].median()
-    meds = gps.reset_index().groupby(['dataset', 'variant']).median().reset_index()
-
-    lat = meds[meds.variant.isin([v])][['dataset','lookup', 'refine']].set_index('dataset')
-    lat = lat.rename(mapper={'lookup':'latency_pyr_lookup', 'refine':'latency_vec_refine'},axis=1)
-    latplain = meds[meds.variant.isin(['plain'])][['dataset','lookup']].set_index('dataset')
-    lat = lat.assign(latency_plain_lookup=latplain['lookup'])
-    lat = lat[['latency_plain_lookup', 'latency_pyr_lookup', 'latency_vec_refine']]
-    
-    dataset_info = []
-    for (k,ev) in evs2.items():
-        c = ev.query_ground_truth.columns.shape[0]
-        ans = {'dataset':k, 'queries':c, 'images':ev.query_ground_truth.shape[0],
-              'vectors':ev.fine_grained_embedding.shape[0]}
-        dataset_info.append(ans)
-        
-    lat2 = pd.concat([lat, pd.DataFrame(dataset_info)[['dataset', 'images', 'vectors']].set_index('dataset')], axis=1)
-    lat2['vecs/im'] = np.round(lat2.vectors/lat2.images)
-    lat2 = lat2.sort_values('vectors')
-    lat2 = lat2[['latency_plain_lookup', 'images', 'latency_pyr_lookup', 'vectors', 'latency_vec_refine', 'vecs/im']]
-    print(lat2.astype('float').to_latex(float_format=remove_leading_zeros('{:.02f}'.format)))
-    return lat2

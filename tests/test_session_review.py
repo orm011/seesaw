@@ -3,7 +3,7 @@ from seesaw import GlobalDataManager, SessionParams, BenchParams, BenchRunner, a
 import random, string, os
 from fastapi import FastAPI
 
-ray.init('auto', namespace='seesaw')
+ray.init('auto', namespace='seesaw', ignore_reinit_error=True)
 
 import math
 #TEST_ROOT = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root/'
@@ -32,14 +32,11 @@ app = FastAPI()
 WebSeesaw = add_routes(app)
 webseesaw = WebSeesaw(TEST_ROOT, TEST_SAVE)
 
-# check basic calls work
-state = webseesaw.getstate()
-assert len(state.session.gdata) == 0
-
 bench_state = webseesaw.session_info(SessionInfoReq(path=bench_path))
 assert len(bench_state.session.gdata) == b.n_batches
 
-state = webseesaw.reset(ResetReq(index=p.index_spec))
+## use the provided config to run the same session
+state = webseesaw.reset(ResetReq(config=bench_state.default_params))
 assert len(state.session.gdata) == 0
 
 state = webseesaw.text('bird')
@@ -55,9 +52,6 @@ assert len(state.session.gdata) == b.n_batches
 saved_state = state
 r = webseesaw.save(SessionReq(client_data=saved_state))
 assert os.path.exists(r.path)
-
-reset_state = webseesaw.reset(ResetReq(index=state.session.params.index_spec))
-assert len(reset_state.session.gdata) == 0
 
 restored_state= webseesaw.session_info(SessionInfoReq(path=r.path))
 assert len(restored_state.session.gdata) == len(saved_state.session.gdata)

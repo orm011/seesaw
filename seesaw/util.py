@@ -1,4 +1,13 @@
 import inspect
+import os
+import torch
+
+def reset_num_cpus(num_cpus : int):
+    print(f'resetting num cpus for process {num_cpus}')
+    os.environ["OMP_NUM_THREADS"] = str(num_cpus)
+    torch.set_num_threads(num_cpus)
+    assert os.environ['OMP_NUM_THREADS'] == str(num_cpus)
+    assert torch.get_num_threads() == num_cpus
 
 def copy_locals(dest_name : str = None):
     '''

@@ -43,13 +43,13 @@ def prep_db(gdm, index_spec):
     return hdb
 
 from .textual_feedback_box import std_textual_config
+from .util import reset_num_cpus
 
 def add_routes(app : FastAPI):
   class WebSeesaw:
       def __init__(self, root_dir, save_path, num_cpus=None):
           if num_cpus is not None:
-            os.environ["OMP_NUM_THREADS"] = str(num_cpus)
-            print("OMP_NUM_THREADS", os.environ.get("OMP_NUM_THREADS", None))
+            reset_num_cpus(num_cpus)
 
           self.root_dir = root_dir
           self.save_path = save_path
@@ -78,7 +78,7 @@ def add_routes(app : FastAPI):
 
       def _getstate(self):
           return AppState(indices=self.indices, 
-                          default_params=self.default_params,
+                          default_params=self.session.params if self.session is not None else self.default_params,
                           session=self.session.get_state() if self.session is not None else None)
 
       @app.get('/getstate', response_model=AppState)
@@ -87,6 +87,7 @@ def add_routes(app : FastAPI):
 
       @app.post('/reset', response_model=AppState)
       def reset(self, r : ResetReq):
+          print('reset request', r)
           if r.config is None:
             self.session = None
           else:

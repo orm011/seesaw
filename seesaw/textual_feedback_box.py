@@ -72,6 +72,11 @@ std_textual_config = {'batch_size': 64,
 class OnlineModel:
     def __init__(self, state_dict, config):
       self.original_weights = state_dict
+      if not torch.cuda.is_available():
+        if config['device'].startswith('cuda'):
+          print('Warning: no GPU available, using cpu instead')
+          config = {**config, 'device':'cpu'} # overrule gpu if not available
+
       self.device = config['device']
       self.model = None
       self.config = config
