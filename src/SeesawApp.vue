@@ -162,6 +162,7 @@
             @input="changeInput"
             @onSelect="inputSelect"
             :results="autocomplete_items"
+            :placeholder="annotator_text"
             />
         <button
           class="btn btn-danger"
@@ -215,7 +216,7 @@ export default {
                 annotator_text : '',
                 annotator_text_pointer : null,
                 show_config : false,
-                autocomplete_items: ['wheelchair sign', 'example', 'wheelchair'], 
+                autocomplete_items: [], 
               }
             },
     mounted (){
@@ -233,6 +234,21 @@ export default {
         }
     },
     methods : {
+      updateRecommendations() {
+        console.log("UPDATE RECOMMENDATIONS CALLED"); 
+        this.autocomplete_items = []; 
+        for (var row of this.client_data.session.gdata){
+          for (var item of row){
+            if (item.boxes !== null){
+              for (var box of item.boxes){
+                if (!this.autocomplete_items.includes(box.description) && box.description !== ""){
+                  this.autocomplete_items.push(box.description); 
+                }
+              }
+            }
+          }
+        }
+      }, 
       changeInput(input){
         console.log("change Input" + input); 
         this.annotator_text = input; 
@@ -332,6 +348,7 @@ export default {
       } else {
         this.annotator_text_pointer = null;
       }
+      this.updateRecommendations(); 
     },
     handleModalKeyUp(ev){
         console.log('within modalKeyUp handler', ev)
@@ -398,12 +415,14 @@ export default {
           console.log('data_update', imdata)
           this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx] = imdata;
           this.incr_vue_key(imdata.dbidx)
+          this.updateRecommendations(); 
         },
         _update_client_data(data, reset = false){
           console.log('current data', this.$data);
           console.log('update client data', data, reset);
           this.client_data = data;
           this.$refs.config.updateClientData(data.default_params); 
+          this.updateRecommendations(); 
           if (this.client_data.session != null){
             this.selected_index = this.client_data.session.params.index_spec;
           } else {
