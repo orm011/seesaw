@@ -158,11 +158,11 @@
           @change="toggle_mark_accepted"
           type="checkbox"
         >
-        <input
-          class="text-input"
-          placeholder="description"
-          v-model="annotator_text"
-        >
+        <Autocomplete 
+            @input="changeInput"
+            @onSelect="inputSelect"
+            :results="autocomplete_items"
+            />
         <button
           class="btn btn-danger"
           @click="delete_annotation()"
@@ -189,8 +189,12 @@ import MModal from './components/m-modal.vue';
 import _ from 'lodash';
 import MConfigVue3 from './components/m-config-vue3.vue';
 
+import Autocomplete from 'vue3-autocomplete'
+// Optional: Import default CSS
+import 'vue3-autocomplete/dist/vue3-autocomplete.css'
+
 export default {
-    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3},
+    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete},
     props: {},
     data () { return { 
                 client_data : { session : null,
@@ -210,7 +214,8 @@ export default {
                 new_session_params : null,
                 annotator_text : '',
                 annotator_text_pointer : null,
-                show_config : false, 
+                show_config : false,
+                autocomplete_items: ['wheelchair sign', 'example', 'wheelchair'], 
               }
             },
     mounted (){
@@ -228,6 +233,19 @@ export default {
         }
     },
     methods : {
+      changeInput(input){
+        console.log("change Input" + input); 
+        this.annotator_text = input; 
+        this.autocomplete_items = this.autocomplete_items.filter((item) => {
+          if (item.includes(input)){
+            return item
+          }
+        })
+      }, 
+      inputSelect(input){
+        console.log("input Select: " + input); 
+        this.annotator_text = input; 
+      }, 
         total_images() {
             return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
         },
