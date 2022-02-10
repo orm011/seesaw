@@ -56,18 +56,18 @@ def test_ndcg():
     dcg = dcg_score(np.array([0]))
     assert dcg == 1.
     
-def test_time_to_kth():
-    tt = time_to_kth(np.array([0]), k=1)
+def test_rank_of_kth():
+    tt = rank_of_kth(np.array([0]), k=1)
     assert tt == 1.
 
-    tt = time_to_kth(np.array([]), k=1)
+    tt = rank_of_kth(np.array([]), k=1)
     assert tt == math.inf
         
-    tt = time_to_kth(np.array([0]), k=2)
+    tt = rank_of_kth(np.array([0]), k=2)
     assert tt == math.inf
     
-    tt = time_to_kth(np.array([1,2,3]), k=1)
+    tt = rank_of_kth(np.array([1,2,3]), k=1)
     assert tt == 2
     
-    tt = time_to_kth(np.array([1,2,3]), k=2)
+    tt = rank_of_kth(np.array([1,2,3]), k=2)
     assert tt == 3

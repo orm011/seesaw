@@ -199,7 +199,10 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
 
     def annotation_fun(cat):
       dataset_name = p.index_spec.d_name.split('/')[-2]
-      return category2query(dataset_name, cat)
+      term = category2query(dataset_name, cat)      
+      article = 'an' if term[0] in 'aeiou' else 'a'
+      template = f'{article} {term}'
+      return template
 
     box_data = box_data.assign(description=box_data.category.map(annotation_fun))
     all_box_data = box_data
@@ -381,11 +384,11 @@ def compute_stats(summ):
   summ = summ[~summ.ntotal.isna()]
   summ = summ.reset_index(drop=True)
 
-  nums = summ[['batch_size', 'nseen', 'ntotal']].astype('int')
+  nums = summ[['batch_size', 'nseen', 'ntotal', 'max_results']].astype('int')
   all_mets = []
   for tup in nums.itertuples():
       mets = compute_metrics(hit_indices=summ.hit_indices.iloc[tup.Index], 
-              nseen=tup.nseen, batch_size=tup.batch_size, ntotal=tup.ntotal)
+              nseen=tup.nseen, batch_size=tup.batch_size, ntotal=tup.ntotal, max_results=tup.max_results)
       all_mets.append(mets)
       
   metrics = pd.DataFrame(all_mets)
@@ -408,7 +411,10 @@ def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : Sessio
                 break
             for var in variants:
                 update_b = {}
-                update_b['qstr'] = category2query(d.split('/')[-2], c)
+                term = category2query(d.split('/')[-2], c)
+                article = 'an' if term[0] in 'aeiou' else 'a'
+                template = f'{article} {term}'
+                update_b['qstr'] = template 
                 update_b['ground_truth_category'] = c
                 b = BenchParams(**{**b_template, 
                                    **update_b, 
@@ -439,13 +445,14 @@ def make_bench_actors(*, bench_constructor_args, actor_options, num_actors=None,
     print(f'will try making {num_actors}')
     for i in range(num_actors):
       options = actor_options.copy()
-      options['name'] = f'{actor_options["name"]}_{i}'
+      del options['name']
+      # options['name'] = f'{actor_options["name"]}_{i}'
       a = RemoteBenchRunner.options(**options).remote(**bench_constructor_args)
       ready[a.ready.remote()] = a
 
     actors = []
     print(f'waiting for actors to be ready or for timeout {timeout} s')
-    done, not_done = ray.wait(list(ready.keys()), timeout=timeout)
+    done, not_done = ray.wait(list(ready.keys()), num_returns=len(ready), timeout=timeout)
     for d in done:
       actors.append(ready[d])
 

@@ -24,7 +24,7 @@ def dcg_score(hit_indices):
     dcg_score = weights.sum()
     return dcg_score
     
-def time_to_kth(hit_indices, *, k):
+def rank_of_kth(hit_indices, *, k):
     if hit_indices.shape[0] < k:
         return math.inf
     else:
@@ -64,18 +64,20 @@ def batch_metrics(hit_indices, *, nseen, npositive, batch_size):
       nfirst2second_batch = np.nan
     #TODO: reimplement this later
 
-def compute_metrics(*, hit_indices, batch_size, nseen, ntotal):
+def compute_metrics(*, hit_indices, batch_size, nseen, ntotal, max_results):
     AP = average_precision(hit_indices, nseen=nseen, npositive=ntotal)
     nAP = normalizedAP(hit_indices, nseen=nseen, npositive=ntotal)
     ndcg = ndcg_score(hit_indices, nseen=nseen, npositive=ntotal)
-    nfirst = time_to_kth(hit_indices, k=1)
+    rank_first = rank_of_kth(hit_indices, k=1)
     nfound = hit_indices.shape[0]
+    rank_last = rank_of_kth(hit_indices, k=min(ntotal, max_results))
 
+    # only return things not given as input
     return dict(nfound=nfound,
                 ndcg_score=ndcg,
                 AP=AP,
                 nAP=nAP,
-                nseen=nseen,
-                nfirst=nfirst,
-                ntotal=ntotal,
-                reciprocal_rank=1./nfirst)
+                rank_first=rank_first,
+                rank_last=rank_last,
+                reciprocal_rank_first=1./rank_first,
+                reciprocal_rank_last=1./rank_last)

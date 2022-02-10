@@ -45,7 +45,7 @@ def make_labeler(fmt_func):
 def side_by_side_comparison(stats, *, baseline_variant, metric):
     stats = stats.assign(session_index=stats.index.values)
     v1 = stats
-    metrics = list(set(['nfound', 'nfirst'] + [metric]))
+    metrics = list(set(['nfound', 'reciprocal_rank_first'] + [metric]))
 
     v1 = v1[['session_index', 'dataset', 'category', 'variant', 'ntotal'] + metrics]
     v2 = stats[stats.variant == baseline_variant]
@@ -220,3 +220,31 @@ def print_tables(stats, *, variant,  baseline_variant, metric, reltol, show_late
     )
     display(scatterplot)
     return res
+
+
+def bokeh_version(pdata, tooltip_cols=['x', 'y', 'dataset', 'category', 'frequency']):
+    import bokeh
+    from bokeh.models import HoverTool, TapTool, OpenURL
+    from bokeh.plotting import figure, output_file, show, ColumnDataSource, output_notebook
+    output_notebook()
+
+    p = figure(title="comparison", y_axis_type="log",x_axis_type="log",
+               #x_range=(0, 5), y_range=(0.001, 10**22),
+#                match_aspect=True,
+               tools=[HoverTool()],
+                tooltips=', '.join(['@{}'.format(col) for col in tooltip_cols]),
+#                "@x, @y, @dataset, @category, @query_string, @frequency",
+               background_fill_color="#fafafa")
+    
+    source = ColumnDataSource(pdata)
+    p.circle(fill_color='dataset', source=source)
+
+    def url_tool(url_column):
+        url = f"http://localhost:9000/session/@{url_column}"
+        taptool = TapTool()
+        taptool.callback = OpenURL(url=url)
+        return taptool
+
+    p.add_tools(url_tool('session_path'))
+    p.add_tools(url_tool('base_session_path'))
+    show(p)
