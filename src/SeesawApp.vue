@@ -261,6 +261,8 @@ export default {
       inputSelect(input){
         console.log("input Select: " + input); 
         this.annotator_text = input; 
+        this.annotator_text_pointer.description.content = this.annotator_text
+        this.annotator_text_pointer = null;
       }, 
         total_images() {
             return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
