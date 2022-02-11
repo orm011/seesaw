@@ -39,7 +39,8 @@ class ReferenceCache:
       return 1 # loaded
 
   def release(self, path : str):
-    if path in self.mapping and self.mapping[path] == -1:
+    if self.pathstate(path, lock=False) == 0:
+      print('releasing lock for uninitialized')
       # if half-initialized, remove
       del self.mapping[path]
     else:
