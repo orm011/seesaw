@@ -241,7 +241,9 @@ export default {
           for (var item of row){
             if (item.boxes !== null){
               for (var box of item.boxes){
-                if (!this.autocomplete_items.includes(box.description) && box.description !== ""){
+                if (!this.autocomplete_items.includes(box.description) 
+                    && box.description !== ""
+                    && box.description !== null){
                   this.autocomplete_items.push(box.description); 
                 }
               }
