@@ -64,7 +64,7 @@ std_textual_config = {'batch_size': 64,
                     'positiional_embedding':None},
                   'num_warmup_steps': 3,
                   'rounds': 2,
-                  'margin':.3,
+                  'margin': .1,
                   'num_workers': 16,
                   'test_size': 1000,
                   'val_batch_size': 500}
@@ -72,22 +72,25 @@ std_textual_config = {'batch_size': 64,
 
 class OnlineModel:
     def __init__(self, state_dict, config):
-      self.original_weights = state_dict
       if not torch.cuda.is_available():
         if config['device'].startswith('cuda'):
           print('Warning: no GPU available, using cpu instead')
           config = {**config, 'device':'cpu'} # overrule gpu if not available
 
+      self.original_weights = {k:v.float() for (k,v) in state_dict.items()}
+
       self.device = config['device']
-      self.model = None
+      self.model = build_model(self.original_weights).float().to(self.device)
       self.config = config
       self._reset_model()
       self.losses = []
+      self._cache = {}
 
     def _reset_model(self): # resets model and optimizers
       print('resetting model state')
-      mod =  build_model(self.original_weights).float()
-      self.model = mod.to(self.device)
+      layers = ['text_projection']
+      reset_weights = {k:v.to(self.device) for (k,v) in self.original_weights.items() if k in layers}
+      self.model.load_state_dict(reset_weights, strict=False)
       print('done resetting model')
 
     def _encode_string(self, tokenized_strings):
@@ -102,7 +105,52 @@ class OnlineModel:
             vecs = self._encode_string(tokens)
             return vecs.cpu().numpy()
 
+    def compute_up_to(self, strings, layer) -> torch.Tensor:
+        assert layer == 'text_projection'
+
+        non_cached = []
+        for s in strings:
+          if s not in self._cache:
+            non_cached.append(s)
+
+        def closure(self, strings): # pass self.model
+          # taken from model.encode_text
+          tokens = clip.tokenize(strings)
+
+          x = self.token_embedding(tokens).type(self.dtype)  # [batch_size, n_ctx, d_model]
+
+          x = x + self.positional_embedding.type(self.dtype)
+          x = x.permute(1, 0, 2)  # NLD -> LND
+          x = self.transformer(x)
+          x = x.permute(1, 0, 2)  # LND -> NLD
+          x = self.ln_final(x).type(self.dtype)
+
+          # x.shape = [batch_size, n_ctx, transformer.width]
+          # take features from the eot embedding (eot_token is the highest number in each sequence)
+          x = x[torch.arange(x.shape[0]), tokens.argmax(dim=-1)]
+          return x
+
+        if len(non_cached) > 0:
+          new_vecs = closure(self.model, non_cached)
+          for (s,v) in zip(non_cached, new_vecs):
+            self._cache[s] = v
+          
+        ans = []
+        for s in strings:
+          ans.append(self._cache[s])
+
+        return torch.stack(ans)
         
+
+    def compute_from(self, x, layer) -> torch.Tensor:
+        assert layer == 'text_projection'
+
+        def closure(self, x):
+          x =  x @ self.text_projection
+          return F.normalize(x)
+        
+        return closure(self.model, x)
+
     def update(self, imagevecs, marked_accepted, annotations, target_string):
         self._reset_model()
         self.model.train()
@@ -137,9 +185,13 @@ class OnlineModel:
               print('need at least some annotations for which a loss can be computed')
               return 0.# no annotations can be used yet (loss is 0)        
 
-        tokens = clip.tokenize(strings)
+        with torch.no_grad():
+          self.model.eval()
+          constant_activations = self.compute_up_to(strings, 'text_projection')
+
         def opt_closure():
-            text_features = self._encode_string(tokens)
+            self.model.train()
+            text_features = self.compute_from(constant_activations, 'text_projection') 
             scores = imagevecs @ text_features.t()
             score_for_target_string = scores[:,0]
             score_for_annotation = scores[torch.arange(scores.shape[0]), string_ids[1:]] # picks the corresponding index for each 
