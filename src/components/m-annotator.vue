@@ -58,6 +58,9 @@ export default {
         
   },
   methods : {
+    image_accepted(imdata){ // make it accessible from the <template>
+          return image_accepted(imdata)
+    },
     activation_press: function(){
         console.log("checks"); 
         if (this.show_activation){

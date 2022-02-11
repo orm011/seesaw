@@ -45,7 +45,10 @@ import {image_accepted} from '../util'
       } else if (ldata.boxes.length === 0){
         return 'rejected'
       }
-    }
+    },
+    image_accepted(imdata){ // make it accessible from the <template>
+          return image_accepted(imdata)
+    },
   }
 }
 </script>

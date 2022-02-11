@@ -238,6 +238,9 @@ export default {
         }
     },
     methods : {
+      image_accepted(imdata){ // make it accessible from the <template>
+          return image_accepted(imdata)
+      },
       updateRecommendations() {
         console.log("UPDATE RECOMMENDATIONS CALLED"); 
         this.autocomplete_items = []; 
