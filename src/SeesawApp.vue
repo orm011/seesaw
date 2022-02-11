@@ -158,11 +158,12 @@
           @change="toggle_mark_accepted"
           type="checkbox"
         >
-        <input
-          class="text-input"
-          placeholder="description"
-          v-model="annotator_text"
-        >
+        <Autocomplete 
+            @input="changeInput"
+            @onSelect="inputSelect"
+            :results="autocomplete_items"
+            :placeholder="annotator_text"
+            />
         <button
           class="btn btn-danger"
           @click="delete_annotation()"
@@ -189,8 +190,12 @@ import MModal from './components/m-modal.vue';
 import _ from 'lodash';
 import MConfigVue3 from './components/m-config-vue3.vue';
 
+import Autocomplete from 'vue3-autocomplete'
+// Optional: Import default CSS
+import 'vue3-autocomplete/dist/vue3-autocomplete.css'
+
 export default {
-    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3},
+    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete},
     props: {},
     data () { return { 
                 client_data : { session : null,
@@ -210,7 +215,8 @@ export default {
                 new_session_params : null,
                 annotator_text : '',
                 annotator_text_pointer : null,
-                show_config : false, 
+                show_config : false,
+                autocomplete_items: [], 
               }
             },
     mounted (){
@@ -228,6 +234,38 @@ export default {
         }
     },
     methods : {
+      updateRecommendations() {
+        console.log("UPDATE RECOMMENDATIONS CALLED"); 
+        this.autocomplete_items = []; 
+        for (var row of this.client_data.session.gdata){
+          for (var item of row){
+            if (item.boxes !== null){
+              for (var box of item.boxes){
+                if (!this.autocomplete_items.includes(box.description) 
+                    && box.description !== ""
+                    && box.description !== null){
+                  this.autocomplete_items.push(box.description); 
+                }
+              }
+            }
+          }
+        }
+      }, 
+      changeInput(input){
+        console.log("change Input" + input); 
+        this.annotator_text = input; 
+        this.autocomplete_items = this.autocomplete_items.filter((item) => {
+          if (item.includes(input)){
+            return item
+          }
+        })
+      }, 
+      inputSelect(input){
+        console.log("input Select: " + input); 
+        this.annotator_text = input; 
+        this.annotator_text_pointer.description.content = this.annotator_text
+        this.annotator_text_pointer = null;
+      }, 
         total_images() {
             return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
         },
@@ -314,6 +352,7 @@ export default {
       } else {
         this.annotator_text_pointer = null;
       }
+      this.updateRecommendations(); 
     },
     handleModalKeyUp(ev){
         console.log('within modalKeyUp handler', ev)
@@ -380,12 +419,14 @@ export default {
           console.log('data_update', imdata)
           this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx] = imdata;
           this.incr_vue_key(imdata.dbidx)
+          this.updateRecommendations(); 
         },
         _update_client_data(data, reset = false){
           console.log('current data', this.$data);
           console.log('update client data', data, reset);
           this.client_data = data;
           this.$refs.config.updateClientData(data.default_params); 
+          this.updateRecommendations(); 
           if (this.client_data.session != null){
             this.selected_index = this.client_data.session.params.index_spec;
           } else {
