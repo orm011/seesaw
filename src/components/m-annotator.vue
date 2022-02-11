@@ -16,17 +16,6 @@
       @mouseover="hover(true)"
       @mouseleave="hover(false)"
     />
-    <div 
-      class="form-check annotator-check" 
-    >
-      <input 
-        class="form-check-input" 
-        type="checkbox" 
-        disabled 
-        v-model="this.imdata.marked_accepted"
-      >
-      <!-- we use the save method to sync state, so we disable this for the small vue -->
-    </div>
     <div
         class="form-check activation-check">
         <input
