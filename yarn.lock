@@ -8627,11 +8627,6 @@ vue-loader@^15.9.2:
     vue-hot-reload-api "^2.3.0"
     vue-style-loader "^4.1.0"
 
-vue-search-select@^2.9.5:
-  version "2.9.5"
-  resolved "https://registry.yarnpkg.com/vue-search-select/-/vue-search-select-2.9.5.tgz#13b3a579e786625486b8434b131033a6bc5c0770"
-  integrity sha512-pK5lSoeWjUqxYPcYbTgEmoaqb0f38pHd4KZBNBunWmnPw3S0O8s8eqWEVHG14G3zcvKGP9fkvBs7+Eikj7csYQ==
-
 vue-style-loader@^4.1.0, vue-style-loader@^4.1.2:
   version "4.1.3"
   resolved "https://registry.npmjs.org/vue-style-loader/-/vue-style-loader-4.1.3.tgz"
