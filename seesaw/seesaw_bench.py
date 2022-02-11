@@ -190,7 +190,6 @@ def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
     else:
       boxes = []
     imdata.boxes = boxes
-    imdata.marked_accepted = is_accepted(imdata)
     return imdata
 
 def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : pd.DataFrame,
@@ -232,7 +231,7 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
             last_batch[j] = fill_imdata(imdata, box_data, b)
 
         session.update_state(s)
-        batch_pos = np.array([imdata.marked_accepted for imdata in last_batch])
+        batch_pos = np.array([is_image_accepted(imdata) for imdata in last_batch])
         total_results += batch_pos.sum()
         total_seen += idxbatch.shape[0]
 
@@ -322,7 +321,7 @@ def get_metric_summary(res : BenchResult):
     hit_indices = []
     for ent in session.gdata:
         for imdata in ent:
-            if imdata.marked_accepted:
+            if is_image_accepted(imdata):
                 hit_indices.append(curr_idx)
             curr_idx +=1
     index_set = pr.BitMap(hit_indices)

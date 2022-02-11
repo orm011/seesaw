@@ -275,14 +275,14 @@ class Session:
                 del row['score']
                 activations.append(ActivationData(box=Box(**row), score=score))
 
-            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, marked_accepted=dbidx in self.accepted, activations=activations)
+            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, activations=activations)
             reslabs.append(elt)
         return reslabs
 
     def _update_labeldb(self, gdata):
         for ldata in gdata:
             for imdata in ldata:
-                if imdata.marked_accepted:
+                if is_image_accepted(imdata):
                     self.accepted.add(imdata.dbidx)
                 self.q.label_db.put(imdata.dbidx, imdata.boxes)
 

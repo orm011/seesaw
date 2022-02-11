@@ -25,10 +25,9 @@ class Imdata(BaseModel):
     dbidx : int
     boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
     activations : Optional[List[ActivationData]]
-    marked_accepted = False
 
-def is_accepted(imdata : Imdata):
-  return any(map(lambda box : box.marked_accepted, imdata.boxes))
+def is_image_accepted(imdata : Imdata):
+  return any(map(lambda box : box.marked_accepted, imdata.boxes)) if imdata.boxes is not None else False
 
 class IndexSpec(BaseModel):
     d_name:str 
