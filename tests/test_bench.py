@@ -69,7 +69,8 @@ configs = [
 ]
 import json
 
-for (b,p) in configs:
+for (i,(b,p)) in enumerate(configs):
+  print('test case', i)
   path = br.run_loop(b,p)
   bs = json.load(open(path + '/summary.json'))
   bs = BenchSummary(**bs)
@@ -85,6 +86,7 @@ for (b,p) in configs:
   assert satisfied_batch_max  
   assert reached_batch_max or reached_max_results or reached_all_results or reached_all_images
 
+print('testing the rest')
 a = get_all_session_summaries(TEST_SAVE)
 assert a.shape[0] == len(configs)
 assert os.path.isdir(a['session_path'].values[0]) # session path is correct
