@@ -73,19 +73,21 @@ def bsw_table(sbs, *, variant, metric, reltol):
     bsw = bsw.assign(total=dstot)
     tot = bsw.sum()
     bsw_table = bsw.transpose().assign(total=tot).transpose()
-    display(bsw_table)
-    print(bsw_table.to_latex())
     return bsw_table
     
 def summary_breakdown(sbs, metric):
     base_metric = 'base'
+
+    # any variant name actually in the data should work for counts later on
+    example_variant = sbs.variant.iloc[0]
     part = sbs[base_metric].map(lambda x : '1.' if x > .3 else '.3' if x > .1 else '.1')
     sbs = sbs.assign(part=part)
     totals = sbs.groupby(['part', 'dataset', 'variant'])[metric].mean().reset_index().groupby(['part', 'variant'])[metric].mean().unstack(level=0)
     counts = sbs.groupby(['part', 'dataset', 'variant']).size().rename('cats').reset_index().groupby(['part', 'variant']).cats.sum().unstack(level=0)
     
     tr = totals.transpose()
-    count_col = counts.transpose()['plain']
+
+    count_col = counts.transpose()[example_variant]
     
     tr = tr.assign(counts=count_col)[['counts'] + tr.columns.values.tolist()].transpose()
     return tr
@@ -110,11 +112,6 @@ def comparison_table(tot_res, *, variant, baseline_variant):
     tot_res = (tot_res[['counts', baseline,sys, 'ratio']]
             .rename(mapper={baseline:'baseline',sys:'this work'}, axis=1))
     tot_res = tot_res.transpose()    
-    fmtter = remove_leading_zeros('{:.02f}'.format)
-    print('total_counts: ', total_counts)
-    with pd.option_context('display.float_format', fmtter):
-        display(tot_res)
-    print(tot_res.to_latex(float_format=fmtter))
     return tot_res
 
 def ablation_table(tot_res, variants_list):
@@ -141,35 +138,48 @@ def ablation_table(tot_res, variants_list):
     return ablation
 
 
-def print_tables(stats, *, variant,  baseline_variant, metric, reltol, show_latex=False):
+def print_tables(stats, *, variant, baseline_variant, metric, reltol, intermediate_variant=None, brief=True):
+    if intermediate_variant is None:
+      intermediate_variant = baseline_variant
+
     res = {}
     all_vars = stats.groupby(['dataset', 'category', 'variant',])[metric].mean().unstack(-1)
     means = all_vars.groupby('dataset').mean()
     counts = all_vars.groupby('dataset').size().rename('num_queries')
     per_dataset = pd.concat([means, counts],axis=1)
-    print('by dataset')
-    display(per_dataset)
-    res['by_dataset'] = per_dataset
+    if not brief:
+      print('by dataset')
+      display(per_dataset)
 
+    res['by_dataset'] = per_dataset
     sbs = side_by_side_comparison(stats, baseline_variant=baseline_variant, metric=metric)
     res['sbs'] = sbs
     assert 'variant' in sbs.columns.values
 
     print('bsw')
     bsw = bsw_table(sbs, variant=variant, metric=metric, reltol=reltol)
+    display(bsw)
+
+    if not brief:
+      print(bsw.to_latex())
+
     res['bsw'] = bsw
     
     tot_res = summary_breakdown(sbs, metric=metric)
     cmp = comparison_table(tot_res, variant=variant, baseline_variant=baseline_variant)
+
+    if not brief:
+      fmtter = remove_leading_zeros('{:.02f}'.format)
+      with pd.option_context('display.float_format', fmtter):
+          display(tot_res)
+      print(tot_res.to_latex(float_format=fmtter))
     res['comparison'] = cmp
 
-    print('ablation')
-    if variant == 'seesaw':
-      abtab = ablation_table(tot_res, variants_list=['plain', 'multiplain','seesaw',])
+    if not brief:
+      print('ablation')
+      abtab = ablation_table(tot_res, variants_list=[baseline_variant, intermediate_variant, variant])
       display(abtab)
       res['ablation'] = abtab
-    else:
-      print('skipping ablation table bc. using other variant')
 
     x = np.geomspace(.02, 1, num=5)
     y = 1/x
@@ -237,7 +247,7 @@ def bokeh_version(pdata, tooltip_cols=['x', 'y', 'dataset', 'category', 'frequen
                background_fill_color="#fafafa")
     
     source = ColumnDataSource(pdata)
-    p.circle(fill_color='dataset', source=source)
+    p.circle(fill_color='color', source=source)
 
     def url_tool(url_column):
         url = f"http://localhost:9000/session/@{url_column}"
