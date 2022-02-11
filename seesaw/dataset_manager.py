@@ -677,6 +677,12 @@ class GlobalDataManager:
 
     def get_model_actor(self, model_name : str):
       actor_name = f'/model_actor#{model_name}' # the slash is important
+      try:
+        ref = ray.get_actor(actor_name)
+        return ModelStub(ref)
+      except ValueError as e:
+        pass # will create instead
+
 
       def _init_model_actor():
         m_path = self._get_model_path(model_name)
@@ -695,10 +701,16 @@ class GlobalDataManager:
                 .options(name=actor_name, num_gpus=num_gpus, num_cpus=num_cpus, lifetime='detached')
                 .remote(path=full_path, device=device))
         
+        #wait for it to be ready
+        ray.get(r.ready.remote())
         return r
 
-      actor_ref = self.global_cache._with_lock(actor_name, _init_model_actor)
-      return ModelStub(actor_ref)
+      # we're using the cache just as a lock
+      self.global_cache._with_lock(actor_name, _init_model_actor)
+      
+      # must succeed now...
+      ref = ray.get_actor(actor_name)
+      return ModelStub(ref)
 
     
     def create_dataset(self, image_src, dataset_name, paths=[]) -> SeesawDatasetManager:

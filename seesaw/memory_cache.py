@@ -19,7 +19,9 @@ class ReferenceCache:
   def ready(self):
     return True
 
+
   def savepath(self, path : str, wrapped_ref : WrappedRef):
+    assert path in self.mapping
     assert self.mapping[path] is None
     assert wrapped_ref is not None
     assert wrapped_ref.ref is not None
@@ -35,6 +37,17 @@ class ReferenceCache:
       return 0 # loading
     else:
       return 1 # loaded
+
+  def release(self, path : str):
+    if path in self.mapping and self.mapping[path] == -1:
+      # if half-initialized, remove
+      del self.mapping[path]
+    else:
+      print('release for', path) 
+
+  def print_map(self):
+    print(self.mapping)
+      
 
   def getobject(self, path: str) -> WrappedRef:
     assert path in self.mapping and self.mapping[path] is not None, path
@@ -59,6 +72,10 @@ class CacheStub:
     ref = ray.put(obj, _owner=self.handle)
     return ray.get(self.handle.savepath.remote(std_path, WrappedRef(ref)))
 
+  def _release(self, path : str):
+    std_path = os.path.normpath(os.path.realpath(path))
+    return ray.get(self.handle.release.remote(std_path))
+
   def pathstate(self, path: str, lock=False) -> int:
     std_path = os.path.normpath(os.path.realpath(path))
     if std_path in self.local:
@@ -82,8 +99,11 @@ class CacheStub:
     while True:
       state = self.pathstate(path, lock=True)
       if state == -1: # only one process will see this
-        obj = init_fun()
-        self.savepath(path, obj)
+        try:
+          obj = init_fun()
+          self.savepath(path, obj)
+        finally: # in case interrupted/killed etc.
+          self._release(path)
       elif state == 0: # someone else is loading, cannot call yet
         print(f'{path} is locked by someone else... waiting')
         time.sleep(1)

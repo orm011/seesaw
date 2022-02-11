@@ -18,37 +18,53 @@ br = BenchRunner(gdm.root, results_dir=TEST_SAVE)
 
 from seesaw.textual_feedback_box import std_textual_config
 
+cat = 'soya milk'
+qstr = 'a soya milk'
+
+cat_objectnet = 'air freshener'
+qstr_objectnet = 'an air freshener'
+## chosen so there are some positives withi this range
+
 configs = [ 
-            (BenchParams(name='seesaw_test', ground_truth_category='aerosol can', qstr='aerosol can', 
+            (BenchParams(name='seesaw_test', ground_truth_category=cat, qstr=qstr, 
               n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
-            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name='aerosol can'),
+            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
               interactive='pytorch', warm_start='warm', batch_size=3, 
               minibatch_size=10, learning_rate=0.005, max_examples=500, 
               loss_margin=0.1, num_epochs=2, model_type='cosine')
             ),
   
-            (BenchParams(name='baseline', ground_truth_category='aerosol can', qstr='aerosol can', 
+            (BenchParams(name='baseline', ground_truth_category=cat, qstr=qstr, 
               n_batches=4, max_results=10, max_feedback=None, box_drop_prob=0.0),      
-            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='coarse', m_name=None, c_name='aerosol can'), 
+            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='coarse', m_name=None, c_name=cat), 
               interactive='plain', warm_start='warm', batch_size=3, 
               minibatch_size=10, learning_rate=0.005, max_examples=500, 
               loss_margin=0.1, num_epochs=2, model_type='cosine')
             ),
 
-            (BenchParams(name='seesaw_test', ground_truth_category='aerosol can', qstr='aerosol can', 
+            (BenchParams(name='seesaw_test', ground_truth_category=cat, qstr=qstr, 
               n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
-            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name='aerosol can'),
+            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
               interactive='pytorch', warm_start='warm', batch_size=3, 
               minibatch_size=10, learning_rate=0.005, max_examples=3, 
               loss_margin=0.1, num_epochs=2, model_type='cosine')
             ),
-            (BenchParams(name='seesaw_test_textual', ground_truth_category='aerosol can', qstr='aerosol can', 
-              n_batches=2, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
-            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name='aerosol can'),
+            (BenchParams(name='seesaw_test_textual', ground_truth_category=cat, qstr=qstr, 
+              n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
+            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
               interactive='textual', method_config=std_textual_config, warm_start='warm', batch_size=3, 
               minibatch_size=10, learning_rate=0.005, max_examples=3, 
               loss_margin=0.1, num_epochs=2, model_type='cosine')
             ),
+
+            (BenchParams(name='seesaw_test_textual', ground_truth_category=cat_objectnet, qstr=qstr_objectnet, 
+              n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
+            SessionParams(index_spec=IndexSpec(d_name='data/objectnet/', i_name='multiscale', c_name=cat_objectnet),
+              interactive='textual', method_config=std_textual_config, warm_start='warm', batch_size=3, 
+              minibatch_size=10, learning_rate=0.005, max_examples=3, 
+              loss_margin=0.1, num_epochs=2, model_type='cosine')
+            ),
+
 
 ]
 import json

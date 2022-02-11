@@ -306,6 +306,7 @@ class BenchRunner(object):
 
           except Exception as e:
             print(e, file=sys.stderr)
+            raise e
           finally: ## restore
               sys.stdout = self.stdout
               sys.stderr = self.stderr
