@@ -115,8 +115,7 @@ class OnlineModel:
 
         def closure(self, strings): # pass self.model
           # taken from model.encode_text
-          tokens = clip.tokenize(strings)
-
+          tokens = clip.tokenize(strings).to(self.device)
           x = self.token_embedding(tokens).type(self.dtype)  # [batch_size, n_ctx, d_model]
 
           x = x + self.positional_embedding.type(self.dtype)
