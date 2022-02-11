@@ -194,6 +194,8 @@ import Autocomplete from 'vue3-autocomplete'
 // Optional: Import default CSS
 import 'vue3-autocomplete/dist/vue3-autocomplete.css'
 
+import {image_accepted} from './util'
+
 export default {
     components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete},
     props: {},
@@ -284,7 +286,7 @@ export default {
             .then(this._update_client_data)
         },
         total_accepted() {
-          let accepted_per_list = (l)=> l.map((elt) => elt.marked_accepted ? 1 : 0).reduce((a,b)=>a+b, 0)
+          let accepted_per_list = (l)=> l.map((elt) => image_accepted(elt) ? 1 : 0).reduce((a,b)=>a+b, 0)
           return this.client_data.session.gdata.map(accepted_per_list).reduce((a,b)=>a+b, 0)
         },
         total_annotations(){

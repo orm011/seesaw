@@ -7,7 +7,7 @@
           :key="imdata_keys[index]"
         >
           <m-annotator
-            :class="data.marked_accepted ? 'gallery-accepted':''"
+            :class="image_accepted(data) ? 'gallery-accepted':''"
             ref="annotators"
             :initial_imdata="data"
             :read_only="true"
@@ -20,6 +20,7 @@
 </template>
 <script>
 import MAnnotator from './m-annotator.vue';
+import {image_accepted} from '../util'
 
  export default {
   name : 'MImageGallery',

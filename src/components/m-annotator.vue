@@ -33,6 +33,7 @@
 <script>
 
 import paper from 'paper/dist/paper-core';
+import {image_accepted} from '../util';
 
 export default { 
   name: "MAnnotator", // used by ipyvue?
@@ -166,15 +167,11 @@ export default {
         console.log('saving state from paper to local imdata ')
         if (boxes.length == 0) {
             this.imdata.boxes = null;
-            this.imdata.marked_accepted = false;
             console.log('length 0 reverts to null right now')
         } else {
             this.imdata.boxes = boxes;
-            this.imdata.marked_accepted = boxes.filter(b => b.marked_accepted).length > 0
         }
     },
-
-    
     get_latest_imdata(){
       this.save();
       return this.imdata;
