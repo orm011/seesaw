@@ -599,11 +599,12 @@ class GlobalDataManager:
     global_cache : CacheStub
 
     def __init__(self, root):
+        root = os.path.abspath(os.path.expanduser(root))
         if not os.path.exists(root):
-            print('creating new root folder')
+            print(f'creating new root folder at {root}')
             os.makedirs(root)
 
-        self.root = os.path.abspath(root)
+        self.root = root
         self.data_root = f'{root}/data/'
         self.model_root = f'{root}/models/'
         self.index_root = f'{root}/indices/'
@@ -615,7 +616,6 @@ class GlobalDataManager:
 
         self.dbpath = f'{self.root}/meta.sqlite'
         self.dburi = f'file:{self.dbpath}?nolock=1&mode=ro'
-        print(self.dburi)
         ensure_db(self.dbpath)
 
     def _get_connection(self, url_mode='ro'):
