@@ -303,6 +303,14 @@ def build_index(vecs, file_name):
     u = annoy.AnnoyIndex(512, 'dot')
     u.load(file_name) # verify can load.
     return u
+
+def filter_mask(meta, min_level_inclusive):
+    gpmax = meta.groupby('dbidx').zoom_level.max().rename('zoom_level_max')
+    aug_meta = pd.merge(meta, gpmax, left_on='dbidx', right_index=True)
+    is_max = (aug_meta.zoom_level == aug_meta.zoom_level_max)
+    is_larger = (aug_meta.zoom_level >= min_level_inclusive )
+    mask = (is_max | is_larger)
+    return mask.values
     
 class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup
@@ -311,13 +319,24 @@ class MultiscaleIndex(AccessMethod):
                  embedding : XEmbedding,
                  vectors : np.ndarray,
                  vector_meta : pd.DataFrame,
-                 vec_index =  None):
-
+                 vec_index =  None, 
+                 min_zoom_level = 1):
         self.embedding = embedding
-        self.vectors = vectors
-        self.vector_meta = vector_meta
-        self.vec_index = vec_index
-        self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
+
+        if min_zoom_level == 1:
+          self.vectors = vectors
+          self.vector_meta = vector_meta
+          self.vec_index = vec_index
+          self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
+        else: # filter out lowest zoom level
+          print('WARNING: filtering out min_zoom_level')
+          mask = filter_mask(vector_meta, min_level_inclusive=min_zoom_level)
+          self.vector_meta = vector_meta[mask].reset_index(drop=True)
+          self.vectors = vectors[mask]
+
+          self.vec_index = None # no index constructed here
+          self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
+
 
     @staticmethod
     def from_path(gdm : GlobalDataManager, index_subpath : str, model_name :str):
