@@ -6,8 +6,11 @@ import math
 from collections import defaultdict
 
 from IPython.display import display
-from plotnine import *
-from plotnine import ggplot
+from plotnine import (ggplot, geom_point, geom_abline, scale_y_log10, 
+                    scale_x_log10,geom_hline, aes, theme, geom_line, 
+                    geom_vline, element_text, element_blank, xlab, ylab,
+                    geom_text
+                    )
 
 
 import bokeh
@@ -233,16 +236,41 @@ def print_tables(stats, *, variant, baseline_variant, metric, reltol, intermedia
     display(scatterplot)
     return res
 
+def compared(stats, variant, baseline_variant):
+    valid_variants = stats.variant.unique()
+    assert variant in valid_variants
+    assert baseline_variant in valid_variants
+    all_pairs = pd.merge(stats[stats.variant == variant], stats[stats.variant == baseline_variant],
+                         left_on=['dataset', 'ground_truth_category'], right_on=['dataset', 'ground_truth_category'], 
+                         suffixes=['', '_baseline'])
+    return all_pairs
+
+
+def plot_compare(stats, variant, variant_baseline, metric):
+    plotdata = compared(stats, variant, variant_baseline)
+    return (ggplot(data=plotdata) +
+        geom_point(aes(x=f'{metric}_baseline', y=metric, fill='dataset'))
+        + scale_x_log10()
+        + scale_y_log10()
+        + geom_abline(aes(slope=1, intercept=0))
+    )
+
+
+from bokeh.models import HoverTool, TapTool, OpenURL, BoxZoomTool, ResetTool, PanTool
+from bokeh.palettes import d3
+from bokeh.transform import factor_cmap, jitter
+from bokeh.plotting import figure, show, ColumnDataSource, output_notebook
+
+def make_color_map(df, column_name):
+  factors = df[column_name].unique()
+  total = max(len(factors), 3)
+  palette = d3['Category10'][total]
+  return factor_cmap(column_name, palette=palette, factors=factors)
+
 def interactive_scatterplot(pdata, tooltip_cols=['x', 'y', 'dataset', 'category', 'frequency']):
-    from bokeh.models import HoverTool, TapTool, OpenURL, BoxZoomTool, ResetTool, PanTool
-    from bokeh.palettes import d3
-    from bokeh.transform import factor_cmap, jitter
-    from bokeh.plotting import figure, output_file, show, ColumnDataSource, output_notebook
     output_notebook()
 
     p = figure(title="comparison", y_axis_type="log",x_axis_type="log",
-               #x_range=(0, 5), y_range=(0.001, 10**22),
-#                match_aspect=True,
                plot_width=800,
                plot_height=500,
                tools=[HoverTool(), PanTool(), BoxZoomTool(), ResetTool()],
@@ -252,15 +280,12 @@ def interactive_scatterplot(pdata, tooltip_cols=['x', 'y', 'dataset', 'category'
     
     source = ColumnDataSource(pdata)
     
-    factors = pdata.dataset.unique()
-    total = max(len(factors), 3)
-    palette = d3['Category10'][total]
-    #palette = brewer["Spectral"][max(len(pdata.dataset.unique()),3)]
     p.circle(x=jitter('x', width=.1), 
              y=jitter('y', width=.1),
              size=10,
-             fill_color=factor_cmap('dataset', palette=palette, factors=factors),
-             line_color='black', source=source)
+             fill_color=make_color_map(pdata, 'dataset'),
+             line_color='black', 
+             source=source)
 
     def url_tool(url_column1, url_column2):
         url = f"http://localhost:9000/compare?path=@{url_column1}&other=@{url_column2}"
