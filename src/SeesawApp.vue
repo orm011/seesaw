@@ -100,6 +100,9 @@
         </div>
       </nav>
       <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" v-if="client_data.session != null">
+        <div v-if="other_url !== null" class="row">
+          <a :href="other_url">{{other_url}}</a>
+        </div>
         <div
           class="row"
           v-for="(imdata,idx) in client_data.session.gdata"
@@ -220,18 +223,23 @@ export default {
                 annotator_text : '',
                 annotator_text_pointer : null,
                 show_config : false,
+                other_url : null,
                 autocomplete_items: [], 
               }
             },
     mounted (){
         console.log('Vue App object avail in window.VueApp');
         window.VueApp = this;
-        if (window.location.pathname.startsWith('/session/')){
-            // doing this so I can link to session histories  
-            // then load session state instead.
-            let session_path = window.location.pathname.slice('/session'.length)
+        let params = new URLSearchParams(window.location.search)
+
+        if (window.location.pathname == '/session'){
+            let session_path = params.get('path')
             this.load_session(session_path)
-        } else {
+        } else if (window.location.pathname == '/compare'){
+            let session_path = params.get('path')
+            this.other_url = `${window.location.origin}/session?path=${params.get('other')}`
+            this.load_session(session_path)
+        } else{
           fetch('/api/getstate', {cache: "reload"})
               .then(response => response.json())
               .then(this._update_client_data)
