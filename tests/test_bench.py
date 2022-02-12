@@ -72,6 +72,7 @@ import json
 for (i,(b,p)) in enumerate(configs):
   print('test case', i)
   path = br.run_loop(b,p)
+  print ('done with loop')
   bs = json.load(open(path + '/summary.json'))
   bs = BenchSummary(**bs)
   summ = get_metric_summary(bs.result)

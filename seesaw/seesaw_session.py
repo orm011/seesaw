@@ -307,14 +307,18 @@ def prep_data(ds, p : SessionParams):
 def make_session(gdm, p : SessionParams):
     ds = gdm.get_dataset(p.index_spec.d_name)
     hdb = gdm.load_index(p.index_spec.d_name, p.index_spec.i_name)
+    print('index loaded')
     box_data = None
     subset = None
     positive = None
 
     if p.index_spec.c_name is not None:
+      print('prepping  data....')
       box_data, subset, positive  = prep_data(ds, p)
       assert len(positive) != 0
       hdb = hdb.subset(subset)
     
+    print('about to construct session...')
     session = Session(gdm, ds, hdb, p)
+    print('session constructed...')
     return {'session':session, 'box_data':box_data, 'subset':subset, 'positive':positive}

@@ -296,19 +296,21 @@ class BenchRunner(object):
             assert p.index_spec.c_name is not None, 'need category for benchmark'
 
             ret = make_session(self.gdm, p)
+            print('session done... now runnning loop')
             run_info = benchmark_loop(session=ret['session'], box_data=ret['box_data'], subset=ret['subset'], b=b, p=p)
+            print('loop done... now saving results')
             session = ret['session']
             summary.result = BenchResult(ntotal=len(ret['positive']), nimages = len(ret['subset']), 
                                         session=session.get_state(), run_info=run_info, total_time=time.time() - start)
 
             json.dump(summary.dict(), open(output_path, 'w'))
 
-          except Exception as e:
-            print(e, file=sys.stderr)
-            raise e
+          # except Exception as e:
+            # # print(e, file=sys.stderr)
+            # raise e
           finally: ## restore
-              sys.stdout = self.stdout
-              sys.stderr = self.stderr
+            sys.stdout = self.stdout
+            sys.stderr = self.stderr
 
         
         return output_dir
