@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import sklearn.metrics
 import pyroaring as pr
 import math
 
@@ -9,6 +8,9 @@ from collections import defaultdict
 from IPython.display import display
 from plotnine import *
 from plotnine import ggplot
+
+
+import bokeh
 
 
 def brief_formatter(num_sd):
@@ -231,30 +233,40 @@ def print_tables(stats, *, variant, baseline_variant, metric, reltol, intermedia
     display(scatterplot)
     return res
 
-
-def bokeh_version(pdata, tooltip_cols=['x', 'y', 'dataset', 'category', 'frequency']):
-    import bokeh
-    from bokeh.models import HoverTool, TapTool, OpenURL
+def interactive_scatterplot(pdata, tooltip_cols=['x', 'y', 'dataset', 'category', 'frequency']):
+    from bokeh.models import HoverTool, TapTool, OpenURL, BoxZoomTool, ResetTool, PanTool
+    from bokeh.palettes import d3
+    from bokeh.transform import factor_cmap, jitter
     from bokeh.plotting import figure, output_file, show, ColumnDataSource, output_notebook
     output_notebook()
 
     p = figure(title="comparison", y_axis_type="log",x_axis_type="log",
                #x_range=(0, 5), y_range=(0.001, 10**22),
 #                match_aspect=True,
-               tools=[HoverTool()],
+               plot_width=800,
+               plot_height=500,
+               tools=[HoverTool(), PanTool(), BoxZoomTool(), ResetTool()],
                 tooltips=', '.join(['@{}'.format(col) for col in tooltip_cols]),
 #                "@x, @y, @dataset, @category, @query_string, @frequency",
                background_fill_color="#fafafa")
     
     source = ColumnDataSource(pdata)
-    p.circle(fill_color='color', source=source)
+    
+    factors = pdata.dataset.unique()
+    total = max(len(factors), 3)
+    palette = d3['Category10'][total]
+    #palette = brewer["Spectral"][max(len(pdata.dataset.unique()),3)]
+    p.circle(x=jitter('x', width=.1), 
+             y=jitter('y', width=.1),
+             size=10,
+             fill_color=factor_cmap('dataset', palette=palette, factors=factors),
+             line_color='black', source=source)
 
-    def url_tool(url_column):
-        url = f"http://localhost:9000/session/@{url_column}"
+    def url_tool(url_column1, url_column2):
+        url = f"http://localhost:9000/compare?path=@{url_column1}&other=@{url_column2}"
         taptool = TapTool()
         taptool.callback = OpenURL(url=url)
         return taptool
 
-    p.add_tools(url_tool('session_path'))
-    p.add_tools(url_tool('base_session_path'))
+    p.add_tools(url_tool('session_path', 'base_session_path'))
     show(p)
