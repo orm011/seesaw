@@ -113,9 +113,8 @@ class OnlineModel:
           if s not in self._cache:
             non_cached.append(s)
 
-        def closure(self, strings): # pass self.model
+        def closure(self, tokens): # pass self.model
           # taken from model.encode_text
-          tokens = clip.tokenize(strings).to(self.device)
           x = self.token_embedding(tokens).type(self.dtype)  # [batch_size, n_ctx, d_model]
 
           x = x + self.positional_embedding.type(self.dtype)
@@ -130,7 +129,8 @@ class OnlineModel:
           return x
 
         if len(non_cached) > 0:
-          new_vecs = closure(self.model, non_cached)
+          tokens = clip.tokenize(non_cached).to(self.device) 
+          new_vecs = closure(self.model, tokens)
           for (s,v) in zip(non_cached, new_vecs):
             self._cache[s] = v
           
