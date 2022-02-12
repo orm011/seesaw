@@ -30,15 +30,15 @@ s0 = dict(warm_start='warm', model_type='cosine',
 b0 = dict(n_batches=200,max_feedback=None,box_drop_prob=0., max_results=5)
 
 variants = [
-    # dict(name='seesaw', interactive='pytorch', index_name='multiscale'),
-    # dict(name='multi', interactive='plain', index_name='multiscale'),
+    dict(name='seesaw', interactive='pytorch', index_name='multiscale'),
+    dict(name='multi', interactive='plain', index_name='multiscale'),
     # dict(name='baseline', interactive='plain', index_name='coarse'),
     # dict(name='refine', interactive='pytorch', index_name='coarse'),
     dict(name='textual_multi', interactive='textual', index_name='multiscale', method_config=std_textual_config, provide_textual_feedback=True),
 ]
 
 # datasets = ['data/lvis/', 'data/bdd/', 'data/coco/', 'data/dota/', 'data/objectnet/']
-datasets = ['data/lvis/', 'data/objectnet/']
+datasets = ['data/lvis/']#, 'data/objectnet/']
 
 nclasses = math.inf if args.limit is None else args.limit
 cfgs = gen_configs(gdm, datasets=datasets, variants=variants, s_template=s0, b_template=b0, max_classes_per_dataset=nclasses)
