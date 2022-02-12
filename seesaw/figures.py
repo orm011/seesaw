@@ -267,6 +267,42 @@ def make_color_map(df, column_name):
   palette = d3['Category10'][total]
   return factor_cmap(column_name, palette=palette, factors=factors)
 
+def interactive_compare(stats, variant, variant_baseline, metric, tooltip_cols=['dataset', 'category', 'frequency']):
+    plotdata = compared(stats, variant, variant_baseline)
+
+    output_notebook()
+
+    base_metric = f'{metric}_baseline'
+
+    if metric not in tooltip_cols:
+      tooltip_cols.extend([metric, base_metric])
+
+    p = figure(title="comparison", y_axis_type="log",x_axis_type="log",
+               plot_width=800,
+               plot_height=500,
+               tools=[HoverTool(), PanTool(), BoxZoomTool(), ResetTool()],
+                tooltips=', '.join(['@{}'.format(col) for col in tooltip_cols]),
+               background_fill_color="#fafafa")
+    
+    source = ColumnDataSource(plotdata)
+    
+    p.circle(x=jitter(metric, width=.1), 
+             y=jitter(base_metric, width=.1),
+             size=10,
+             fill_color=make_color_map(plotdata, 'dataset'),
+             line_color='black', 
+             source=source)
+
+    def url_tool(url_column1, url_column2):
+        url = f"http://localhost:9000/compare?path=@{url_column1}&other=@{url_column2}"
+        taptool = TapTool()
+        taptool.callback = OpenURL(url=url)
+        return taptool
+
+    p.add_tools(url_tool('session_path', 'session_path_baseline'))
+    show(p)
+
+
 def interactive_scatterplot(pdata, tooltip_cols=['x', 'y', 'dataset', 'category', 'frequency']):
     output_notebook()
 
