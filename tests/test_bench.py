@@ -8,13 +8,13 @@ ray.init('auto', namespace='seesaw', ignore_reinit_error=True)
 #TEST_ROOT = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root/'
 TEST_ROOT = '/home/gridsan/omoll/seesaw_root/'
 tmp_name = ''.join([random.choice(string.ascii_letters) for _ in range(10)])
-TEST_SAVE = f'~/tmp/sessaw_tests/test_save_{tmp_name}/'
+TEST_SAVE = f'~/tmp/seesaw_tests/test_save_{tmp_name}/'
 TEST_SAVE = os.path.expanduser(TEST_SAVE)
 os.makedirs(TEST_SAVE, exist_ok=False)
 
 gdm = GlobalDataManager(TEST_ROOT)
 os.chdir(gdm.root)
-br = BenchRunner(gdm.root, results_dir=TEST_SAVE)
+br = BenchRunner(gdm.root, results_dir=TEST_SAVE, redirect_output=False)
 
 from seesaw.textual_feedback_box import std_textual_config
 

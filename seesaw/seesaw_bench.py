@@ -260,7 +260,7 @@ import time
 from .util import reset_num_cpus
 
 class BenchRunner(object):
-    def __init__(self, seesaw_root, results_dir, num_cpus : int =None ):
+    def __init__(self, seesaw_root, results_dir, num_cpus : int =None, redirect_output = True):
         assert os.path.isdir(results_dir)
         if num_cpus is not None:
           reset_num_cpus(num_cpus)
@@ -269,6 +269,7 @@ class BenchRunner(object):
         self.gdm = GlobalDataManager(seesaw_root)
         self.results_dir = results_dir
         random.seed(int(f'{time.time_ns()}{os.getpid()}'))
+        self.redirect_output = redirect_output
         self.stdout = sys.stdout
         self.stderr = sys.stdin
         
@@ -285,8 +286,9 @@ class BenchRunner(object):
 
         with open(f'{output_dir}/stdout', 'w') as stdout, open(f'{output_dir}/stderr', 'w') as stderr:
           try: ## print the log to the output folder as well
-            sys.stdout = stdout
-            sys.stderr = stderr
+            if self.redirect_output:
+              sys.stdout = stdout
+              sys.stderr = stderr
 
             summary = BenchSummary(bench_params=b, session_params=p, 
               timestamp = timestamp, result=None)
@@ -304,13 +306,13 @@ class BenchRunner(object):
                                         session=session.get_state(), run_info=run_info, total_time=time.time() - start)
 
             json.dump(summary.dict(), open(output_path, 'w'))
-
-          # except Exception as e:
-            # # print(e, file=sys.stderr)
-            # raise e
+          except Exception as e:
+            print(e, file=sys.stderr)
+            raise e
           finally: ## restore
-            sys.stdout = self.stdout
-            sys.stderr = self.stderr
+            if self.redirect_output:
+              sys.stdout = self.stdout
+              sys.stderr = self.stderr
 
         
         return output_dir
