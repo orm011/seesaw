@@ -6,7 +6,7 @@ import math
 from collections import defaultdict
 
 from IPython.display import display
-from plotnine import (ggplot, geom_point, geom_abline, scale_y_log10, 
+from plotnine import (ggplot, geom_point, geom_jitter, geom_abline, scale_y_log10, 
                     scale_x_log10,geom_hline, aes, theme, geom_line, 
                     geom_vline, element_text, element_blank, xlab, ylab,
                     geom_text
@@ -38,6 +38,44 @@ def brief_formatter(num_sd):
     return formatter
 
 brief_format = brief_formatter(1)
+
+
+_higher_is_better = ['ndcg_score', 'AP', 'nAP', 'reciprocal_rank_first', 'reciprocal_rank_last']
+_lower_is_better = ['rank_first', 'rank_last']
+
+def bsw_table2(compare, *, metric, reltol):        
+    invtol = 1/reltol
+    
+    if metric in _higher_is_better:
+      higher_is_better = True
+    elif metric in _lower_is_better:
+      higher_is_better = False
+    else:
+      assert False, 'need to specify if higher is better for metric'
+
+    metric_col = compare[metric]
+    baseline_col = compare[f'{metric}_baseline']
+    
+    higher = (baseline_col * reltol)  < metric_col
+    lower = metric_col < (baseline_col * invtol)
+    similar =  ((baseline_col * invtol) <= metric_col) & (metric_col <= (baseline_col * reltol))
+    
+    neither = ~(higher | lower | similar)
+    
+    if higher_is_better:
+        better = higher
+        worse = lower
+    else:
+        better = lower
+        worse = higher
+    
+    compare = compare.assign(better=better, same=similar, worse=worse, neither=neither)    
+    bydataset = compare.groupby('dataset')[['better', 'same', 'worse', 'neither']].sum()
+    dstot = bydataset.sum(axis=1)
+    bsw = bydataset.assign(total=dstot)
+    tot = bsw.sum()
+    bsw_table = bsw.transpose().assign(total=tot).transpose()
+    return bsw_table
 
 def times_format(ftpt):
     return brief_format(ftpt) + 'x'
@@ -202,7 +240,7 @@ def print_tables(stats, *, variant, baseline_variant, metric, reltol, intermedia
 
 
     scatterplot = (ggplot(plotdata)
-        + geom_point(aes(x='x', y='y', fill='dataset', color='dataset'), alpha=.6, size=1.) 
+        + geom_jitter(aes(x='x', y='y', fill='dataset', color='dataset'), alpha=.6, size=1.) 
     #                 shape=plotdata.dataset.map(lambda x : '.' if x in ['lvis','objectnet'] else 'o'), 
     #                 size=plotdata.dataset.map(lambda x : 1. if x in ['lvis','objectnet'] else 2.))
     #  + geom_text(aes(x='base', y='delta', label='category', color='dataset'), va='bottom', 
@@ -236,7 +274,7 @@ def print_tables(stats, *, variant, baseline_variant, metric, reltol, intermedia
     display(scatterplot)
     return res
 
-def compared(stats, variant, baseline_variant):
+def compare_stats(stats, variant, baseline_variant):
     valid_variants = stats.variant.unique()
     assert variant in valid_variants
     assert baseline_variant in valid_variants
@@ -246,17 +284,42 @@ def compared(stats, variant, baseline_variant):
     return all_pairs
 
 
-def plot_compare(stats, variant, variant_baseline, metric):
-    plotdata = compared(stats, variant, variant_baseline)
-    return (ggplot(data=plotdata) +
-        geom_point(aes(x=f'{metric}_baseline', y=metric, fill='dataset'))
-        + scale_x_log10()
-        + scale_y_log10()
-        + geom_abline(aes(slope=1, intercept=0))
-    )
+def plot_compare(stats, variant, variant_baseline, metric, mode='identity'):
+    plotdata = compare_stats(stats, variant, variant_baseline)
+    bsw = bsw_table2(plotdata, metric=metric, reltol=1.)
+    display(bsw)
+    baseline_name = f'{metric}_baseline'
+
+    plotdata = plotdata[[metric, baseline_name, 'dataset']].assign(ratio=plotdata[metric]/plotdata[baseline_name],
+      difference=plotdata[metric] - plotdata[baseline_name])
+
+    if mode == 'identity':
+      return (ggplot(data=plotdata) +
+          geom_jitter(aes(x=f'{metric}_baseline', y=metric, fill='dataset'), width=.1, height=.1)
+          + scale_x_log10()
+          + scale_y_log10()
+          + geom_abline(aes(slope=1, intercept=0))
+      )
+    elif mode == 'ratio':
+      return (ggplot(data=plotdata)
+          + geom_jitter(aes(x=f'{metric}_baseline', y='ratio', fill='dataset'), width=.1, height=.1)
+          + scale_x_log10()
+          + scale_y_log10()
+          + geom_abline(aes(slope=0, intercept=1))
+      )
+    elif mode == 'difference':
+            return (ggplot(data=plotdata)
+          + geom_jitter(aes(x=f'{metric}_baseline', y='difference', fill='dataset'), width=.1, height=.1)
+          + scale_x_log10()
+          + scale_y_log10()
+          + geom_abline(aes(slope=0, intercept=0))
+      )
+    else:
+      assert False, 'unknown mode'
 
 
-from bokeh.models import HoverTool, TapTool, OpenURL, BoxZoomTool, ResetTool, PanTool
+
+from bokeh.models import HoverTool, TapTool, OpenURL, BoxZoomTool, ResetTool, PanTool, WheelZoomTool
 from bokeh.palettes import d3
 from bokeh.transform import factor_cmap, jitter
 from bokeh.plotting import figure, show, ColumnDataSource, output_notebook
@@ -268,7 +331,7 @@ def make_color_map(df, column_name):
   return factor_cmap(column_name, palette=palette, factors=factors)
 
 def interactive_compare(stats, variant, variant_baseline, metric, tooltip_cols=['dataset', 'category', 'frequency']):
-    plotdata = compared(stats, variant, variant_baseline)
+    plotdata = compare_stats(stats, variant, variant_baseline)
 
     output_notebook()
 
@@ -278,20 +341,25 @@ def interactive_compare(stats, variant, variant_baseline, metric, tooltip_cols=[
       tooltip_cols.extend([metric, base_metric])
 
     p = figure(title="comparison", y_axis_type="log",x_axis_type="log",
-               plot_width=800,
+               plot_width=500,
                plot_height=500,
-               tools=[HoverTool(), PanTool(), BoxZoomTool(), ResetTool()],
+               match_aspect=True,
+               tools=[HoverTool(), PanTool(), WheelZoomTool(), ResetTool()],
                 tooltips=', '.join(['@{}'.format(col) for col in tooltip_cols]),
                background_fill_color="#fafafa")
     
     source = ColumnDataSource(plotdata)
     
-    p.circle(x=jitter(metric, width=.1), 
-             y=jitter(base_metric, width=.1),
+    p.circle(x=jitter(base_metric, width=.1), 
+             y=jitter(metric, width=.1),
              size=10,
              fill_color=make_color_map(plotdata, 'dataset'),
              line_color='black', 
              source=source)
+
+    minval = plotdata[base_metric].min()
+    maxval = (plotdata[base_metric][(plotdata[base_metric] < np.inf)]).max()
+    p.segment(x0=minval, x1=maxval, y0=minval, y1=maxval)
 
     def url_tool(url_column1, url_column2):
         url = f"http://localhost:9000/compare?path=@{url_column1}&other=@{url_column2}"
