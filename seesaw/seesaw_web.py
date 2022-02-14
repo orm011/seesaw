@@ -45,6 +45,44 @@ def prep_db(gdm, index_spec):
 from .textual_feedback_box import std_textual_config
 from .util import reset_num_cpus
 
+
+_session_modes = {
+  'default':SessionParams(index_spec={'d_name':'', 'i_name':''},
+          interactive='plain', 
+          method_config=None,
+          warm_start='warm', batch_size=3, 
+          minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
+          num_epochs=2, model_type='cosine'),
+  'box':SessionParams(index_spec={'d_name':'', 'i_name':''},
+          interactive='pytorch', 
+          method_config=None,
+          warm_start='warm', batch_size=3, 
+          minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
+          num_epochs=2, model_type='cosine'),
+  'textual':SessionParams(index_spec={'d_name':'', 'i_name':''},
+          interactive='textual', 
+          method_config=std_textual_config,
+          warm_start='warm', batch_size=3, 
+          minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
+          num_epochs=2, model_type='cosine'),
+}
+
+_dataset_map = {
+  'lvis':'data/lvis/',
+  'coco':'data/coco/',
+  'bdd':'data/bdd/',
+  'objectnet': 'data/objectnet/'
+}
+
+def session_params(session_mode, dataset_name):
+  assert session_mode in _session_modes.keys()
+  assert dataset_name in _dataset_map.keys()
+
+  base = _session_modes[session_mode].copy(deep=True)
+  base.index_spec.d_name = _dataset_map[dataset_name]
+  base.index_spec.i_name = 'coarse' if session_mode in ['default'] else 'multiscale'
+  return base
+
 def add_routes(app : FastAPI):
   class WebSeesaw:
       def __init__(self, root_dir, save_path, num_cpus=None):
@@ -59,13 +97,7 @@ def add_routes(app : FastAPI):
           self.indices = self.gdm.list_indices()
           print(self.indices)
           print('indices done')
-          self.default_params = dict(
-                                    index_spec=self.indices[0],
-                                    interactive='textual', 
-                                    method_config=std_textual_config,
-                                    warm_start='warm', batch_size=3, 
-                                    minibatch_size=10, learning_rate=0.01, max_examples=225, loss_margin=0.1,
-                                    num_epochs=2, model_type='cosine')
+          self.default_params = _session_modes['textual']
           self.session = None
 
 
@@ -133,5 +165,12 @@ def add_routes(app : FastAPI):
             return AppState(indices=[], session=all_info['result']['session'], default_params=all_info['result']['session']['params'])
           else: # saved web session
             return AppState(indices=all_info['indices'], session=all_info['session'], default_params=all_info['session']['params'])
+
+      @app.post('/user_session', response_model=AppState)
+      def user_session(self, mode, dataset):
+        ## makes a new session using a config for the given mode
+        new_params = session_params(mode, dataset)
+        self._reset_dataset(new_params)
+        return self._getstate()
 
   return WebSeesaw
