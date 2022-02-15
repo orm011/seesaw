@@ -25,34 +25,35 @@ qstr_objectnet = 'an air freshener'
 ## chosen so there are some positives withi this range
 
 configs = [ 
-            (BenchParams(name='seesaw_test', ground_truth_category=cat, qstr=qstr, 
-              n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
-            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
-              interactive='pytorch', batch_size=3, agg_method='avg_score', method_config=std_linear_config)
-            ),
+            # (BenchParams(name='seesaw_test', ground_truth_category=cat, qstr=qstr, 
+            #   n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
+            # SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
+            #   interactive='pytorch', batch_size=3, agg_method='avg_score', method_config=std_linear_config)
+            # ),
   
-            (BenchParams(name='baseline', ground_truth_category=cat, qstr=qstr, 
-              n_batches=4, max_results=10, max_feedback=None, box_drop_prob=0.0),      
-            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='coarse', c_name=cat), 
-              interactive='plain', batch_size=3, agg_method='avg_score', method_config=std_linear_config)
-            ),
+            # (BenchParams(name='baseline', ground_truth_category=cat, qstr=qstr, 
+            #   n_batches=4, max_results=10, max_feedback=None, box_drop_prob=0.0),      
+            # SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='coarse', c_name=cat), 
+            #   interactive='plain', batch_size=3, agg_method='avg_score', method_config=std_linear_config)
+            # ),
 
-            (BenchParams(name='seesaw_test', ground_truth_category=cat, qstr=qstr, 
-              n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
-            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
-              interactive='pytorch', batch_size=3, agg_method='avg_score', method_config=std_linear_config)
-            ),
+            # (BenchParams(name='seesaw_test', ground_truth_category=cat, qstr=qstr, 
+            #   n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
+            # SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
+            #   interactive='pytorch', batch_size=3, agg_method='avg_score', method_config=std_linear_config)
+            # ),
 
-            (BenchParams(name='seesaw_test_textual', ground_truth_category=cat, qstr=qstr, 
-              n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
-            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
-              interactive='textual', agg_method='avg_score', method_config={**std_textual_config, **{'mode', 'finetune'}}, batch_size=3)
-            ),
+            # (BenchParams(name='seesaw_test_textual', ground_truth_category=cat, qstr=qstr, 
+            #   n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
+            # SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
+            #   interactive='textual', agg_method='avg_score', method_config={**std_textual_config, 'mode':'finetune'}, batch_size=3)
+            # ),
 
             (BenchParams(name='seesaw_test_textual', ground_truth_category=cat_objectnet, qstr=qstr_objectnet, 
+              provide_textual_feedback=True,
               n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
             SessionParams(index_spec=IndexSpec(d_name='data/objectnet/', i_name='multiscale', c_name=cat_objectnet),
-              interactive='textual', agg_method='avg_score', method_config={**std_textual_config, **{'mode','linear'}},  batch_size=3)
+              interactive='textual', agg_method='avg_score', method_config={**std_textual_config, 'mode':'linear'},  batch_size=3)
             ),
 
 

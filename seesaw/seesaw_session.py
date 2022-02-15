@@ -68,7 +68,7 @@ class SeesawLoop:
           elif p.method_config['mode'] == 'linear':
             if len(s.model.linear_scorer.scorers) == 0: ## first time
               vec = s.model.encode_string(s.curr_str)
-            s.model.linear_scorer.add_scorer(s.curr_str,torch.from_numpy(vec.reshape(-1)))
+              s.model.linear_scorer.add_scorer(s.curr_str,torch.from_numpy(vec.reshape(-1)))
             rescore_m = self.state.model.score_vecs
             vec = self.state.model.get_lookup_vec(s.curr_str)
         else:

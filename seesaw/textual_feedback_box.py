@@ -120,7 +120,7 @@ class OnlineModel:
             return vecs.cpu().numpy()
 
     def compute_up_to(self, strings, layer) -> torch.Tensor:
-        assert layer == 'text_projection'
+        assert layer in ['text_projection', 'full']
 
         non_cached = []
         for s in strings:
@@ -140,7 +140,13 @@ class OnlineModel:
           # x.shape = [batch_size, n_ctx, transformer.width]
           # take features from the eot embedding (eot_token is the highest number in each sequence)
           x = x[torch.arange(x.shape[0]), tokens.argmax(dim=-1)]
-          return x
+          if layer == 'text_projection':
+            return x
+          elif layer == 'full':
+            x =  x @ self.text_projection
+            return F.normalize(x)
+          else:
+            assert False
 
         if len(non_cached) > 0:
           tokens = clip.tokenize(non_cached).to(self.device) 
@@ -154,91 +160,146 @@ class OnlineModel:
 
         return torch.stack(ans)
         
-
     def compute_from(self, x, layer) -> torch.Tensor:
-        assert layer == 'text_projection'
+        assert layer in ['text_projection', 'full']
 
         def closure(self, x):
-          x =  x @ self.text_projection
-          return F.normalize(x)
+          if layer == 'text_projection':
+            x =  x @ self.text_projection
+            return F.normalize(x)
+          elif layer == 'full':
+            return x
+          else:
+            assert False
         
         return closure(self.model, x)
 
-    def update(self, imagevecs, marked_accepted, annotations, target_string):
-        self._reset_model()
-        self.model.train()
+    def score_vecs(self, imagevecs):
+      with torch.no_grad():
+        self.model.eval()
+        X = torch.from_numpy(imagevecs).to(self.device)
+        logits = self.linear_scorer(X)
+        if logits.shape[1] > 1:
+          logits = logits.softmax(dim=-1) # want the score to stay within 0 to 1 range for visualization
+        return logits[:,0].cpu().numpy()
 
-        assert imagevecs.shape[0] == marked_accepted.shape[0]
-        assert annotations.shape[0] == marked_accepted.shape[0]
+    def get_lookup_vec(self, str):
+      return self.linear_scorer.get_vec(str)
+    ### option 1: discount common mistakes via a softmax.
+    ### assume only negatives get text description (including near misses)
 
-        r = configure_optimizer(self.model, self.config)
-        opt : torch.optim.Optimizer = r['optimizer']
-        lr_scheduler = r['lr_scheduler']
+    def prepare_annotated_pairs(self, imagevecs, marked_accepted, annotations, target_string):
+        """returns N image vecs, M unique (non empty) string vecs, and the string id of the annotation for each vec"""
 
-        imagevecs = torch.from_numpy(imagevecs).to(self.device)
+        has_description = annotations != ''
+        assert target_string != ''
+
+        imagevecs = imagevecs[has_description]
+        annotations = annotations[has_description]
 
         d = deduplicate_strings([target_string] + list(annotations))
         strings = d['strings']
-        string_ids = d['indices']
+        string_ids = torch.from_numpy(d['indices'][1:]).to(self.device)
+        imagevecs = torch.from_numpy(imagevecs).to(self.device)
+        
+        with torch.no_grad():
+          self.model.eval()
+          last_layer = 'full' if self.mode == 'linear' else 'text_projection'
+          stringvecs = self.compute_up_to(strings, last_layer)
+
+        assert imagevecs.device == stringvecs.device
+        assert stringvecs.shape[0] == strings.shape[0]
+        return {'imagevecs':imagevecs, 'stringvecs':stringvecs, 'target':string_ids, 'unique_strings':strings}
 
 
-        annotation_ids = string_ids[1:] # first string is the target string
-        orig_strings = strings[annotation_ids]
+    def update(self, imagevecs, marked_accepted, annotations, target_string):
+        assert imagevecs.shape[0] == marked_accepted.shape[0]
+        assert annotations.shape[0] == marked_accepted.shape[0]
+
+
+        all_imagevecs =  torch.from_numpy(imagevecs).to(self.device)
+        r = self.prepare_annotated_pairs(imagevecs, marked_accepted, annotations, target_string)
+
+        self._reset_model()
+        self.model.train()
+        self.linear_scorer.train()
+
+        if self.mode == 'linear':
+          return self._update_linear(r, all_imagevecs, marked_accepted)
+        elif self.mode == 'finetune':
+          return self._update_finetune(r, all_imagevecs, marked_accepted)
+        else:
+          assert False
+
+    def _update_linear(self, description_data, all_imagevecs, marked_accepted):
         ## want mask for all vectors where the user has provided a better description
         ## ie. exclude empty descriptions '', and also exclude cases where the description 
         ## is identical to the search query used as reference (we would be penalizing it)
-        better_described = (orig_strings != '') & (orig_strings != target_string)
 
-        total_better_described = better_described.sum()
-        total_positive = marked_accepted.sum()
-        print(f'starting update: total better described: {total_better_described}. total positive/negative : {total_positive}/{(~marked_accepted).sum()}')
+        for (lookupstr,vec) in zip(description_data['unique_strings'], description_data['stringvecs']):
+          assert lookupstr != ''
+          self.linear_scorer.add_scorer(lookupstr, vec)
 
-        if total_better_described == 0 \
-            and not (0 < total_positive < marked_accepted.shape[0]):
-              print('need at least some annotations for which a loss can be computed')
-              return 0.# no annotations can be used yet (loss is 0)        
+        # 2 groups: vectors modified more slowly
+        # temps and biases more aggressively:
+        pgs = [dict(params=[p for (name, p) in self.linear_scorer.named_parameters() if name.endswith('weight')],
+                    lr=.001, weight_decay=0.),
+                dict(params=[p for (name, p) in self.linear_scorer.named_parameters() if not name.endswith('weight')],
+                    lr=.002, weight_decay=0.)
+              ]
 
-        with torch.no_grad():
-          self.model.eval()
-          constant_activations = self.compute_up_to(strings, 'text_projection')
+        opt = transformers.AdamW(pgs)
+        lr_scheduler = transformers.get_constant_schedule_with_warmup(opt, num_warmup_steps=self.config['num_warmup_steps'])
 
-        def opt_closure():
-            self.model.train()
-            text_features = self.compute_from(constant_activations, 'text_projection') 
-            scores = imagevecs @ text_features.t()
-            score_for_target_string = scores[:,0]
-            score_for_annotation = scores[torch.arange(scores.shape[0]), string_ids[1:]] # picks the corresponding index for each 
-
-            if better_described.sum() > 0:
-              # the given label should score higher than the search query
-              label_rank_losses = F.relu(- (score_for_annotation[better_described] - score_for_target_string[better_described] - self.config['margin']))
-              label_rank_loss = label_rank_losses.mean()
+        def _description_loss(score_all_pairs, description_data):
+            if len(description_data['unique_strings']) > 1:
+              assert score_all_pairs.shape[1] > 1
+              return F.cross_entropy(score_all_pairs, description_data['target']).mean()
             else:
-              label_rank_loss = 0.
+              print('no textual annotationswith wich to make a loss')
+              return None
 
+        def _image_rank_loss(ranking_scores, marked_accepted):
+            total_positive = marked_accepted.sum()
             if 0 < total_positive < marked_accepted.shape[0]:
-              pos_scores = score_for_target_string[marked_accepted]
-              neg_scores = score_for_target_string[~marked_accepted]
-
+              pos_scores = ranking_scores[marked_accepted]
+              neg_scores = ranking_scores[~marked_accepted]
               image_rank_losses = F.relu(- (pos_scores.reshape(-1,1) - neg_scores.reshape(1,-1) - self.config['margin']))
-              image_rank_loss = image_rank_losses.reshape(-1).mean()
+              return image_rank_losses.reshape(-1).mean()
             else:
-              image_rank_loss = 0.
+              print('no box accepted yet')
+              return None
 
-            print('label loss for step: ', label_rank_loss.detach().cpu().item() if torch.is_tensor(label_rank_loss) else label_rank_loss)
-            print('image loss for step: ', image_rank_loss.detach().cpu().item() if torch.is_tensor(image_rank_loss) else image_rank_loss)
+        def training_step():
+            self.model.train()
 
-            loss = label_rank_loss + self.config['image_loss_weight']*image_rank_loss
-            return loss
+            score_all_pairs = self.linear_scorer(description_data['imagevecs'])
+            label_rank_loss = _description_loss(score_all_pairs, description_data)
 
-        losses = []
+            ranking_scores = self.linear_scorer(all_imagevecs).log_softmax(dim=-1)[:,0]
+            image_rank_loss = _image_rank_loss(ranking_scores, marked_accepted)
+
+            if label_rank_loss is None and image_rank_loss is None:
+              return None
+
+            loss1 = 0. if label_rank_loss is None else label_rank_loss
+            loss2 = 0. if image_rank_loss is None else image_rank_loss
+          
+            loss = (1.-self.config['image_loss_weight'])*loss1 + self.config['image_loss_weight']*loss2
+            return (loss, loss1, loss2)
+
+
         for _ in range(self.config['rounds'] + self.config['num_warmup_steps']):
             opt.zero_grad()
-            loss = opt_closure()
+            loss = training_step()
+            if loss is None:
+              print('no loss yet: no qualified labels')
+              break
+            (loss, l1, l2) = loss
             loss.backward()
-            losses.append(loss.detach().cpu().numpy().item())
+            print(f'loss:{loss:.02f} label_loss: {l1:.02f} rank_loss: {l2:.02f}')
             opt.step()
             lr_scheduler.step()
 
-        self.losses.append(losses)
-        return losses
+        return []
+
