@@ -100,9 +100,15 @@
         </div>
       </nav>
       <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" v-if="client_data.session != null">
+        <div v-if="session_path !== null" class="row">
+          <a :href="`${session_path}/stdout`">stdout</a>
+          <a :href="`${session_path}/stderr`">stderr</a>
+        </div>
+
         <div v-if="other_url !== null" class="row">
           <a :href="other_url">{{other_url}}</a>
         </div>
+
         <div
           class="row"
           v-for="(imdata,idx) in client_data.session.gdata"
@@ -292,6 +298,7 @@ export default {
           this.show_config = !this.show_config; 
         }, 
         load_session(session_path){
+            this.session_path = session_path
             fetch(`/api/session_info`,   
                 {method: 'POST', 
                 headers: {'Content-Type': 'application/json'}, 
