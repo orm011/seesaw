@@ -258,6 +258,10 @@ export default {
             let session_path = params.get('path')
             this.other_url = `${window.location.origin}/session?path=${params.get('other')}`
             this.load_session(session_path)
+        } else if (window.location.pathname == '/user_session'){
+            fetch('/api/user_session?' + params, {method: 'POST'})
+            .then(response => response.json())
+            .then(this._update_client_data)
         } else{
           fetch('/api/getstate', {cache: "reload"})
               .then(response => response.json())

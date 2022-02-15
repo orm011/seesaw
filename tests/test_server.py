@@ -4,7 +4,7 @@ import random, string, os
 import ray
 
 
-TEST_ROOT = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root/'
+TEST_ROOT = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/'
 tmp_name = ''.join([random.choice(string.ascii_letters) for _ in range(10)])
 TEST_SAVE = f'{os.environ["TMPDIR"]}/test_save/{tmp_name}'
 
@@ -38,4 +38,3 @@ assert len(state.session.gdata) == 0
 ## reset w/o arguments should destroy session
 state = webseesaw.reset(ResetReq(config=None))
 assert state.session is None
-
