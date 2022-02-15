@@ -233,7 +233,8 @@ def box_iou(tup, boxes):
     ious = torchvision.ops.box_iou(b1, b2)
     return ious.numpy()
 
-def augment_score2(db,tup,qvec,vec_meta,vecs, rw_coarse=1.):
+def augment_score2(tup,vec_meta, vecs, *, agg_method, rescore_method):
+    assert callable(rescore_method)
     vec_meta = vec_meta.reset_index(drop=True)    
     ious = box_iou(tup, vec_meta)
     vec_meta = vec_meta.assign(iou=ious.reshape(-1))
@@ -242,13 +243,20 @@ def augment_score2(db,tup,qvec,vec_meta,vecs, rw_coarse=1.):
     relevant_meta = vec_meta.iloc[max_boxes]
     relevant_iou = relevant_meta.iou > 0 #there should be at least some overlap for it to be relevant
     max_boxes = max_boxes[relevant_iou.values]
-    sc = (vecs[max_boxes] @ qvec.reshape(-1,1))
-    
-    ws = np.ones_like(sc)
-    ws[-1] = ws[-1]*rw_coarse
-    fsc = ws.reshape(-1) @ sc.reshape(-1)
-    fsc = fsc/ws.sum()
-    return fsc
+    rel_vecs = vecs[max_boxes]
+
+    if agg_method == 'avg_score':
+      sc = rescore_method(rel_vecs)
+      ws = np.ones_like(sc)
+      fsc = ws.reshape(-1) @ sc.reshape(-1)
+      fsc = fsc/ws.sum()
+      return fsc
+    elif agg_method == 'avg_vector':
+      merged_vec = rel_vecs.mean(axis=0, keepdims=True)
+      merged_vec = merged_vec/np.linalg.norm(merged_vec)
+      return rescore_method(merged_vec)
+    else:
+      assert False, f'unknown agg_method {agg_method}'
 
 def get_boxes(vec_meta):
     if 'x1' in vec_meta.columns:
@@ -427,7 +435,7 @@ class MultiscaleIndex(AccessMethod):
         newtopscores = topscores[~topscores.dbidx.isin(exclude)]
         scoresbydbidx = newtopscores.groupby('dbidx').score.max().sort_values(ascending=False)
         score_cutoff = scoresbydbidx.iloc[topk-1] # kth largest score
-        newtopscores = newtopscores[newtopscores.score >=  score_cutoff]
+        newtopscores = newtopscores[newtopscores.score >= score_cutoff]
 
         # newtopscores = newtopscores.sort_values(ascending=False)
         nextstartk = (allscores.score >= score_cutoff).sum()
@@ -437,10 +445,13 @@ class MultiscaleIndex(AccessMethod):
         assert candidates.intersection_cardinality(exclude) == 0
         return newtopscores.index.values, candidates, allscores, nextstartk
         
-    def query(self, *, vector, topk, exclude=None, rel_weight_coarse=1, startk=None, **kwargs):
-#        print('ignoring extra args:', kwargs)
-        shortlist_size = topk*5
-        
+    def query(self, *, vector, topk, shortlist_size, agg_method, rescore_method, exclude=None, startk=None,  **kwargs):
+        if shortlist_size is None:
+          shortlist_size = topk*5
+
+        if shortlist_size < topk*5:
+          print(f'Warning: shortlist_size parameter {shortlist_size} is small compared to topk param {topk}, you may consider increasing it')
+
         if startk is None:
             startk = len(exclude)*10
 
@@ -467,7 +478,7 @@ class MultiscaleIndex(AccessMethod):
             boxscs = np.zeros(frame_vec_meta.shape[0])
             for j in range(frame_vec_meta.shape[0]):
                 tup = frame_vec_meta.iloc[j:j+1]
-                boxscs[j] = augment_score2(db, tup, qvec, relmeta, relvecs, rw_coarse=rel_weight_coarse)
+                boxscs[j] = augment_score2(tup, relmeta, relvecs, agg_method=agg_method, rescore_method=rescore_method)
 
             frame_activations = frame_vec_meta.assign(score=boxscs)[['x1', 'y1', 'x2', 'y2', 'dbidx', 'score']]
             activations.append(frame_activations)
@@ -485,7 +496,6 @@ class MultiscaleIndex(AccessMethod):
         vectors = self.vectors[vmeta.index]
 
         return vmeta.assign(vectors=TensorArray(vectors))
-
 
     def subset(self, indices : pr.BitMap) -> AccessMethod:
         mask = self.vector_meta.dbidx.isin(indices)

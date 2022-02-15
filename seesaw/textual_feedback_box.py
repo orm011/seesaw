@@ -43,32 +43,43 @@ def deduplicate_strings(string_list):
 
     return {'strings':id2string, 'indices':string_ids}
             
-# using open ai clip model param names
-std_textual_config = {'batch_size': 64,
-                  'logit_scale_init': 3.7,
-                  'image_loss_weight':1., # 
-                  'vector_box_min_iou':.2, # when matching vectors to user boxes what to use
-                  'device':'cuda:0',
-                  'opt_config': {'logit_scale': None, #{'lr': 0.0001415583047102676,'weight_decay': 0.0017007389655182095},
-                    'transformer': None,
-                    # 'transformer.resblocks.0.ln_': {'lr': 0.0007435612322566577,'weight_decay': 1.5959136512232553e-05},
-                    # 'transformer.resblocks.11.ln': {'lr': 0.0001298217305130271,'weight_decay': 0.015548602355938877},
-                    #'transformer.resblocks.11.mlp': None, #{'lr': 3.258792283209162e-07,'weight_decay': 0.001607367028678558},
-                    #'transformer.resblocks.11.ln_2': None,
-                    # 'ln_final': {'lr': 0.007707377565843718,'weight_decay': 0.0},
-                    'ln_final':None,
-                    'text_projection': {'lr': 5.581683501371101e-05, 'weight_decay': 0.0},
-                    'positional_embedding':None,
-                    'token_embedding':None,
-                    'visual': None,
-                    'positiional_embedding':None},
-                  'num_warmup_steps': 3,
-                  'rounds': 2,
-                  'margin': .1,
-                  'num_workers': 16,
-                  'test_size': 1000,
-                  'val_batch_size': 500}
 
+class LinearScorer(nn.Module):
+    def __init__(self, init_weight : torch.Tensor):
+      super().__init__()
+      self.weight = nn.Parameter(data=init_weight, requires_grad=True)
+      self.bias = nn.Parameter(torch.tensor(0., device=init_weight.device), requires_grad=True)
+      self.logit_scale = nn.Parameter(torch.tensor(0., device=init_weight.device), requires_grad=True)
+
+    def get_vec(self):
+      return self.weight.detach().cpu().numpy()
+
+    def forward(self, X : torch.Tensor):
+      return (X @ self.weight.t()) * self.logit_scale.exp() + self.bias
+
+class DynamicLinear(nn.Module):
+    def __init__(self, device):
+      super().__init__()
+      self.device = device
+      self.scorers = nn.ModuleDict()
+
+    def add_scorer(self, name : str, init_weight : torch.Tensor):
+      assert name not in self.scorers  
+      self.scorers.add_module(name, LinearScorer(init_weight=init_weight).to(self.device))
+
+    def get_vec(self, name):
+      return self.scorers[name].get_vec()
+
+    def forward(self, vecs : torch.Tensor):
+      assert len(vecs.shape) == 2
+      scores = []
+      for (_, scorer) in self.scorers.items():
+        scores.append(scorer(vecs))
+
+      return torch.stack(scores).t()
+
+import transformers
+### the way we pick vectors for training right now should be revisited
 
 class OnlineModel:
     def __init__(self, state_dict, config):
@@ -81,16 +92,19 @@ class OnlineModel:
 
       self.device = config['device']
       self.model = build_model(self.original_weights).float().to(self.device)
+      self.linear_scorer = None
       self.config = config
       self._reset_model()
+      self.mode = self.config['mode']
       self.losses = []
       self._cache = {}
-
+      
     def _reset_model(self): # resets model and optimizers
       print('resetting model state')
       layers = ['text_projection']
       reset_weights = {k:v.to(self.device) for (k,v) in self.original_weights.items() if k in layers}
       self.model.load_state_dict(reset_weights, strict=False)
+      self.linear_scorer = DynamicLinear(self.device)
       print('done resetting model')
 
     def _encode_string(self, tokenized_strings):

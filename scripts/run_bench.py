@@ -1,6 +1,6 @@
 import ray
 from seesaw.seesaw_bench import *
-from seesaw.textual_feedback_box import std_textual_config
+from seesaw.configs import std_textual_config, std_linear_config
 
 import random
 import string
@@ -24,21 +24,24 @@ ray.init('auto', namespace='seesaw', log_to_driver=False, ignore_reinit_error=Tr
 gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/')
 os.chdir(gdm.root)
 
-s0 = dict(warm_start='warm', model_type='cosine',
-                  batch_size=3, minibatch_size=10,learning_rate=.005,
-                  num_epochs=2,loss_margin=.1,max_examples=500)
-b0 = dict(n_batches=200,max_feedback=None,box_drop_prob=0., max_results=5)
+s0 = dict(batch_size=3, method_config={}, shortlist_size=50)
+b0 = dict(n_batches=200, max_feedback=None, box_drop_prob=0., max_results=5, provide_textual_feedback=False)
 
 variants = [
-    dict(name='seesaw', interactive='pytorch', index_name='multiscale'),
-    dict(name='multi', interactive='plain', index_name='multiscale'),
+    # dict(name='seesaw', interactive='pytorch', index_name='multiscale', agg_method='avg_score', method_config=std_linear_config),
+    # dict(name='seesaw_avg_vec', interactive='pytorch', index_name='multiscale', agg_method='avg_vector', method_config=std_linear_config),
+
+    dict(name='multi', interactive='plain', index_name='multiscale', agg_method='avg_score'),
+    dict(name='multi_avg_vec', interactive='plain', index_name='multiscale', agg_method='avg_vector'),
+
     # dict(name='baseline', interactive='plain', index_name='coarse'),
-    # dict(name='refine', interactive='pytorch', index_name='coarse'),
-    dict(name='textual_multi', interactive='textual', index_name='multiscale', method_config=std_textual_config, provide_textual_feedback=True),
+    # dict(name='refine', interactive='pytorch', index_name='coarse', method_config=std_linear_config),
+    dict(name='textual', interactive='textual', index_name='multiscale', 
+      agg_method='avg_score', method_config={**std_textual_config, **{'mode':'linear'}}, provide_textual_feedback=True),
 ]
 
 # datasets = ['data/lvis/', 'data/bdd/', 'data/coco/', 'data/dota/', 'data/objectnet/']
-datasets = ['data/lvis/']#, 'data/objectnet/']
+datasets = ['data/lvis/', 'data/objectnet/']
 
 nclasses = math.inf if args.limit is None else args.limit
 cfgs = gen_configs(gdm, datasets=datasets, variants=variants, s_template=s0, b_template=b0, max_classes_per_dataset=nclasses)

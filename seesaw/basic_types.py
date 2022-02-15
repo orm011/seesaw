@@ -32,21 +32,15 @@ def is_image_accepted(imdata : Imdata):
 class IndexSpec(BaseModel):
     d_name:str 
     i_name:str
-    m_name:Optional[str]
-    c_name:Optional[str] # ground truth category (for lvis benchmark)
+    c_name:Optional[str] # ground truth category (needed to specify subset for lvis benchmark)
 
 class SessionParams(BaseModel):
     index_spec : IndexSpec
     interactive : str
-    method_config : Optional[dict] # changes from method to method (interactive)
-    warm_start : str
     batch_size : int
-    minibatch_size : int
-    learning_rate : float
-    max_examples : int
-    loss_margin : float
-    num_epochs : int
-    model_type : str
+    agg_method : Optional[str]
+    shortlist_size : Optional[int]
+    method_config : Optional[dict] # changes from method to method (interactive)
 
 class SessionState(BaseModel):
     params : SessionParams
@@ -59,7 +53,7 @@ class BenchParams(BaseModel):
     name : str
     ground_truth_category : str
     qstr : str
-    provide_textual_feedback : bool = False
+    provide_textual_feedback : bool
     n_batches : int # max number of batches to run
     max_results : int # stop when this numbrer of results is found
     max_feedback : Optional[int]
