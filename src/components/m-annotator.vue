@@ -37,7 +37,7 @@ import {image_accepted} from '../util';
 
 export default { 
   name: "MAnnotator", // used by ipyvue?
-  props: ['initial_imdata', 'read_only'],
+  props: ['initial_imdata', 'read_only', 'front_end_type'],
   emits: ['cclick', 'selection'],
   data : function() {
         return {height_ratio:null, width_ratio:null, 
@@ -263,7 +263,7 @@ export default {
         this.load_current_box_data();
 
 
-        if (!this.read_only) {
+        if (!this.read_only && (this.front_end_type !== 'plain')) {
             this.setup_box_drawing_tool(paper);
         }
 
