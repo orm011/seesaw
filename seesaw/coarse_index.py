@@ -44,7 +44,7 @@ class CoarseIndex(AccessMethod):
         vector_meta = coarse_df.drop('vectors', axis=1)
         return CoarseIndex(embedding=embedding, vectors=embedded_dataset, vector_meta=vector_meta)
     
-    def query(self, *, topk, mode, vector=None, exclude=None, startk=None):
+    def query(self, *, topk, mode, vector=None, exclude=None, startk=None, **kwargs):
         if exclude is None:
             exclude = pr.BitMap([])        
         included = pr.BitMap(self.all_indices).difference(exclude)

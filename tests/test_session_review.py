@@ -2,6 +2,7 @@ import ray
 from seesaw import GlobalDataManager, SessionParams, BenchParams, BenchRunner, add_routes, SessionReq, ResetReq, SessionInfoReq, IndexSpec
 import random, string, os
 from fastapi import FastAPI
+from seesaw.configs import std_linear_config
 
 ray.init('auto', namespace='seesaw', ignore_reinit_error=True)
 
@@ -22,9 +23,7 @@ b = BenchParams(name='seesaw_test',
   n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=100000)
 
 p = SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name='aerosol can'), 
-                  interactive='pytorch', warm_start='warm', batch_size=3, 
-  minibatch_size=10, learning_rate=0.005, max_examples=500, 
-  loss_margin=0.1, num_epochs=2, model_type='cosine')
+                  interactive='pytorch', batch_size=3, method_config=std_linear_config)
 
 bench_path = br.run_loop(b,p)
 

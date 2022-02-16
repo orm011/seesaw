@@ -225,7 +225,7 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
         s = copy.deepcopy(session.get_state())
         last_batch = s.gdata[-1]
         for j, imdata in enumerate(last_batch):
-          if p.interactive == 'textual':
+          if b.provide_textual_feedback:
             last_batch[j] = fill_imdata(imdata, all_box_data, b)
           else:            
             last_batch[j] = fill_imdata(imdata, box_data, b)

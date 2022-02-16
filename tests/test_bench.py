@@ -2,6 +2,7 @@ from seesaw.seesaw_bench import *
 import ray
 from seesaw import GlobalDataManager, SessionParams, BenchParams, BenchRunner, IndexSpec, get_all_session_summaries
 import random, string, os
+from seesaw.configs import std_linear_config,std_textual_config
 
 ray.init('auto', namespace='seesaw', ignore_reinit_error=True)
 
@@ -16,8 +17,6 @@ gdm = GlobalDataManager(TEST_ROOT)
 os.chdir(gdm.root)
 br = BenchRunner(gdm.root, results_dir=TEST_SAVE, redirect_output=False)
 
-from seesaw.textual_feedback_box import std_textual_config
-
 cat = 'soya milk'
 qstr = 'a soya milk'
 
@@ -26,47 +25,48 @@ qstr_objectnet = 'an air freshener'
 ## chosen so there are some positives withi this range
 
 configs = [ 
-            (BenchParams(name='seesaw_test', ground_truth_category=cat, qstr=qstr, 
-              n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
-            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
-              interactive='pytorch', warm_start='warm', batch_size=3, 
-              minibatch_size=10, learning_rate=0.005, max_examples=500, 
-              loss_margin=0.1, num_epochs=2, model_type='cosine')
-            ),
+            # (BenchParams(name='seesaw_test', ground_truth_category=cat, qstr=qstr, 
+            #   n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
+            # SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
+            #   interactive='pytorch', batch_size=3, agg_method='avg_score', method_config=std_linear_config)
+            # ),
   
-            (BenchParams(name='baseline', ground_truth_category=cat, qstr=qstr, 
-              n_batches=4, max_results=10, max_feedback=None, box_drop_prob=0.0),      
-            SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='coarse', m_name=None, c_name=cat), 
-              interactive='plain', warm_start='warm', batch_size=3, 
-              minibatch_size=10, learning_rate=0.005, max_examples=500, 
-              loss_margin=0.1, num_epochs=2, model_type='cosine')
-            ),
+            # (BenchParams(name='baseline', ground_truth_category=cat, qstr=qstr, 
+            #   n_batches=4, max_results=10, max_feedback=None, box_drop_prob=0.0),      
+            # SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='coarse', c_name=cat), 
+            #   interactive='plain', batch_size=3, agg_method='avg_score', method_config=std_linear_config)
+            # ),
 
-            (BenchParams(name='seesaw_test', ground_truth_category=cat, qstr=qstr, 
+            # (BenchParams(name='seesaw_test', ground_truth_category=cat, qstr=qstr, 
+            #   n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
+            # SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
+            #   interactive='pytorch', batch_size=3, agg_method='avg_score', method_config=std_linear_config)
+            # ),
+            (BenchParams(name='seesaw_test_textual', ground_truth_category=cat, qstr=qstr, 
+              provide_textual_feedback=True,
               n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
             SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
-              interactive='pytorch', warm_start='warm', batch_size=3, 
-              minibatch_size=10, learning_rate=0.005, max_examples=3, 
-              loss_margin=0.1, num_epochs=2, model_type='cosine')
+              interactive='textual', agg_method='avg_score', method_config={**std_textual_config, 'mode':'linear'}, batch_size=3)
             ),
             (BenchParams(name='seesaw_test_textual', ground_truth_category=cat, qstr=qstr, 
+                          provide_textual_feedback=True,
               n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
             SessionParams(index_spec=IndexSpec(d_name='data/lvis/', i_name='multiscale', c_name=cat),
-              interactive='textual', method_config=std_textual_config, warm_start='warm', batch_size=3, 
-              minibatch_size=10, learning_rate=0.005, max_examples=3, 
-              loss_margin=0.1, num_epochs=2, model_type='cosine')
+              interactive='textual', agg_method='avg_score', method_config={**std_textual_config, 'mode':'finetune'}, batch_size=3)
             ),
-
             (BenchParams(name='seesaw_test_textual', ground_truth_category=cat_objectnet, qstr=qstr_objectnet, 
+              provide_textual_feedback=True,
               n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
             SessionParams(index_spec=IndexSpec(d_name='data/objectnet/', i_name='multiscale', c_name=cat_objectnet),
-              interactive='textual', method_config=std_textual_config, warm_start='warm', batch_size=3, 
-              minibatch_size=10, learning_rate=0.005, max_examples=3, 
-              loss_margin=0.1, num_epochs=2, model_type='cosine')
+              interactive='textual', agg_method='avg_score', method_config={**std_textual_config, 'mode':'linear'},  batch_size=3),
             ),
+            (BenchParams(name='seesaw_test_textual', ground_truth_category=cat_objectnet, qstr=qstr_objectnet, 
+              provide_textual_feedback=True,
+              n_batches=4, max_feedback=None, box_drop_prob=0.0, max_results=10000), 
+            SessionParams(index_spec=IndexSpec(d_name='data/objectnet/', i_name='multiscale', c_name=cat_objectnet),
+              interactive='textual', agg_method='avg_score', method_config={**std_textual_config, 'mode':'finetune'},  batch_size=3))
+            ]
 
-
-]
 import json
 
 for (i,(b,p)) in enumerate(configs):

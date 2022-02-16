@@ -42,10 +42,8 @@ def prep_db(gdm, index_spec):
     # TODO: add subsetting here
     return hdb
 
-from .textual_feedback_box import std_textual_config
 from .util import reset_num_cpus
-from .configs import _session_modes, _dataset_map
-
+from .configs import _session_modes, _dataset_map, std_linear_config,std_textual_config
 
 def session_params(session_mode, dataset_name):
   assert session_mode in _session_modes.keys()

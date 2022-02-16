@@ -45,10 +45,9 @@ class SeesawLoop:
         self.state = LoopState()
         self.q = q
 
-        if self.params.interactive == 'textual':
+        if self.params.interactive in ['textual']:
           param_dict = gdm.global_cache.read_state_dict('/home/gridsan/groups/fastai/omoll/seesaw_root/models/clip/ViT-B-32.pt', jit=True)
-          config = self.params.method_config
-          self.state.model = OnlineModel(param_dict, config)
+          self.state.model = OnlineModel(param_dict, self.params.method_config)
 
     def next_batch(self):
         """
@@ -63,15 +62,30 @@ class SeesawLoop:
         s.latency_profile.append(lp)
 
         if p.interactive == 'textual':
-          vec = s.model.encode_string(s.curr_str)
+          if p.method_config['mode'] == 'finetune':
+            vec = s.model.encode_string(s.curr_str)
+            rescore_m = lambda vecs : vecs @ vec.reshape(-1, 1)
+          elif p.method_config['mode'] == 'linear':
+            if len(s.model.linear_scorer.scorers) == 0: ## first time
+              vec = s.model.encode_string(s.curr_str)
+              s.model.linear_scorer.add_scorer(s.curr_str,torch.from_numpy(vec.reshape(-1)))
+            rescore_m = self.state.model.score_vecs
+            vec = self.state.model.get_lookup_vec(s.curr_str)
         else:
           vec = s.tvec
+          rescore_m = lambda vecs : vecs @ vec.reshape(-1, 1)
 
-        b =  self.q.query_stateful(mode=s.tmode, vector=vec, batch_size=p.batch_size)
+        b =  self.q.query_stateful(mode=s.tmode, vector=vec, batch_size=p.batch_size, shortlist_size=p.shortlist_size, 
+                    agg_method=p.agg_method,
+                    rescore_method=rescore_m)
+
         idxbatch = b['dbidxs']
         lp['n_images'] = idxbatch.shape[0]
         lp['lookup'] = time.time() - start_lookup
         return b
+
+    def compute_image_activatins(self, dbidx, annotations):
+        pass
 
     def refine(self):
         """
@@ -87,39 +101,59 @@ class SeesawLoop:
         
         if p.interactive == 'plain':
           return
-        elif p.interactive == 'textual':
+        elif p.interactive in ['textual']:
           # get vectors and string corresponding to current annotations
           # run the updater.
           print('textual update')
-          vecs = []
-          strs = []
-          acc = []
-          for dbidx in self.q.label_db.get_seen():
-            annot = self.q.label_db.get(dbidx, format='box')
-            assert annot is not None
-            if len(annot) == 0:
-              continue
 
-            dfvec, dfbox = join_vecs2annotations(self.q.index, dbidx, annot)
-            # best_box_iou, best_box_idx
-            
-            ## vectors with overlap
-            df = dfbox # use boxes as guide for now
-            mask_boxes = df.best_box_iou > p.method_config['vector_box_min_iou']
-            print(f'using {mask_boxes.sum()} out of {mask_boxes.shape[0]} given masks')
-            df = df[mask_boxes]
-            if df.shape[0] > 0:
-              vecs.append(df.vectors.values)
-              strs.append(df.descriptions.values)
-              acc.append(df.marked_accepted.values)
+          if 'image_vector_strategy' not in p.dict() or \
+              p.image_vector_strategy == None or p.image_vector_strategy == 'matched':
+            vecs = []
+            strs = []
+            acc = []
 
-          if len(vecs) == 0:
-            print('no annotations for update... skipping')
-            return
+            for dbidx in self.q.label_db.get_seen():
+              annot = self.q.label_db.get(dbidx, format='box')
+              assert annot is not None
+              if len(annot) == 0:
+                continue
 
-          all_vecs = np.concatenate(vecs)
-          all_strs = np.concatenate(strs)
-          marked_accepted = np.concatenate(acc)
+              dfvec, dfbox = join_vecs2annotations(self.q.index, dbidx, annot)
+              # best_box_iou, best_box_idx
+              
+              ## vectors with overlap
+              df = dfbox # use boxes as guide for now
+              mask_boxes = df.best_box_iou > p.method_config['vector_box_min_iou']
+              df = df[mask_boxes]
+              if df.shape[0] > 0:
+                vecs.append(df.vectors.values)
+                strs.append(df.descriptions.values)
+                acc.append(df.marked_accepted.values)
+
+            if len(vecs) == 0:
+              print('no annotations for update... skipping')
+              return
+
+            all_vecs = np.concatenate(vecs)
+            all_strs = np.concatenate(strs)
+            marked_accepted = np.concatenate(acc)
+          elif p.image_vector_strategy == 'computed':
+              vecs = []
+              strs = []
+              acc = []
+              #annot = self.q.label_db.get(dbidx, format='box')
+              for dbidx in self.q.label_db.get_seen():
+                annot = self.q.label_db.get(dbidx, format='box')
+                if len(annot) == 0:
+                  continue
+
+                vecs.append(self.compute_image_activations(dbidx, annot))
+                strs.append()
+
+              pass
+          else:
+            assert False, 'unknown image vec strategy'
+
           losses = s.model.update(all_vecs, marked_accepted, all_strs, s.curr_str)
           print('done with update', losses)
         else:
@@ -137,27 +171,29 @@ class SeesawLoop:
                     prob = yt.sum()/yt.shape[0]
                     w = np.clip((1-prob)/prob, .1, 10.)
 
-                    if p.model_type == 'logistic':
+                    cfg = p.method_config
+
+                    if cfg['model_type'] == 'logistic':
                         mod = PTLogisiticRegression(Xt.shape[1], learning_ratep=p.learning_rate, C=0, 
                                                     positive_weight=w)
-                        if p.warm_start == 'warm':
+                        if cfg['warm_start'] == 'warm':
                             iv = torch.from_numpy(s.tvec)
                             iv = iv / iv.norm()
                             mod.linear.weight.data = iv.type(mod.linear.weight.dtype)
-                        elif p.warm_start == 'default':
+                        elif cfg['warm_start'] == 'default':
                             pass
 
                         fit_reg(mod=mod, X=Xt.astype('float32'), y=yt.astype('float'), batch_size=p.minibatch_size)
                         s.tvec = mod.linear.weight.detach().numpy().reshape(1,-1)
-                    elif p.model_type in ['cosine', 'multirank']:
-                        for i in range(p.num_epochs):
-                            s.tvec = adjust_vec(s.tvec, Xt, yt, learning_rate=p.learning_rate, 
-                                                max_examples=p.max_examples, 
-                                                minibatch_size=p.minibatch_size,
-                                                loss_margin=p.loss_margin)
-                    elif p.model_type in ['multirank2']:
+                    elif cfg['model_type'] in ['cosine', 'multirank']:
+                        for i in range(cfg['num_epochs']):
+                            s.tvec = adjust_vec(s.tvec, Xt, yt, learning_rate=cfg['learning_rate'], 
+                                                max_examples=cfg['max_examples'], 
+                                                minibatch_size=cfg['minibatch_size'],
+                                                loss_margin=cfg['loss_margin'])
+                    elif cfg['model_type'] in ['multirank2']:
                         npairs = yt.sum() * (1-yt).sum()
-                        max_iters = math.ceil(min(npairs, p.max_examples)//p.minibatch_size) * p.num_epochs
+                        max_iters = math.ceil(min(npairs, cfg['max_examples'])//cfg['minibatch_size']) * cfg['num_epochs']
                         print('max iters this round would have been', max_iters)
                         #print(s.vec_state.)
 
@@ -179,7 +215,7 @@ class SeesawLoop:
                                 break
 
                         s.tvec = s.vec_state.get_vec()
-                    elif p.model_type == 'solver':
+                    elif cfg['model_type'] == 'solver':
                         s.tvec = adjust_vec2(s.tvec, Xt, yt, **p.solver_opts)
                     else:
                         assert False, 'model type'
@@ -235,7 +271,7 @@ class Session:
         s.curr_str = key
         s.tvec = self.index.string2vec(string=key)
         s.tmode = 'dot'
-        if p.model_type == 'multirank2':
+        if p.method_config.get('model_type',None) == 'multirank2':
             s.vec_state = VecState(s.tvec, margin=p.loss_margin, opt_class=torch.optim.SGD, 
             opt_params={'lr':p.learning_rate})
 
