@@ -124,7 +124,6 @@ class SeesawLoop:
               ## vectors with overlap
               df = dfbox # use boxes as guide for now
               mask_boxes = df.best_box_iou > p.method_config['vector_box_min_iou']
-              print(f'using {mask_boxes.sum()} out of {mask_boxes.shape[0]} given masks')
               df = df[mask_boxes]
               if df.shape[0] > 0:
                 vecs.append(df.vectors.values)
