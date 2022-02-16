@@ -1,3 +1,4 @@
+import string
 from seesaw.multiscale_index import MultiscaleIndex
 import torch.nn as nn
 import torch.nn.functional as F
@@ -78,8 +79,20 @@ class DynamicLinear(nn.Module):
 
       return torch.stack(scores).t()
 
-import transformers
 ### the way we pick vectors for training right now should be revisited
+import transformers
+
+def hinge(x, margin):  # 0 loss if x >= margin. 
+    return F.relu(-x + margin)
+
+def rank_loss(ranking_scores, marked_accepted, margin):
+    if 0 < marked_accepted.sum() < marked_accepted.shape[0]:
+      pos_scores = ranking_scores[marked_accepted]
+      neg_scores = ranking_scores[~marked_accepted]
+      image_rank_losses = hinge(pos_scores.reshape(-1,1) - neg_scores.reshape(1,-1), margin)
+      return image_rank_losses.reshape(-1).mean()
+    else:
+      return None
 
 class OnlineModel:
     def __init__(self, state_dict, config):
@@ -248,6 +261,7 @@ class OnlineModel:
                     lr=.002, weight_decay=0.)
               ]
 
+
         opt = transformers.AdamW(pgs)
         lr_scheduler = transformers.get_constant_schedule_with_warmup(opt, num_warmup_steps=self.config['num_warmup_steps'])
 
@@ -259,17 +273,6 @@ class OnlineModel:
               print('no textual annotationswith wich to make a loss')
               return None
 
-        def _image_rank_loss(ranking_scores, marked_accepted):
-            total_positive = marked_accepted.sum()
-            if 0 < total_positive < marked_accepted.shape[0]:
-              pos_scores = ranking_scores[marked_accepted]
-              neg_scores = ranking_scores[~marked_accepted]
-              image_rank_losses = F.relu(- (pos_scores.reshape(-1,1) - neg_scores.reshape(1,-1) - self.config['margin']))
-              return image_rank_losses.reshape(-1).mean()
-            else:
-              print('no box accepted yet')
-              return None
-
         def training_step():
             self.model.train()
 
@@ -277,7 +280,7 @@ class OnlineModel:
             label_rank_loss = _description_loss(score_all_pairs, description_data)
 
             ranking_scores = self.linear_scorer(all_imagevecs).log_softmax(dim=-1)[:,0]
-            image_rank_loss = _image_rank_loss(ranking_scores, marked_accepted)
+            image_rank_loss = rank_loss(ranking_scores, marked_accepted, margin=self.config['margin'])
 
             if label_rank_loss is None and image_rank_loss is None:
               return None
@@ -303,3 +306,49 @@ class OnlineModel:
 
         return []
 
+    def _update_finetune(self, description_data, all_imagevecs, marked_accepted):
+        r = configure_optimizer(self.model, self.config)
+        opt : torch.optim.Optimizer = r['optimizer']
+        lr_scheduler = r['lr_scheduler']
+
+        d = description_data
+
+        def _compute_label_loss(scores, target):
+            if scores.shape[0] > 0 and scores.shape[1] > 1:
+              # return hinge(scores[torch.arange(scores.shape[0]), target] - scores[:,0]) # needs to handle special case where target is 0
+              return F.multi_margin_loss(scores, target, margin=self.config['margin'])
+            else:
+              return None
+
+        def opt_closure():
+            self.model.train()
+            text_features = self.compute_from(d['stringvecs'], 'text_projection')
+            scores = d['imagevecs'] @ text_features.t()
+
+            l1 = _compute_label_loss(scores, d['target'])
+              
+            rank_scores = (all_imagevecs @ text_features.t())[:,0]
+            l2 = rank_loss(rank_scores, marked_accepted, margin=self.config['margin'])
+
+            if l1 is None and l2 is None:
+              return None
+
+            l1 = l1 if l1 is not None else 0.
+            l2 = l2 if l2 is not None else 0.
+
+            loss = (1.-self.config['image_loss_weight'])*l1 + self.config['image_loss_weight']*l2
+            return loss, l1, l2
+
+        for _ in range(self.config['rounds'] + self.config['num_warmup_steps']):
+            opt.zero_grad()
+            loss = opt_closure()
+            if loss is None:
+              print('no loss yet: no qualified labels')
+              break
+            (loss, l1, l2) = loss
+            loss.backward()
+            print(f'loss:{loss:.02f} label_loss: {l1:.02f} rank_loss: {l2:.02f}')
+            opt.step()
+            lr_scheduler.step()
+
+ 
