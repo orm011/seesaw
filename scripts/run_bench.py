@@ -8,8 +8,6 @@ import sys
 import math
 import argparse
 
-
-
 parser = argparse.ArgumentParser('runs benchmark tests and stores metrics in folder')
 parser.add_argument('--limit', type=int, default=None, help='limit the number of benchmarks run (per dataset), helpful for debug')
 parser.add_argument('--num_actors', type=int, default=None, help='amount of actors created. leave blank for auto. 0 for local')
@@ -20,7 +18,6 @@ args = parser.parse_args()
 
 ray.init('auto', namespace='seesaw', log_to_driver=False, ignore_reinit_error=True)
 
-
 gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/')
 os.chdir(gdm.root)
 
@@ -28,7 +25,7 @@ s0 = dict(batch_size=3, method_config={}, shortlist_size=50)
 b0 = dict(n_batches=200, max_feedback=None, box_drop_prob=0., max_results=5, provide_textual_feedback=False)
 
 variants = [
-    # dict(name='seesaw', interactive='pytorch', index_name='multiscale', agg_method='avg_score', method_config=std_linear_config),
+    dict(name='seesaw', interactive='pytorch', index_name='multiscale', agg_method='avg_score', method_config=std_linear_config),
     # dict(name='seesaw_avg_vec', interactive='pytorch', index_name='multiscale', agg_method='avg_vector', method_config=std_linear_config),
 
     dict(name='multi', interactive='plain', index_name='multiscale', agg_method='avg_score'),
@@ -36,9 +33,17 @@ variants = [
 
     # dict(name='baseline', interactive='plain', index_name='coarse'),
     # dict(name='refine', interactive='pytorch', index_name='coarse', method_config=std_linear_config),
-    dict(name='textual', interactive='textual', index_name='multiscale', 
+    dict(name='textual_linear', interactive='textual', index_name='multiscale', 
       agg_method='avg_score', method_config={**std_textual_config, **{'mode':'linear'}}, provide_textual_feedback=True),
+    dict(name='textual_finetune', interactive='textual', index_name='multiscale', 
+      agg_method='avg_score', method_config={**std_textual_config, **{'mode':'finetune'}}, provide_textual_feedback=True),
 ]
+
+names = set([])
+for v in variants:
+  if v['name'] in names:
+    print(f'WARNING: repeated variant name {v["name"]} will make it harder to compare variants afterwards...')
+  names.add(v['name'])
 
 # datasets = ['data/lvis/', 'data/bdd/', 'data/coco/', 'data/dota/', 'data/objectnet/']
 datasets = ['data/lvis/', 'data/objectnet/']
@@ -68,3 +73,8 @@ else:
                             )
   print(f'made {len(actors)} actors')
   parallel_run(actors=actors, tups=cfgs)
+
+  print('computing session summary for completed benchmark....')
+  ## only here to avoid waiting later on  
+  get_all_session_summaries(results_dir, force_recompute=True)
+  print('done')
