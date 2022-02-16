@@ -38,9 +38,10 @@ class SessionParams(BaseModel):
     index_spec : IndexSpec
     interactive : str
     batch_size : int
-    agg_method : Optional[str]
-    shortlist_size : Optional[int]
+    agg_method : str = 'avg_score' # | 'avg_vector'
+    shortlist_size : int = 30
     method_config : Optional[dict] # changes from method to method (interactive)
+    image_vector_strategy : str = 'matched' # | 'computed'
 
 class SessionState(BaseModel):
     params : SessionParams
@@ -53,7 +54,7 @@ class BenchParams(BaseModel):
     name : str
     ground_truth_category : str
     qstr : str
-    provide_textual_feedback : bool
+    provide_textual_feedback : bool = False
     n_batches : int # max number of batches to run
     max_results : int # stop when this numbrer of results is found
     max_feedback : Optional[int]

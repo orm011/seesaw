@@ -280,7 +280,7 @@ class OnlineModel:
             label_rank_loss = _description_loss(score_all_pairs, description_data)
 
             ranking_scores = self.linear_scorer(all_imagevecs).log_softmax(dim=-1)[:,0]
-            image_rank_loss = rank_loss(ranking_scores, marked_accepted, margin=self.config['margin'])
+            image_rank_loss = rank_loss(ranking_scores, marked_accepted, margin=self.config['rank_margin'])
 
             if label_rank_loss is None and image_rank_loss is None:
               return None
@@ -316,7 +316,7 @@ class OnlineModel:
         def _compute_label_loss(scores, target):
             if scores.shape[0] > 0 and scores.shape[1] > 1:
               # return hinge(scores[torch.arange(scores.shape[0]), target] - scores[:,0]) # needs to handle special case where target is 0
-              return F.multi_margin_loss(scores, target, margin=self.config['margin'])
+              return F.multi_margin_loss(scores, target, margin=self.config['label_margin'])
             else:
               return None
 
@@ -328,7 +328,7 @@ class OnlineModel:
             l1 = _compute_label_loss(scores, d['target'])
               
             rank_scores = (all_imagevecs @ text_features.t())[:,0]
-            l2 = rank_loss(rank_scores, marked_accepted, margin=self.config['margin'])
+            l2 = rank_loss(rank_scores, marked_accepted, margin=self.config['rank_margin'])
 
             if l1 is None and l2 is None:
               return None

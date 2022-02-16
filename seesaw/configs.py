@@ -12,7 +12,7 @@ _method_configs = {
   'textual': {
                   'mode':'linear', # 'finetune' or 'linear'
                   'image_loss_weight':.5, # 
-                  'vector_box_min_iou':.1, # when matching vectors to user boxes what to use
+                  'vector_box_min_iou':.2, # when matching vectors to user boxes what to use
                   'device':'cuda:0',
                   'opt_config': {'logit_scale': None, #{'lr': 0.0001415583047102676,'weight_decay': 0.0017007389655182095},
                     'transformer': None,
@@ -29,8 +29,9 @@ _method_configs = {
                     'positiional_embedding':None},
                   'num_warmup_steps': 4,
                   'rounds': 4,
-                  'margin': .1,
-                  },
+                  'label_margin':.1,
+                  'rank_margin':.1,
+              },
   'plain':{}
 }
 
