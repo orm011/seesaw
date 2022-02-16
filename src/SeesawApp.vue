@@ -154,6 +154,7 @@
           ref="annotator"
           :initial_imdata="this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx]"
           :read_only="false"
+          :front_end_type="this.front_end_type"
           @selection="handleAnnotatorSelectionChange($event)"
           :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
         />
@@ -161,24 +162,45 @@
       <div
         v-if="annotator_text_pointer != null"
       >
-        <input
-          class="form-check-input"
-          v-model="annotator_text_pointer.box.data.marked_accepted"
-          @change="toggle_mark_accepted"
-          type="checkbox"
-        >
-        <Autocomplete 
-            @input="changeInput"
-            @onSelect="inputSelect"
-            :results="autocomplete_items"
-            :placeholder="annotator_text"
-            />
-        <button
-          class="btn btn-danger"
-          @click="delete_annotation()"
-        >
-          Delete annotation
-        </button>
+        <div v-if="front_end_type !== 'plain'">
+          <div v-if="front_end_type !== 'pytorch'">
+            <button
+              class="btn btn-danger"
+              v-if="annotator_text_pointer.box.data.marked_accepted"
+              @click="toggle_box_accepted()"
+            >
+              Mark Negative
+            </button>
+            <button
+              class="btn btn-danger"
+              v-else
+              @click="toggle_box_accepted()"
+            >
+              Mark Accepted
+            </button>
+          </div>
+          <button
+            class="btn btn-danger"
+            @click="delete_annotation()"
+          >
+            Delete Box
+          </button>
+          <Autocomplete 
+              v-if="this.front_end_type === 'textual'"
+              @input="changeInput"
+              @onSelect="inputSelect"
+              :results="autocomplete_items"
+              :placeholder="annotator_text"
+              />
+        </div>
+        <div v-else>
+           <button
+            class="btn btn-danger"
+            @click="mark_image_accepted()"
+          >
+            Mark Accepted
+          </button>
+        </div>
       </div>
       <div> 
         <button
@@ -204,6 +226,12 @@ import Autocomplete from 'vue3-autocomplete'
 import 'vue3-autocomplete/dist/vue3-autocomplete.css'
 
 import {image_accepted} from './util'
+
+const FRONT_END_TYPE = {
+   PLAIN: 'plain',
+   BOX: 'pytorch',
+   TEXTUAL: 'textual',
+};
 
 export default {
     components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete},
@@ -231,6 +259,10 @@ export default {
                 show_config : false,
                 other_url : null,
                 autocomplete_items: [], 
+                front_end_type : null,
+                button_labels : {
+                  "test" : {"add": "Add Button"},
+                } 
               }
             },
     mounted (){
@@ -256,6 +288,23 @@ export default {
         }
     },
     methods : {
+      updateFrontEnd() { 
+        console.log("Updating Front End"); 
+        this.front_end_type = this.client_data.session.params.interactive; 
+        console.log("New front end: ", this.front_end_type); 
+      }, 
+      mark_image_accepted(){
+          this.$refs.annotator.draw_full_frame_box(true); 
+      }, 
+      toggle_box_accepted(){
+        if (!this.annotator_text_pointer.box.data.marked_accepted){
+          this.annotator_text_pointer.box.data.marked_accepted = true; 
+          this.annotator_text_pointer.box.strokeColor = 'green'; 
+        } else {
+          this.annotator_text_pointer.box.data.marked_accepted = false; 
+          this.annotator_text_pointer.box.strokeColor = 'yellow'
+        }
+      }, 
       image_accepted(imdata){ // make it accessible from the <template>
           return image_accepted(imdata)
       },
@@ -406,7 +455,7 @@ export default {
     },
     create_full_box(){
       //TODO
-      this.$refs.annotator.draw_full_frame_box(); 
+      this.$refs.annotator.draw_full_frame_box(false); 
     }, 
     handle_arrow(delta){
       if (this.selection  != null){
@@ -452,6 +501,7 @@ export default {
           console.log('update client data', data, reset);
           this.client_data = data;
           this.$refs.config.updateClientData(data.default_params); 
+          this.updateFrontEnd(); 
           this.updateRecommendations(); 
           if (this.client_data.session != null){
             this.selected_index = this.client_data.session.params.index_spec;
