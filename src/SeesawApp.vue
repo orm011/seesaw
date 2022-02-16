@@ -156,26 +156,36 @@
       <div
         v-if="annotator_text_pointer != null"
       >
-        <div v-if="front_end_type != FRONT_END_TYPE.PLAIN">
-          <input
-            class="form-check-input"
-            v-model="annotator_text_pointer.box.data.marked_accepted"
-            @change="toggle_mark_accepted"
-            type="checkbox"
-          >
-          <Autocomplete 
-              v-if="this.front_end_type === FRONT_END_TYPE.TEXTUAL"
-              @input="changeInput"
-              @onSelect="inputSelect"
-              :results="autocomplete_items"
-              :placeholder="annotator_text"
-              />
+        <div v-if="front_end_type !== 'plain'">
+          <div v-if="front_end_type !== 'pytorch'">
+            <button
+              class="btn btn-danger"
+              v-if="annotator_text_pointer.box.data.marked_accepted"
+              @click="toggle_box_accepted()"
+            >
+              Mark Negative
+            </button>
+            <button
+              class="btn btn-danger"
+              v-else
+              @click="toggle_box_accepted()"
+            >
+              Mark Accepted
+            </button>
+          </div>
           <button
             class="btn btn-danger"
             @click="delete_annotation()"
           >
             Delete Box
           </button>
+          <Autocomplete 
+              v-if="this.front_end_type === 'textual'"
+              @input="changeInput"
+              @onSelect="inputSelect"
+              :results="autocomplete_items"
+              :placeholder="annotator_text"
+              />
         </div>
         <div v-else>
            <button
@@ -243,7 +253,10 @@ export default {
                 show_config : false,
                 other_url : null,
                 autocomplete_items: [], 
-                front_end_type : null, 
+                front_end_type : null,
+                button_labels : {
+                  "test" : {"add": "Add Button"},
+                } 
               }
             },
     mounted (){
@@ -275,7 +288,16 @@ export default {
         console.log("New front end: ", this.front_end_type); 
       }, 
       mark_image_accepted(){
-
+          this.$refs.annotator.draw_full_frame_box(true); 
+      }, 
+      toggle_box_accepted(){
+        if (!this.annotator_text_pointer.box.data.marked_accepted){
+          this.annotator_text_pointer.box.data.marked_accepted = true; 
+          this.annotator_text_pointer.box.strokeColor = 'green'; 
+        } else {
+          this.annotator_text_pointer.box.data.marked_accepted = false; 
+          this.annotator_text_pointer.box.strokeColor = 'yellow'
+        }
       }, 
       image_accepted(imdata){ // make it accessible from the <template>
           return image_accepted(imdata)
@@ -426,7 +448,7 @@ export default {
     },
     create_full_box(){
       //TODO
-      this.$refs.annotator.draw_full_frame_box(); 
+      this.$refs.annotator.draw_full_frame_box(false); 
     }, 
     handle_arrow(delta){
       if (this.selection  != null){

@@ -270,7 +270,7 @@ export default {
         paper.view.draw();
         paper.view.update();
     },
-    draw_full_frame_box(){
+    draw_full_frame_box(accepted){
       // implement me
       let paper = this.paper; 
       paper.activate(); 
@@ -285,11 +285,14 @@ export default {
         console.log(box); 
         if (box.x1 == 0 && box.x2 == width && box.y1 == 0 && box.y2 == height){
           draw = false; 
+          console.log("Box not drawn, box returned"); 
+          return box; 
         }
       }
       if (draw){
-        let boxdict = {x1: 0, x2: width, y1: 0, y2: height, description: '', marked_accepted: false}
+        let boxdict = {x1: 0, x2: width, y1: 0, y2: height, description: '', marked_accepted: accepted}
         this.draw_box(boxdict, paper); 
+        return boxdict; 
       } else {
         console.log("Box not drawn"); 
       }
@@ -300,7 +303,11 @@ export default {
           let r = new this.paper.Path.Rectangle(from, to);
           r.strokeWidth = 4;
           r.data.state = null;
-          r.data.marked_accepted = false;
+          if (this.front_end_type === 'plain' || this.front_end_type === 'pytorch'){
+            r.data.marked_accepted = true; 
+          } else {
+            r.data.marked_accepted = false;
+          }
           r.strokeColor = r.data.marked_accepted ? 'green' : 'yellow'
           r.selected = false;
           return r;

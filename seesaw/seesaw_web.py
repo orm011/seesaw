@@ -142,7 +142,9 @@ def add_routes(app : FastAPI):
       @app.post('/user_session', response_model=AppState)
       def user_session(self, mode, dataset):
         ## makes a new session using a config for the given mode
+        print("Before line")
         new_params = session_params(mode, dataset)
+        print("After line"); 
         self._reset_dataset(new_params)
         return self._getstate()
 
