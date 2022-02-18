@@ -213,12 +213,13 @@
     </m-modal>
   </div>  
 </template>
-<script >
+<script lang="ts">
+import {defineComponent} from 'vue';
+
 import MImageGallery from './components/m-image-gallery.vue';
 import MAnnotator from './components/m-annotator.vue';
 import MModal from './components/m-modal.vue';
 
-import _ from 'lodash';
 import MConfigVue3 from './components/m-config-vue3.vue';
 
 import Autocomplete from 'vue3-autocomplete'
@@ -233,7 +234,7 @@ const FRONT_END_TYPE = {
    TEXTUAL: 'textual',
 };
 
-export default {
+export default defineComponent({
     components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete},
     props: {},
     data () { return { 
@@ -562,7 +563,7 @@ export default {
         }
         
     }
-}
+})
 </script>
 <style scoped>
 /* https://raw.githubusercontent.com/twbs/bootstrap/main/site/content/docs/5.0/examples/dashboard/dashboard.css */

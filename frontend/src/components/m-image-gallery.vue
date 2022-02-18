@@ -18,11 +18,12 @@
     </div>
   </div>
 </template>
-<script>
+<script lang="ts">
+import {defineComponent} from 'vue';
 import MAnnotator from './m-annotator.vue';
 import {image_accepted} from '../util'
 
- export default {
+ export default defineComponent({
   name : 'MImageGallery',
   components: { 'm-annotator':MAnnotator },
   props: { initial_imdata:{type:Array, default: () => []}, imdata_keys:{type:Array} },
@@ -50,7 +51,7 @@ import {image_accepted} from '../util'
           return image_accepted(imdata)
     },
   }
-}
+})
 </script>
 <style scoped>
 /* makes a grid https://css-tricks.com/seamless-responsive-photo-grid/

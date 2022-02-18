@@ -30,18 +30,19 @@
 <!-- question: could the @load callback for img fire before created() or mounted()? (
     eg, the $refs and other vue component object attributes) -->
 </template>
-<script>
+<script lang="ts">
 
+import {defineComponent} from 'vue';
 import paper from 'paper/dist/paper-core';
 import {image_accepted} from '../util';
 
-export default { 
+export default defineComponent({ 
   name: "MAnnotator", // used by ipyvue?
   props: ['initial_imdata', 'read_only', 'front_end_type'],
   emits: ['cclick', 'selection'],
   data : function() {
         return {height_ratio:null, width_ratio:null, 
-                paper: null, 
+                paper: new paper.PaperScope(), 
                 imdata : this.initial_imdata,
                 show_activation : false,
                 annotation_paper_objs : [], // {box, description}
@@ -52,7 +53,7 @@ export default {
       console.log('created annotator')
   },
   mounted : function() {
-        this.paper = new paper.PaperScope();
+        // this.paper = ;
         new paper.Tool(); // also implicitly adds tool to paper scope
         console.log('mounted annotator'); 
         
@@ -439,7 +440,7 @@ export default {
     console.log('finished setting up box annotation tool ')
     }
     }
-}
+})
 </script>
 <style scoped>
 .activation-check {

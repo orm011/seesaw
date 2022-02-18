@@ -6,15 +6,5 @@
 * start session_server.py
 
 # frontend
-To build/develop this one:
-* install node (from website)
-* npm install yarn
-
-```
-yarn install
-```
-
-```
-yarn build --mode development 
-```
+* see frontend/README
 

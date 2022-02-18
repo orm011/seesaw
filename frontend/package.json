@@ -1,0 +1,25 @@
+{
+  "name": "seesaw",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.2.25",
+    "bootstrap": "^5.1.3",
+    "core-js": "^3.6.5",
+    "lodash": "^4.17.21",
+    "paper": "^0.12.15",
+    "vue3-autocomplete": "^1.0.4",
+    "vue3-json-editor": "^1.1.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^2.2.0",
+    "typescript": "^4.5.4",
+    "vite": "^2.8.0",
+    "vue-tsc": "^0.29.8"
+  }
+}

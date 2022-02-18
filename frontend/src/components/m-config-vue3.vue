@@ -10,11 +10,9 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
 import { defineComponent, reactive, toRefs } from 'vue'
 import { Vue3JsonEditor } from 'vue3-json-editor'
-
-
 
 export default defineComponent({
   components: {
