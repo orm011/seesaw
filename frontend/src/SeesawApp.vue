@@ -193,17 +193,24 @@
               :placeholder="annotator_text"
               />
         </div>
-        <div v-else>
-           <button
+      </div>
+      <div> 
+        <button
+            v-if="front_end_type === 'plain'"
             class="btn btn-danger"
             @click="mark_image_accepted()"
           >
             Mark Accepted
-          </button>
-        </div>
-      </div>
-      <div> 
+        </button>
         <button
+            v-else-if="front_end_type === 'pytorch'"
+            class="btn btn-danger"
+            @click="mark_image_accepted()"
+          >
+            Full Box
+        </button>
+        <button
+          v-else
           class="btn btn-danger"
           @click="create_full_box()"
         >
