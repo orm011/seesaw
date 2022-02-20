@@ -46,7 +46,7 @@ export default {
                 show_activation : false,
                 annotation_paper_objs : [], // {box, description}
                 activation_paths : [], 
-                activation_layer : null, }
+                activation_layer : null,}
   },
   created : function (){
       console.log('created annotator')
@@ -74,6 +74,7 @@ export default {
         this.activation_press();
     },
     delete_paper_obj(obj){
+        console.log(obj); 
         this.annotation_paper_objs = this.annotation_paper_objs.filter((oent) => (oent != obj))
         obj.box.remove()
         obj.description.remove()
@@ -212,6 +213,7 @@ export default {
 
         let annot_obj = {box:r, description:text};
         this.annotation_paper_objs.push(annot_obj);
+        return annot_obj;
     }, 
 
     hover : function (start) {
@@ -275,27 +277,47 @@ export default {
       let paper = this.paper; 
       paper.activate(); 
 
+      let preselected = paper.project.getSelectedItems()
+      preselected.map(r => r.selected = false); // unselect previous
+
       let draw = true; 
       let boxes = this.annotation_paper_objs.map(this.paper2imdata);
       let img = this.$refs.image;         
       let height = img.height;
       let width = img.width;
 
-      for (var box of boxes){
+      for (var index in boxes){
+        let box = boxes.at(index); 
         console.log(box); 
         if (box.x1 == 0 && box.x2 == width && box.y1 == 0 && box.y2 == height){
           draw = false; 
           console.log("Box not drawn, box returned"); 
-          return box; 
+          console.log(box); 
+          let object = this.annotation_paper_objs.at(index);
+          console.log(object);  
+          object.box.selected = true; 
         }
       }
+      
       if (draw){
         let boxdict = {x1: 0, x2: width, y1: 0, y2: height, description: '', marked_accepted: accepted}
-        this.draw_box(boxdict, paper); 
-        return boxdict; 
-      } else {
-        console.log("Box not drawn"); 
+        let box = this.draw_box(boxdict, paper); 
+        console.log(box); 
+        box.box.selected=true;
       }
+
+      this.save(); 
+      let sels = this.annotation_paper_objs.filter(obj => obj.box.selected)
+      this.full_box = sels[0]; 
+      if (sels.length === 1){
+        this.$emit('selection', sels[0])
+      }
+
+      /**
+       * TODO: 
+       * Deselect all selected items already
+       * indices of boxes and annotation objects are the same, use boxes and then return annotation objects indexed
+       */
 
     },
     makeRect(from, to){

@@ -429,8 +429,10 @@ export default {
       }
 
       if (ev != null){ 
-        this.annotator_text_pointer = ev
+        console.log("predicted path"); 
+        this.annotator_text_pointer = ev; 
         this.annotator_text = this.annotator_text_pointer.description.content;
+        console.log(this.annotator_text_pointer); 
       } else {
         this.annotator_text_pointer = null;
       }
@@ -462,6 +464,7 @@ export default {
     },
     create_full_box(){
       //TODO
+      console.log("create full box ran");
       this.$refs.annotator.draw_full_frame_box(false); 
     }, 
     handle_arrow(delta){
