@@ -123,7 +123,7 @@ export default {
           let rect = paper.Rectangle.deserialize(paper_style)
           let r = new paper.Path.Rectangle(rect);
           if (b.score >= 0){
-            r.fillColor = 'red'; 
+            r.fillColor = 'yellow'; 
             r.strokeWidth = 0; 
             r.opacity = b.score
           } else { // helpful to visualize negative 
