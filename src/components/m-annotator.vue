@@ -47,7 +47,8 @@ export default {
                 annotation_paper_objs : [], // {box, description}
                 activation_paths : [], 
                 activation_layer : null,
-                text_offset : null}
+                text_offset : null, 
+                text_dict: {}}
   },
   created : function (){
       console.log('created annotator')
@@ -215,6 +216,7 @@ export default {
         text.fontSize = 12; // default 10
         text.content = boxdict.description;
 
+        this.text_dict[r] = text; 
         let annot_obj = {box:r, description:text};
         this.annotation_paper_objs.push(annot_obj);
         return annot_obj;
@@ -338,6 +340,16 @@ export default {
           r.selected = false;
           return r;
     },
+    redraw_text : function(box) {
+      console.log("Redraw text called now"); 
+      let old_text = this.text_dict[box]; 
+      let paper = this.paper; 
+      this.paper.activate(); 
+
+      let point = new paper.Point(box.bounds.x + this.text_offset.x, box.bounds.y + this.text_offset.y); 
+      old_text.point = point; 
+      console.log("Done");  
+    }, 
     setup_box_drawing_tool : function(paper) {
       let tool = paper.tool;
       let makeRect = this.makeRect; // needed for => 
@@ -366,6 +378,7 @@ export default {
               text.justification = 'left';
               text.fillColor = rect.data.marked_accepted ? 'green' : 'red'
               text.content = ''
+              this.text_dict[rect] = text; 
               let sel = {box:rect, description:text};
               this.annotation_paper_objs.push(sel)
           } else { // existing rect
@@ -461,8 +474,9 @@ export default {
               let bounds = new paper.Rectangle(rect.data.from, e.point);
               if (bounds.width !== 0 && bounds.height !== 0){
                   rect.bounds = bounds;
-              }
+              } 
           }
+          this.redraw_text(rect);
       };
 
     console.log('finished setting up box annotation tool ')
