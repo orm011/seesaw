@@ -30,21 +30,28 @@
 <!-- question: could the @load callback for img fire before created() or mounted()? (
     eg, the $refs and other vue component object attributes) -->
 </template>
-<script>
+<script lang="ts">
 
+import {defineComponent} from 'vue';
 import paper from 'paper/dist/paper-core';
 import {image_accepted} from '../util';
+import {Imdata, Box} from '../basic_types';
 
-export default { 
+interface PaperObject {
+  box : paper.Path.Rectangle,
+  description : paper.TextItem
+}
+
+export default defineComponent({ 
   name: "MAnnotator", // used by ipyvue?
   props: ['initial_imdata', 'read_only', 'front_end_type'],
   emits: ['cclick', 'selection'],
   data : function() {
         return {height_ratio:null, width_ratio:null, 
-                paper: null, 
-                imdata : this.initial_imdata,
+                paper: new paper.PaperScope(), 
+                imdata : this.initial_imdata as Imdata,
                 show_activation : false,
-                annotation_paper_objs : [], // {box, description}
+                annotation_paper_objs : [] as PaperObject[],
                 activation_paths : [], 
                 activation_layer : null,
                 text_offset : null, 
@@ -54,14 +61,13 @@ export default {
       console.log('created annotator')
   },
   mounted : function() {
-        this.paper = new paper.PaperScope();
         new paper.Tool(); // also implicitly adds tool to paper scope
         this.text_offset = new this.paper.Point(5, 20); 
         console.log('mounted annotator'); 
         
   },
   methods : {
-    image_accepted(imdata){ // make it accessible from the <template>
+    image_accepted(imdata : Imdata): boolean{ // make it accessible from the <template>
           return image_accepted(imdata)
     },
     activation_press: function(){
@@ -76,8 +82,7 @@ export default {
         this.show_activation = !this.show_activation
         this.activation_press();
     },
-    delete_paper_obj(obj){
-        console.log(obj); 
+    delete_paper_obj(obj : PaperObject){
         this.annotation_paper_objs = this.annotation_paper_objs.filter((oent) => (oent != obj))
         obj.box.remove()
         obj.description.remove()
@@ -85,8 +90,8 @@ export default {
     },
     draw_activation: function(){
         console.log("Beginning"); 
-        let img = this.$refs.image;         
-        let container = this.$refs.container;
+        let img = this.$refs.image as HTMLImageElement;         
+        let container = this.$refs.container as HTMLDivElement;
         
         let height = img.height;
         let width = img.width;
@@ -148,7 +153,7 @@ export default {
             path.remove();
         }
     }, 
-    rescale_box : function(box, height_scale, width_scale) {
+    rescale_box : function(box : Box, height_scale : number, width_scale : number) {
           let {x1,x2,y1,y2,...rest} = box;
           return {x1:x1*width_scale, x2:x2*width_scale, y1:y1*height_scale, y2:y2*height_scale, ...rest};
     },
@@ -156,7 +161,7 @@ export default {
     /**
      * @param {{box:paper.Path, description : paper.PointText}} obj
      */
-    paper2imdata(obj){
+    paper2imdata(obj : PaperObject){
       let b = obj.box.bounds;
       let ret = {x1:b.left, x2:b.right, y1:b.top, y2:b.bottom}
       let ans = this.rescale_box(ret, this.height_ratio, this.width_ratio)
@@ -197,7 +202,7 @@ export default {
       }
     },
 
-    draw_box : function(boxdict, paper) {
+    draw_box : function(boxdict : Box, paper : paper.PaperScope) {
         let strokeColor = boxdict.marked_accepted ? 'green' : 'red';
         let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
         let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
@@ -238,8 +243,8 @@ export default {
 
     draw_initial_contents : function() {
         console.log('(draw)setting up', this)
-        let img = this.$refs.image;         
-        let container = this.$refs.container;
+        let img = this.$refs.image as HTMLImageElement;         
+        let container = this.$refs.container as HTMLDivElement;
         
         let height = img.height;
         let width = img.width;
@@ -256,7 +261,7 @@ export default {
         // ctx = f(cnv)
         let paper = this.paper;      
         paper.activate(); 
-        let cnv = this.$refs.canvas;
+        let cnv = this.$refs.canvas as HTMLCanvasElement;
         console.log('drawing canvas', img.height, img.width, img)
         cnv.height = height;
         cnv.width = width;
@@ -482,7 +487,7 @@ export default {
     console.log('finished setting up box annotation tool ')
     }
     }
-}
+})
 </script>
 <style scoped>
 .activation-check {

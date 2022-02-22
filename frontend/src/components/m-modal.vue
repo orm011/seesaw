@@ -19,8 +19,11 @@
     </div>
   </div>
 </template>
-<script>
-export default {
+<script lang="ts">
+
+import {defineComponent} from 'vue';
+
+export default defineComponent({
     name : 'MModal',
     data : function(){return {active:true, handler:null}},
     emits : ['modalKeyUp'],
@@ -38,7 +41,7 @@ export default {
             this.$emit('modalKeyUp', ev);
         },
     }
-}
+})
 </script>
 <style scoped>
 /* The Modal (background) */

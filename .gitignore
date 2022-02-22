@@ -2,6 +2,7 @@
 node_modules
 /dist
 
+notebooks/*
 
 # local env files
 .env.local
