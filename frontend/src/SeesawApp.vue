@@ -308,16 +308,17 @@ export default defineComponent({
         if (!this.annotator_text_pointer.box.data.marked_accepted){
           this.annotator_text_pointer.box.data.marked_accepted = true; 
           this.annotator_text_pointer.box.strokeColor = 'green'; 
+          this.annotator_text_pointer.description.fillColor = 'green'; 
         } else {
           this.annotator_text_pointer.box.data.marked_accepted = false; 
-          this.annotator_text_pointer.box.strokeColor = 'yellow'
+          this.annotator_text_pointer.box.strokeColor = 'red'; 
+          this.annotator_text_pointer.description.fillColor = 'red'; 
         }
       }, 
       image_accepted(imdata){ // make it accessible from the <template>
           return image_accepted(imdata)
       },
       updateRecommendations() {
-        console.log("UPDATE RECOMMENDATIONS CALLED"); 
         this.autocomplete_items = []; 
         for (var row of this.client_data.session.gdata){
           for (var item of row){
@@ -430,8 +431,10 @@ export default defineComponent({
       }
 
       if (ev != null){ 
-        this.annotator_text_pointer = ev
+        console.log("predicted path"); 
+        this.annotator_text_pointer = ev; 
         this.annotator_text = this.annotator_text_pointer.description.content;
+        console.log(this.annotator_text_pointer); 
       } else {
         this.annotator_text_pointer = null;
       }
@@ -463,6 +466,7 @@ export default defineComponent({
     },
     create_full_box(){
       //TODO
+      console.log("create full box ran");
       this.$refs.annotator.draw_full_frame_box(false); 
     }, 
     handle_arrow(delta){

@@ -53,13 +53,16 @@ export default defineComponent({
                 show_activation : false,
                 annotation_paper_objs : [] as PaperObject[],
                 activation_paths : [], 
-                activation_layer : null, }
+                activation_layer : null,
+                text_offset : null, 
+                text_dict: {}}
   },
   created : function (){
       console.log('created annotator')
   },
   mounted : function() {
         new paper.Tool(); // also implicitly adds tool to paper scope
+        this.text_offset = new this.paper.Point(5, 20); 
         console.log('mounted annotator'); 
         
   },
@@ -125,7 +128,7 @@ export default defineComponent({
           let rect = paper.Rectangle.deserialize(paper_style)
           let r = new paper.Path.Rectangle(rect);
           if (b.score >= 0){
-            r.fillColor = 'red'; 
+            r.fillColor = 'yellow'; 
             r.strokeWidth = 0; 
             r.opacity = b.score
           } else { // helpful to visualize negative 
@@ -200,24 +203,28 @@ export default defineComponent({
     },
 
     draw_box : function(boxdict : Box, paper : paper.PaperScope) {
+        let strokeColor = boxdict.marked_accepted ? 'green' : 'red';
         let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
         let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
-        let rect = paper.Rectangle.deserialize(paper_style)
+        let rect = paper.Rectangle.deserialize(paper_style); 
         let r = new paper.Path.Rectangle(rect);
         r.data.marked_accepted = boxdict.marked_accepted;
-        r.strokeColor = boxdict.marked_accepted ? 'green' : 'yellow';
+        r.strokeColor = strokeColor; 
         r.strokeWidth = 4;
         r.data.state = null;
         r.selected = false;
 
-        let text = new paper.PointText(new paper.Point(rdict.x1, rdict.y1));
+        let point = new paper.Point(rdict.x1 + this.text_offset.x, rdict.y1 + this.text_offset.y); 
+        let text = new paper.PointText(point);
         text.justification = 'left';
-        text.fillColor = r.strokeColor;
+        text.fillColor = strokeColor;
         text.fontSize = 12; // default 10
         text.content = boxdict.description;
 
+        this.text_dict[r] = text; 
         let annot_obj = {box:r, description:text};
         this.annotation_paper_objs.push(annot_obj);
+        return annot_obj;
     }, 
 
     hover : function (start) {
@@ -281,27 +288,47 @@ export default defineComponent({
       let paper = this.paper; 
       paper.activate(); 
 
+      let preselected = paper.project.getSelectedItems()
+      preselected.map(r => r.selected = false); // unselect previous
+
       let draw = true; 
       let boxes = this.annotation_paper_objs.map(this.paper2imdata);
       let img = this.$refs.image;         
       let height = img.height;
       let width = img.width;
 
-      for (var box of boxes){
+      for (var index in boxes){
+        let box = boxes.at(index); 
         console.log(box); 
         if (box.x1 == 0 && box.x2 == width && box.y1 == 0 && box.y2 == height){
           draw = false; 
           console.log("Box not drawn, box returned"); 
-          return box; 
+          console.log(box); 
+          let object = this.annotation_paper_objs.at(index);
+          console.log(object);  
+          object.box.selected = true; 
         }
       }
+      
       if (draw){
         let boxdict = {x1: 0, x2: width, y1: 0, y2: height, description: '', marked_accepted: accepted}
-        this.draw_box(boxdict, paper); 
-        return boxdict; 
-      } else {
-        console.log("Box not drawn"); 
+        let box = this.draw_box(boxdict, paper); 
+        console.log(box); 
+        box.box.selected=true;
       }
+
+      this.save(); 
+      let sels = this.annotation_paper_objs.filter(obj => obj.box.selected)
+      this.full_box = sels[0]; 
+      if (sels.length === 1){
+        this.$emit('selection', sels[0])
+      }
+
+      /**
+       * TODO: 
+       * Deselect all selected items already
+       * indices of boxes and annotation objects are the same, use boxes and then return annotation objects indexed
+       */
 
     },
     makeRect(from, to){
@@ -314,10 +341,20 @@ export default defineComponent({
           } else {
             r.data.marked_accepted = false;
           }
-          r.strokeColor = r.data.marked_accepted ? 'green' : 'yellow'
+          r.strokeColor = r.data.marked_accepted ? 'green' : 'red'
           r.selected = false;
           return r;
     },
+    redraw_text : function(box) {
+      console.log("Redraw text called now"); 
+      let old_text = this.text_dict[box]; 
+      let paper = this.paper; 
+      this.paper.activate(); 
+
+      let point = new paper.Point(box.bounds.x + this.text_offset.x, box.bounds.y + this.text_offset.y); 
+      old_text.point = point; 
+      console.log("Done");  
+    }, 
     setup_box_drawing_tool : function(paper) {
       let tool = paper.tool;
       let makeRect = this.makeRect; // needed for => 
@@ -339,10 +376,14 @@ export default defineComponent({
           } else if (hr == null){ // make a new one
               rect = makeRect(e.point.subtract(new paper.Size(1,1)),
                               e.point);
-              let text = new paper.PointText(e.point);
+              console.log("Point: ", e.point);
+              let point = new paper.Point(e.point.x + this.text_offset.x, e.point.y + this.text_offset.y); 
+              console.log("New Points:", point);  
+              let text = new paper.PointText(point);
               text.justification = 'left';
-              text.fillColor = rect.data.marked_accepted ? 'green' : 'yellow'
+              text.fillColor = rect.data.marked_accepted ? 'green' : 'red'
               text.content = ''
+              this.text_dict[rect] = text; 
               let sel = {box:rect, description:text};
               this.annotation_paper_objs.push(sel)
           } else { // existing rect
@@ -438,8 +479,9 @@ export default defineComponent({
               let bounds = new paper.Rectangle(rect.data.from, e.point);
               if (bounds.width !== 0 && bounds.height !== 0){
                   rect.bounds = bounds;
-              }
+              } 
           }
+          this.redraw_text(rect);
       };
 
     console.log('finished setting up box annotation tool ')
