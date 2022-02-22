@@ -310,8 +310,8 @@ export default {
           this.annotator_text_pointer.description.fillColor = 'green'; 
         } else {
           this.annotator_text_pointer.box.data.marked_accepted = false; 
-          this.annotator_text_pointer.box.strokeColor = 'yellow'; 
-          this.annotator_text_pointer.description.fillColor = 'yellow'; 
+          this.annotator_text_pointer.box.strokeColor = 'red'; 
+          this.annotator_text_pointer.description.fillColor = 'red'; 
         }
       }, 
       image_accepted(imdata){ // make it accessible from the <template>

@@ -197,7 +197,7 @@ export default {
     },
 
     draw_box : function(boxdict, paper) {
-        let strokeColor = boxdict.marked_accepted ? 'green' : 'yellow';
+        let strokeColor = boxdict.marked_accepted ? 'green' : 'red';
         let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
         let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
         let rect = paper.Rectangle.deserialize(paper_style); 
@@ -334,7 +334,7 @@ export default {
           } else {
             r.data.marked_accepted = false;
           }
-          r.strokeColor = r.data.marked_accepted ? 'green' : 'yellow'
+          r.strokeColor = r.data.marked_accepted ? 'green' : 'red'
           r.selected = false;
           return r;
     },
@@ -364,7 +364,7 @@ export default {
               console.log("New Points:", point);  
               let text = new paper.PointText(point);
               text.justification = 'left';
-              text.fillColor = rect.data.marked_accepted ? 'green' : 'yellow'
+              text.fillColor = rect.data.marked_accepted ? 'green' : 'red'
               text.content = ''
               let sel = {box:rect, description:text};
               this.annotation_paper_objs.push(sel)
