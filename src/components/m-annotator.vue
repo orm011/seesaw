@@ -46,7 +46,8 @@ export default {
                 show_activation : false,
                 annotation_paper_objs : [], // {box, description}
                 activation_paths : [], 
-                activation_layer : null,}
+                activation_layer : null,
+                text_offset : null}
   },
   created : function (){
       console.log('created annotator')
@@ -54,6 +55,7 @@ export default {
   mounted : function() {
         this.paper = new paper.PaperScope();
         new paper.Tool(); // also implicitly adds tool to paper scope
+        this.text_offset = new this.paper.Point(5, 20); 
         console.log('mounted annotator'); 
         
   },
@@ -195,19 +197,21 @@ export default {
     },
 
     draw_box : function(boxdict, paper) {
+        let strokeColor = boxdict.marked_accepted ? 'green' : 'yellow';
         let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
         let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
-        let rect = paper.Rectangle.deserialize(paper_style)
+        let rect = paper.Rectangle.deserialize(paper_style); 
         let r = new paper.Path.Rectangle(rect);
         r.data.marked_accepted = boxdict.marked_accepted;
-        r.strokeColor = boxdict.marked_accepted ? 'green' : 'yellow';
+        r.strokeColor = strokeColor; 
         r.strokeWidth = 4;
         r.data.state = null;
         r.selected = false;
 
-        let text = new paper.PointText(new paper.Point(rdict.x1, rdict.y1));
+        let point = new paper.Point(rdict.x1 + this.text_offset.x, rdict.y1 + this.text_offset.y); 
+        let text = new paper.PointText(point);
         text.justification = 'left';
-        text.fillColor = r.strokeColor;
+        text.fillColor = strokeColor;
         text.fontSize = 12; // default 10
         text.content = boxdict.description;
 
@@ -355,7 +359,10 @@ export default {
           } else if (hr == null){ // make a new one
               rect = makeRect(e.point.subtract(new paper.Size(1,1)),
                               e.point);
-              let text = new paper.PointText(e.point);
+              console.log("Point: ", e.point);
+              let point = new paper.Point(e.point.x + this.text_offset.x, e.point.y + this.text_offset.y); 
+              console.log("New Points:", point);  
+              let text = new paper.PointText(point);
               text.justification = 'left';
               text.fillColor = rect.data.marked_accepted ? 'green' : 'yellow'
               text.content = ''

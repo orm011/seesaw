@@ -307,16 +307,17 @@ export default {
         if (!this.annotator_text_pointer.box.data.marked_accepted){
           this.annotator_text_pointer.box.data.marked_accepted = true; 
           this.annotator_text_pointer.box.strokeColor = 'green'; 
+          this.annotator_text_pointer.description.fillColor = 'green'; 
         } else {
           this.annotator_text_pointer.box.data.marked_accepted = false; 
-          this.annotator_text_pointer.box.strokeColor = 'yellow'
+          this.annotator_text_pointer.box.strokeColor = 'yellow'; 
+          this.annotator_text_pointer.description.fillColor = 'yellow'; 
         }
       }, 
       image_accepted(imdata){ // make it accessible from the <template>
           return image_accepted(imdata)
       },
       updateRecommendations() {
-        console.log("UPDATE RECOMMENDATIONS CALLED"); 
         this.autocomplete_items = []; 
         for (var row of this.client_data.session.gdata){
           for (var item of row){
