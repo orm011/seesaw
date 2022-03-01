@@ -55,7 +55,8 @@ export default defineComponent({
                 activation_paths : [], 
                 activation_layer : null,
                 text_offset : null, 
-                text_dict: {}}
+                text_dict: {}, 
+                show_float: true}
   },
   created : function (){
       console.log('created annotator')
@@ -126,17 +127,28 @@ export default defineComponent({
           let rdict = this.rescale_box(boxdict, this.height_ratio, this.width_ratio);
           let paper_style = ['Rectangle', rdict.x1, rdict.y1, rdict.x2 - rdict.x1, rdict.y2 - rdict.y1];
           let rect = paper.Rectangle.deserialize(paper_style)
-          let r = new paper.Path.Rectangle(rect);
+          let r = new paper.Path.Rectangle(rect); 
           if (b.score >= 0){
             r.fillColor = 'yellow'; 
             r.strokeWidth = 0; 
             r.opacity = b.score
           } else { // helpful to visualize negative 
-            r.fillColor = 'blue'
+            r.fillColor = 'blue'; 
             r.strokeWidth = 0; 
             r.opacity = -b.score
           }
           this.activation_paths.push(r); 
+          if (this.show_float){
+            let strokeColor = 'black'
+            let point = new paper.Point(rdict.x1 + this.text_offset.x, rdict.y1 + this.text_offset.y); 
+            let text = new paper.PointText(point);
+            text.justification = 'left';
+            text.fillColor = strokeColor;
+            text.fontSize = 12; // default 10
+            text.content = b.score.toFixed(2);
+
+            this.activation_paths.push(text); 
+          }
         }
 
         if (layer !== null){
@@ -346,14 +358,12 @@ export default defineComponent({
           return r;
     },
     redraw_text : function(box) {
-      console.log("Redraw text called now"); 
       let old_text = this.text_dict[box]; 
       let paper = this.paper; 
       this.paper.activate(); 
 
       let point = new paper.Point(box.bounds.x + this.text_offset.x, box.bounds.y + this.text_offset.y); 
       old_text.point = point; 
-      console.log("Done");  
     }, 
     setup_box_drawing_tool : function(paper) {
       let tool = paper.tool;
