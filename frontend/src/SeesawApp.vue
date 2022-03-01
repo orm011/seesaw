@@ -191,6 +191,7 @@
               @onSelect="inputSelect"
               :results="autocomplete_items"
               :placeholder="annotator_text"
+              :results-container-class="['custom-vue3-results-container']"
               />
         </div>
       </div>
@@ -221,7 +222,7 @@
   </div>  
 </template>
 <script lang="ts">
-import {defineComponent} from 'vue';
+import {callWithAsyncErrorHandling, defineComponent} from 'vue';
 
 import MImageGallery from './components/m-image-gallery.vue';
 import MAnnotator from './components/m-annotator.vue';
@@ -275,6 +276,9 @@ export default defineComponent({
             },
     mounted (){
         console.log('Vue App object avail in window.VueApp');
+        console.log("GOOD LUCK AGAIN"); 
+        console.log("10th time's the charm buddy"); 
+        console.log("Another one"); 
         window.VueApp = this;
         let params = new URLSearchParams(window.location.search)
 
@@ -294,8 +298,17 @@ export default defineComponent({
               .then(response => response.json())
               .then(this._update_client_data)
         }
+        this.checkContainer(); 
     },
     methods : {
+      checkContainer () {
+        let input = document.querySelector('.vue3-input');
+        if(input !== null){ //if the container is visible on the page
+          console.log("CHECK CONTAINER GOT THE FOCUS"); 
+          input.focus(); 
+        } 
+        setTimeout(this.checkContainer, 50); //wait 50 ms, then try again
+      },
       updateFrontEnd() { 
         console.log("Updating Front End"); 
         this.front_end_type = this.client_data.session.params.interactive; 
@@ -576,6 +589,14 @@ export default defineComponent({
     }
 })
 </script>
+<style> 
+.custom-vue3-results-container {
+    position: relative;
+    border: 1px solid black;
+    z-index: 99;
+    background: white;
+  }
+</style>
 <style scoped>
 /* https://raw.githubusercontent.com/twbs/bootstrap/main/site/content/docs/5.0/examples/dashboard/dashboard.css */
 body {
