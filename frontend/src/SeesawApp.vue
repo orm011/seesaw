@@ -268,7 +268,7 @@ export default defineComponent({
                 show_config : false,
                 other_url : null,
                 autocomplete_items: [], 
-                front_end_type : null,
+                front_end_type : 'textual', // by default textual so it works when using plain url
                 button_labels : {
                   "test" : {"add": "Add Button"},
                 } 
@@ -310,9 +310,8 @@ export default defineComponent({
         setTimeout(this.checkContainer, 50); //wait 50 ms, then try again
       },
       updateFrontEnd() { 
-        console.log("Updating Front End"); 
-        this.front_end_type = this.client_data.session.params.interactive; 
-        console.log("New front end: ", this.front_end_type); 
+        let mode = this.client_data.session ?  this.client_data.session.params.interactive : 'textual';
+        this.front_end_type = mode;
       }, 
       mark_image_accepted(){
           this.$refs.annotator.draw_full_frame_box(true); 
@@ -333,19 +332,21 @@ export default defineComponent({
       },
       updateRecommendations() {
         this.autocomplete_items = []; 
-        for (var row of this.client_data.session.gdata){
-          for (var item of row){
-            if (item.boxes !== null){
-              for (var box of item.boxes){
-                if (!this.autocomplete_items.includes(box.description) 
-                    && box.description !== ""
-                    && box.description !== null){
-                  this.autocomplete_items.push(box.description); 
+        if (this.client_data.session) {
+          for (var row of this.client_data.session.gdata){
+            for (var item of row){
+              if (item.boxes !== null){
+                for (var box of item.boxes){
+                  if (!this.autocomplete_items.includes(box.description) 
+                      && box.description !== ""
+                      && box.description !== null){
+                    this.autocomplete_items.push(box.description); 
+                  }
                 }
               }
             }
           }
-        }
+       }
       }, 
       changeInput(input){
         console.log("change Input" + input); 
