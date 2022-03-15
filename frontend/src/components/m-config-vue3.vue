@@ -1,6 +1,5 @@
 <template>
   <div>
-    <p>vue-json-editor</p>
     <Vue3JsonEditor
       v-model="json"
       :show-btns="true"
