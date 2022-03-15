@@ -343,6 +343,19 @@ class XGeneralizedRCNN(GeneralizedRCNN):
 
 import torch.nn as nn
 
+def filter_ret(ret, iou_threshold=1./2, max_proposals=300, min_objectness_score=0.05):
+    score_mask = ret['scores'] > min_objectness_score
+    ret = {k:v[score_mask] for (k,v) in ret.items()}
+
+    dedup_idxs = box_ops.batched_nms(ret['boxes'], 
+                             scores=ret['scores'], 
+                             idxs=torch.zeros(ret['scores'].shape[0]), 
+                             iou_threshold=iou_threshold)
+
+    top_idxs = dedup_idxs[:max_proposals]
+    dedup_ret = {k:v[top_idxs] for (k,v) in ret.items()}
+    return dedup_ret
+
 class AgnosticRoIExtractor(nn.Module):
     def __init__(self, model):
       super().__init__()
@@ -350,4 +363,27 @@ class AgnosticRoIExtractor(nn.Module):
 
     def forward(self, images : ImageList):
       d = self.model(images)
-      return d
+      rs = []
+      for r in d['proposals']:
+        frs = filter_ret(r)
+        rs.append(frs)
+      return rs
+
+import pandas as pd
+def to_dataframe(pairs):
+    from ray.data.extensions import TensorArray
+    
+    def to_numpy(d):
+        return {k:v.detach().cpu().numpy() for (k,v) in d.items()}
+
+    def box2dict(boxes):
+        return {'x1':boxes[:,0], 'y1':boxes[:,1], 'x2':boxes[:,2], 'y2':boxes[:,3]}
+    
+    dfs = []
+    for (filename, d) in pairs:
+        d2 = to_numpy(d)
+        rdf = pd.DataFrame.from_dict({'filename':filename, **box2dict(d2['boxes']), 'object_score':d2['scores'], 
+                                'features':TensorArray(d2['features'])})
+        dfs.append(rdf)
+        
+    return pd.concat(dfs, ignore_index=True)
