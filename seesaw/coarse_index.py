@@ -76,7 +76,14 @@ class CoarseIndex(AccessMethod):
         assert ret.shape[0] == topk  # return quantity asked, in theory could be less
         assert sret.intersection_cardinality(exclude) == 0  # honor exclude request
 
-        return {'dbidxs':ret, 'nextstartk':len(exclude) + ret.shape[0], 'activations':None}
+
+        def make_acc(sc, dbidx):
+          return pd.DataFrame.from_records([dict(x1=0, y1=0, x2=224, y2=224, dbidx=dbidx, score=sc)])
+
+        return {'dbidxs':ret, 
+                'nextstartk':len(exclude) + ret.shape[0], 
+                'activations':[make_acc(sc,dbidx) for (sc,dbidx) in zip(scores, ret)]
+               }
 
     def new_query(self):
         return CoarseQuery(self)
