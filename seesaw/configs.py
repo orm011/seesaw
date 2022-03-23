@@ -5,7 +5,7 @@ _method_configs = {
             'learning_rate':0.005,
             'max_examples':500, 
             'loss_margin':0.1, 
-            'num_epochs':2, 
+            'num_epochs':4, 
             'model_type':'cosine',
             'warm_start':'warm', 
           },
@@ -57,7 +57,7 @@ _session_modes = {
 }
 
 _dataset_map = {
-  # 'lvis':'data/lvis/',
+  'lvis':'data/lvis/',
   'coco':'data/coco/',
   'bdd':'data/bdd/',
   'objectnet': 'data/objectnet/'

@@ -1,14 +1,19 @@
 import math
 import numpy as np
 
-def average_precision(hit_indices, *, nseen, npositive):
+def average_precision(hit_indices, *, nseen, npositive, max_results=None):
     ### average the precision at every point a new instance is seen
     ### for those unseen instances, they score zero.
+    ## for consistency across experiments we ignore results after max_results (treated as not found)
     assert npositive > 0
     assert nseen > 0
     assert (hit_indices < nseen).all()
     
     hpos_full = np.ones(npositive)*np.inf
+
+    if max_results is not None:
+        hit_indices = hit_indices[:max_results]
+
     hpos_full[:hit_indices.shape[0]] = hit_indices
     total_seen_count = hpos_full + 1
     
@@ -40,10 +45,10 @@ def ndcg_score(hit_indices, *, nseen, npositive):
     best_hits = best_possible_hits(nseen, npositive)
     return dcg_score(hit_indices)/dcg_score(best_hits)
 
-def normalizedAP(hit_indices, *, nseen, npositive):
+def normalizedAP(hit_indices, *, nseen, npositive, max_results=None):
     best_hits = best_possible_hits(nseen, npositive)
-    best_AP = average_precision(best_hits, nseen=nseen, npositive=npositive)
-    return average_precision(hit_indices, nseen=nseen, npositive=npositive)/best_AP
+    best_AP = average_precision(best_hits, nseen=nseen, npositive=npositive, max_results=max_results)
+    return average_precision(hit_indices, nseen=nseen, npositive=npositive, max_results=max_results)/best_AP
 
 
 def batch_metrics(hit_indices, *, nseen, npositive, batch_size):
@@ -65,12 +70,17 @@ def batch_metrics(hit_indices, *, nseen, npositive, batch_size):
     #TODO: reimplement this later
 
 def compute_metrics(*, hit_indices, batch_size, nseen, ntotal, max_results):
-    AP = average_precision(hit_indices, nseen=nseen, npositive=ntotal)
-    nAP = normalizedAP(hit_indices, nseen=nseen, npositive=ntotal)
+    AP = average_precision(hit_indices, nseen=nseen, npositive=ntotal, max_results=max_results)
+    nAP = normalizedAP(hit_indices, nseen=nseen, npositive=ntotal, max_results=max_results)
     ndcg = ndcg_score(hit_indices, nseen=nseen, npositive=ntotal)
     rank_first = rank_of_kth(hit_indices, k=1)
     nfound = hit_indices.shape[0]
-    rank_last = rank_of_kth(hit_indices, k=min(ntotal, max_results))
+    if max_results is not None:
+        k = min(ntotal, max_results)
+    else:
+        k = ntotal
+
+    rank_last = rank_of_kth(hit_indices, k=k)
 
     # only return things not given as input
     return dict(nfound=nfound,

@@ -209,8 +209,12 @@ def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : p
     positives = pr.FrozenBitMap(box_data.dbidx.values)
 
     assert positives.intersection(subset) == positives, 'index mismatch'
-    max_results = min(len(positives),b.max_results)
-    assert max_results > 0
+
+    if b.max_results is not None:
+        max_results = min(len(positives),b.max_results)
+        assert max_results > 0
+    else:
+        max_results = len(positives)
 
     total_results = 0
     total_seen = 0
@@ -388,11 +392,11 @@ def compute_stats(summ):
   summ = summ[~summ.ntotal.isna()]
   summ = summ.reset_index(drop=True)
 
-  nums = summ[['batch_size', 'nseen', 'ntotal', 'max_results']].astype('int')
+  nums = summ[['batch_size', 'nseen', 'ntotal', 'max_results']]
   all_mets = []
   for tup in nums.itertuples():
       mets = compute_metrics(hit_indices=summ.hit_indices.iloc[tup.Index], 
-              nseen=tup.nseen, batch_size=tup.batch_size, ntotal=tup.ntotal, max_results=tup.max_results)
+              nseen=int(tup.nseen), batch_size=int(tup.batch_size), ntotal=int(tup.ntotal), max_results=tup.max_results)
       all_mets.append(mets)
       
   metrics = pd.DataFrame(all_mets)
@@ -406,6 +410,8 @@ def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : Sessio
       max_classes_per_dataset=math.inf):
     configs = []
     avail_datasets = gdm.list_datasets()
+
+
     for d in datasets:
         assert d in avail_datasets
         ds = gdm.get_dataset(d)
@@ -416,9 +422,8 @@ def gen_configs(gdm : GlobalDataManager, datasets, variants, s_template : Sessio
             for var in variants:
                 update_b = {}
                 term = category2query(d.split('/')[-2], c)
-                article = 'an' if term[0] in 'aeiou' else 'a'
-                template = f'{article} {term}'
-                update_b['qstr'] = template 
+                qstr = b_template['query_template'].format(term)
+                update_b['qstr'] = qstr
                 update_b['ground_truth_category'] = c
                 b = BenchParams(**{**b_template, 
                                    **update_b, 

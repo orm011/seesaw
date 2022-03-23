@@ -13,30 +13,42 @@ parser.add_argument('--limit', type=int, default=None, help='limit the number of
 parser.add_argument('--num_actors', type=int, default=None, help='amount of actors created. leave blank for auto. 0 for local')
 parser.add_argument('--num_cpus', type=int, default=8, help='number of cpus per actor')
 parser.add_argument('--timeout', type=int, default=20, help='how long to wait for actor creation')
-parser.add_argument('--exp_name', type=str, default=None, help='some mnemonic for experiment')
+parser.add_argument('--output_dir', type=str, help='dir where experiment results dir will be created')
+parser.add_argument('--exp_name', type=str, help='some mnemonic for experiment')
+parser.add_argument('--root_dir', type=str, help='seesaw root dir to use for benchmark')
+
 args = parser.parse_args()
+assert os.path.isdir(args.root_dir)
+if not os.path.isdir(args.output_dir):
+  os.makedirs(args.output_dir, exist_ok=True)
+
 
 ray.init('auto', namespace='seesaw', log_to_driver=False, ignore_reinit_error=True)
 
-gdm = GlobalDataManager('/home/gridsan/omoll/seesaw_root/')
+gdm = GlobalDataManager(args.root_dir)
 os.chdir(gdm.root)
 
 s0 = dict(batch_size=3, method_config={}, shortlist_size=50)
-b0 = dict(n_batches=200, max_feedback=None, box_drop_prob=0., max_results=5, provide_textual_feedback=False)
+# b0 = dict(n_batches=300, max_feedback=None, box_drop_prob=0., max_results=5, provide_textual_feedback=False, 
+#   query_template='a picture of a {}')
+b0 = dict(n_batches=33, max_feedback=None, box_drop_prob=0., max_results=None, provide_textual_feedback=False, 
+  query_template='a picture of a {}')
+
 
 variants = [
-    dict(name='seesaw', interactive='pytorch', index_name='multiscale', agg_method='avg_score', method_config=std_linear_config),
     # dict(name='seesaw_avg_vec', interactive='pytorch', index_name='multiscale', agg_method='avg_vector', method_config=std_linear_config),
-
-    dict(name='multi', interactive='plain', index_name='multiscale', agg_method='avg_score'),
+    # dict(name='multi_avg_score', interactive='plain', index_name='multiscale', agg_method='avg_score'),
     dict(name='multi_avg_vec', interactive='plain', index_name='multiscale', agg_method='avg_vector'),
-
-    # dict(name='baseline', interactive='plain', index_name='coarse'),
+    dict(name='seesaw_avg_vec', interactive='pytorch', index_name='multiscale', agg_method='avg_vector', method_config=std_linear_config),
+  # dict(name='seesaw_avg_score', interactive='pytorch', index_name='multiscale', agg_method='avg_score', method_config=std_linear_config),
+    dict(name='baseline', interactive='plain', index_name='coarse'),
     # dict(name='refine', interactive='pytorch', index_name='coarse', method_config=std_linear_config),
-    dict(name='textual_linear', interactive='textual', index_name='multiscale', 
-      agg_method='avg_score', method_config={**std_textual_config, **{'mode':'linear'}}, provide_textual_feedback=True),
-    dict(name='textual_finetune', interactive='textual', index_name='multiscale', 
-      agg_method='avg_score', method_config={**std_textual_config, **{'mode':'finetune'}}, provide_textual_feedback=True),
+    # dict(name='textual_linear_avg_vec', interactive='textual', index_name='multiscale', 
+    #   agg_method='avg_vector', method_config={**std_textual_config, **{'mode':'linear'}}, provide_textual_feedback=True),
+    # dict(name='textual_linear', interactive='textual', index_name='multiscale', 
+    #   agg_method='avg_score', method_config={**std_textual_config, **{'mode':'linear'}}, provide_textual_feedback=True),
+    # dict(name='textual_finetune', interactive='textual', index_name='multiscale', 
+    #   agg_method='avg_score', method_config={**std_textual_config, **{'mode':'finetune'}}, provide_textual_feedback=True),
 ]
 
 names = set([])
@@ -45,8 +57,8 @@ for v in variants:
     print(f'WARNING: repeated variant name {v["name"]} will make it harder to compare variants afterwards...')
   names.add(v['name'])
 
-# datasets = ['data/lvis/', 'data/bdd/', 'data/coco/', 'data/dota/', 'data/objectnet/']
-datasets = ['data/lvis/', 'data/objectnet/']
+datasets = ['data/lvis/', 'data/bdd/', 'data/coco/', 'data/objectnet/']
+#datasets = ['data/lvis/', 'data/objectnet/']
 
 nclasses = math.inf if args.limit is None else args.limit
 cfgs = gen_configs(gdm, datasets=datasets, variants=variants, s_template=s0, b_template=b0, max_classes_per_dataset=nclasses)
@@ -56,7 +68,7 @@ print(f'{len(cfgs)} generated')
 
 key = ''.join([random.choice(string.ascii_letters) for _ in range(10)])
 exp_name = (args.exp_name + '_' if args.exp_name is not None else '') + key
-results_dir = f'/home/gridsan/omoll/bench_results/bench_{exp_name}/'
+results_dir = f'{args.output_dir}/bench_{exp_name}/'
 os.makedirs(results_dir, exist_ok=True)
 print(f'outputting benchmark results to file:/{results_dir}')
 

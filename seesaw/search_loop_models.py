@@ -167,7 +167,8 @@ class LookupVec(pl.LightningModule):
         self.rank_loss = nn.MarginRankingLoss(margin=margin, reduction='none')
 
     def forward(self, qvec):
-        return qvec @ self.vec.reshape(-1) # qvecs are already normalized
+        vec = F.normalize(self.vec.reshape(-1), dim=-1)
+        return qvec @ vec.reshape(-1) # qvecs are already normalized
         # return F.cosine_similarity(self.vec, qvec)
 
     def _batch_step(self, batch, batch_idx):
@@ -175,7 +176,7 @@ class LookupVec(pl.LightningModule):
         sim1 = self(X1)
         sim2 = self(X2)
         
-        losses = self.rank_loss(sim1, sim2, y.view(-1,1)).reshape(-1)
+        losses = self.rank_loss(sim1, sim2, y.view(-1)).reshape(-1)
         return {'loss':losses.mean(),  'y':y}
 
     def training_step(self, batch, batch_idx):
