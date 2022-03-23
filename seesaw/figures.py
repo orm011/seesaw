@@ -181,7 +181,7 @@ def ablation_table(tot_res, variants_list):
     return ablation
 
 
-def print_tables(stats, *, variant, baseline_variant, metric, reltol, intermediate_variant=None, brief=True):
+def print_tables(stats, *, variant, baseline_variant, metric, reltol, intermediate_variant=None, brief=True, jitter=.01):
     if intermediate_variant is None:
       intermediate_variant = baseline_variant
 
@@ -224,54 +224,11 @@ def print_tables(stats, *, variant, baseline_variant, metric, reltol, intermedia
       display(abtab)
       res['ablation'] = abtab
 
-    x = np.geomspace(.02, 1, num=5)
-    y = 1/x
-    diag_df = pd.DataFrame({'x':x, 'y':y})
+    plot = rel_plot(sbs, variant, jitter=jitter)
+    display(plot)
 
-    ### plot
-    plotdata = sbs[sbs.variant == variant]
-    xcol = 'base'
-    ycol = 'ratio'
-    plotdata = plotdata.assign(x=plotdata[xcol], y=plotdata[ycol])
-    plotdata = plotdata.assign(sbs_index=plotdata.index.values)
-    session_text = plotdata[['session_index', 'base_session_index']].apply(tuple, axis=1).map(lambda tup : f'{tup[0]} vs. {tup[1]}')
-    plotdata = plotdata.assign(session_text=session_text)
-    res['plotdata'] = plotdata
-
-
-    scatterplot = (ggplot(plotdata)
-        + geom_jitter(aes(x='x', y='y', fill='dataset', color='dataset'), alpha=.6, size=1.) 
-    #                 shape=plotdata.dataset.map(lambda x : '.' if x in ['lvis','objectnet'] else 'o'), 
-    #                 size=plotdata.dataset.map(lambda x : 1. if x in ['lvis','objectnet'] else 2.))
-    #  + geom_text(aes(x='base', y='delta', label='category', color='dataset'), va='bottom', 
-    #              data=plotdata1[plotdata1.ratio < .6], 
-    #              position=position_jitter(.05, .05), show_legend=False)
-        + geom_line(aes(x='x', y='y'), data=diag_df)
-        # + geom_text(aes(x='x', y='y', label='session_text'), va='top', data=plotdata[(plotdata.y < .4) | (plotdata.y > 3)])
-         + ylab(ycol)
-    #               + geom_area(aes(y2=1.1, y=.9), linetype='dashed', alpha=.7)
-                   + geom_hline(aes(yintercept=1.1), linetype='dashed', alpha=.7)
-                   + geom_hline(aes(yintercept=.9), linetype='dashed', alpha=.7)
-
-
-                    + geom_vline(aes(xintercept=.1,), linetype='dashed', alpha=.7)
-                    + geom_vline(aes(xintercept=.3,), linetype='dashed', alpha=.7)
-    #+ geom_abline()
-    #    + geom_point(aes(x='recall', y='precision', color='variant'), size=1.)
-    #     + facet_wrap(facets=['cat'], ncol=6, scales='free_x')
-     + xlab(xcol)
-    # +scale_color_discrete()
-        + theme(figure_size=(8,5), legend_position='top',
-               subplots_adjust={'hspace': 0.5}, legend_title=element_blank(),
-                legend_box_margin=-1, legend_margin=0.,
-                axis_text=element_text(size=12, margin={'t':.2, 'l':-.3}),
-                legend_text=element_text(size=11),
-                axis_title=element_text(size=12, margin={'r':-.2, 'b':0., 'l':0, 't':0.}),
-               )
-        + scale_x_log10(labels=make_labeler(brief_format), breaks=[.01, .1, .3, 1.])
-        + scale_y_log10(labels=make_labeler(brief_format), breaks=[.5, 0.9, 1.1, 2., 3.,6, 12])
-    )
-    display(scatterplot)
+    res['plotdata'] = plot.data
+    
     return res
 
 def compare_stats(stats, variant, baseline_variant):
@@ -283,6 +240,54 @@ def compare_stats(stats, variant, baseline_variant):
                          suffixes=['', '_baseline'])
     return all_pairs
 
+
+def rel_plot(sbs, variant, jitter=.01):
+    plotdata = sbs[sbs.variant == variant]
+    xcol = 'base'
+    ycol = 'ratio'
+    plotdata = plotdata.assign(x=plotdata[xcol], y=plotdata[ycol])
+    plotdata = plotdata.assign(sbs_index=plotdata.index.values)
+    session_text = plotdata[['session_index', 'base_session_index']].apply(tuple, axis=1).map(lambda tup : f'{tup[0]} vs. {tup[1]}')
+    plotdata = plotdata.assign(session_text=session_text)
+
+    x = np.geomspace(.02, 1, num=5)
+    y = 1/x
+    diag_df = pd.DataFrame({'x':x, 'y':y})
+
+    scatterplot = (ggplot(plotdata)
+        + geom_jitter(aes(x='x', y='y', fill='dataset', color='dataset'), width=jitter, height=jitter, alpha=.6, size=1.) 
+    #                 shape=plotdata.dataset.map(lambda x : '.' if x in ['lvis','objectnet'] else 'o'), 
+    #                 size=plotdata.dataset.map(lambda x : 1. if x in ['lvis','objectnet'] else 2.))
+    #  + geom_text(aes(x='base', y='delta', label='category', color='dataset'), va='bottom', 
+    #              data=plotdata1[plotdata1.ratio < .6], 
+    #              position=position_jitter(.05, .05), show_legend=False)
+        + geom_line(aes(x='x', y='y'), data=diag_df)
+        # + geom_text(aes(x='x', y='y', label='session_text'), va='top', data=plotdata[(plotdata.y < .4) | (plotdata.y > 3)])
+        + ylab(ycol)
+    #               + geom_area(aes(y2=1.1, y=.9), linetype='dashed', alpha=.7)
+                + geom_hline(aes(yintercept=1.1), linetype='dashed', alpha=.7)
+                + geom_hline(aes(yintercept=.9), linetype='dashed', alpha=.7)
+
+
+                    + geom_vline(aes(xintercept=.1,), linetype='dashed', alpha=.7)
+                    + geom_vline(aes(xintercept=.3,), linetype='dashed', alpha=.7)
+    #+ geom_abline()
+    #    + geom_point(aes(x='recall', y='precision', color='variant'), size=1.)
+    #     + facet_wrap(facets=['cat'], ncol=6, scales='free_x')
+    + xlab(xcol)
+    # +scale_color_discrete()
+        + theme(figure_size=(8,5), legend_position='top',
+            subplots_adjust={'hspace': 0.5}, legend_title=element_blank(),
+                legend_box_margin=-1, legend_margin=0.,
+                axis_text=element_text(size=12, margin={'t':.2, 'l':-.3}),
+                legend_text=element_text(size=11),
+                axis_title=element_text(size=12, margin={'r':-.2, 'b':0., 'l':0, 't':0.}),
+            )
+        + scale_x_log10(labels=make_labeler(brief_format), breaks=[.01, .1, .3, 1.])
+        + scale_y_log10(labels=make_labeler(brief_format), breaks=[.5, 0.9, 1.1, 2., 3.,6, 12])
+    )
+
+    return scatterplot
 
 def plot_compare(stats, variant, variant_baseline, metric, mode='identity'):
     plotdata = compare_stats(stats, variant, variant_baseline)
