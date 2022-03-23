@@ -16,6 +16,9 @@ parser.add_argument('--timeout', type=int, default=20, help='how long to wait fo
 parser.add_argument('--output_dir', type=str, help='dir where experiment results dir will be created')
 parser.add_argument('--exp_name', type=str, help='some mnemonic for experiment')
 parser.add_argument('--root_dir', type=str, help='seesaw root dir to use for benchmark')
+parser.add_argument('--result_limit', type=int, default=999+333, help='see no more than this limit')
+parser.add_argument('--result_batch_size', type=int, default=3, help='see no more than this limit')
+parser.add_argument('--positive_result_limit', type=int, default=10, help='run to result limit')
 
 args = parser.parse_args()
 assert os.path.isdir(args.root_dir)
@@ -28,12 +31,20 @@ ray.init('auto', namespace='seesaw', log_to_driver=False, ignore_reinit_error=Tr
 gdm = GlobalDataManager(args.root_dir)
 os.chdir(gdm.root)
 
-s0 = dict(batch_size=3, method_config={}, shortlist_size=50)
+s0 = dict(batch_size=args.result_batch_size, method_config={}, shortlist_size=50)
 # b0 = dict(n_batches=300, max_feedback=None, box_drop_prob=0., max_results=5, provide_textual_feedback=False, 
 #   query_template='a picture of a {}')
-b0 = dict(n_batches=33, max_feedback=None, box_drop_prob=0., max_results=None, provide_textual_feedback=False, 
-  query_template='a picture of a {}')
+if args.positive_result_limit == -1:
+  max_results = None
+else:
+  max_results = args.positive_result_limit
 
+b0 = dict(n_batches=args.result_limit//args.result_batch_size, 
+          max_feedback=None, 
+          box_drop_prob=0., 
+          max_results=max_results, 
+          provide_textual_feedback=False, 
+          query_template='a picture of a {}')
 
 variants = [
     # dict(name='seesaw_avg_vec', interactive='pytorch', index_name='multiscale', agg_method='avg_vector', method_config=std_linear_config),
