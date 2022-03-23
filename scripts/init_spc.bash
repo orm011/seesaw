@@ -1,17 +1,14 @@
 #! /bin/bash
 
+## needed for nginx/ray/python
 # . $HOME/miniconda3/etc/profile.d/conda.sh
 # conda activate $HOME/seesaw_deploy/.seesaw_env
 set -euxo pipefail
-which nginx
-which python
-which ray
+which nginx; which python; which ray
 
-## needed for nginx/ray/python
 DIR=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 nginx -s stop || echo 'starting nginx....'
-nginx -c ./conf/seesaw.spc.conf
-
+nginx -c conf/seesaw.spc.conf # refers to conf/ folder relative to nginx root
 
 # echo 'starting head node'
 ray stop || echo 'starting ray head node...'
