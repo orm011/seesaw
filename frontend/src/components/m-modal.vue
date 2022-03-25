@@ -52,7 +52,7 @@ export default defineComponent({
   position: fixed; /* Stay in place */
   text-align: center;
   z-index: 1021; /* Sit on top of left menu, which is at 100, and top bar, which is at 1020 */
-  padding-top: 100px; /* Location of the box */
+  padding-top: 10px; 
   left: 0;
   top: 0;
   width: 100%; /* Full width */

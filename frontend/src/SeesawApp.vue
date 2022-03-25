@@ -462,8 +462,12 @@ export default defineComponent({
           } else if (ev.code == 'Escape') {
             this.close_modal()
           } else if (ev.code == 'Space'){
-            this.$refs.annotator.toggle_activation()
-          } 
+            if (this.front_end_type === 'pytorch') {
+              this.$refs.annotator.toggle_activation()
+            }
+            // TODO: make it toggle accept the image
+            // TODO: show activation using key 'E' (for explain)
+          }  
         } else { // assume text
           if (ev.code == 'Escape'){
             this.handleAnnotatorSelectionChange(null) // save text
