@@ -42,10 +42,10 @@
         <div class="position-sticky pt-3">
           <div class="row">
             <div class="col">
-              <div class="row">
+              <!-- <div class="row">
                 <label>Current Database:</label>
-              </div>
-              <div class="row">
+              </div> -->
+              <!-- <div class="row">
                 <select
                   v-model="selected_index"
                   @change="reset(selected_index)"
@@ -57,15 +57,19 @@
                   >
                     {{ idxspec != null ? `${idxspec.d_name}:${idxspec.i_name}` : '' }}
                   </option>
-                </select>
-              </div>
+                </select> 
+              </div> 
+            -->
             </div>
           </div>
           <div class="row" v-if="client_data.session != null">
-            <span>Total images shown: {{ total_images() }}</span>
+            <span>Current database: {{selected_index.d_name}}</span>
           </div>
           <div class="row" v-if="client_data.session != null">
-            <span>Total images accepted: {{ total_accepted() }}</span>
+            <span>Total images: {{ total_images() }}</span>
+          </div>
+          <div class="row" v-if="client_data.session != null">
+            <span>Total accepted: {{ total_accepted() }}</span>
           </div>
           <div class="row" v-if="client_data.session != null">
             <button 
@@ -75,14 +79,14 @@
               Save 
             </button>
           </div>
-          <div class="row" v-if="client_data.session != null">
+          <!-- <div class="row" v-if="client_data.session != null">
             <button
               class="btn btn-dark btn-block"
               @click="reset(client_data.session.params.index_spec)"
             >
               Reset
             </button>
-          </div>
+          </div> -->
           <div class="row">
             <button
               v-if="show_config"
