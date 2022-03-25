@@ -56,9 +56,10 @@ class BenchParams(BaseModel):
     qstr : str
     provide_textual_feedback : bool = False
     n_batches : int # max number of batches to run
-    max_results : int # stop when this numbrer of results is found
-    max_feedback : Optional[int]
-    box_drop_prob : float
+    max_results : Optional[int] = None # stop when this numbrer of results is found
+    max_feedback : Optional[int] = None
+    box_drop_prob : float = 0.
+    query_template : str = '{}' # clip needs this
 
 class BenchResult(BaseModel):
     nimages: int

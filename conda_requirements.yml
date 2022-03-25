@@ -1,38 +1,47 @@
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
 dependencies:
   - python=3.8
   - pip
   - numpy
   - scipy
+  - matplotlib
+  - tqdm
+  - pillow
   - scikit-learn
   - pandas
-  - pyarrow>4.0.0
-  - pillow
-  - pytorch>=1.9
-  - torchvision>=0.10 # without this I sometimes see a really old version (0.2) installed
-  - tensorboard
-  - flask
-  - cudatoolkit>=11.1
-  - pynndescent
-  - cython
-#  - cvxpy
+  - pyroaring
+  - cudatoolkit=11.3
+  - pytorch>=1.11
+  - torchvision>=0.12
+  - torchmetrics
+  - hdbscan
+  - umap-learn
+  - pycocotools
+  - plotnine
+  - bokeh
+  - pydantic
+ ## serving deps:
+  - nginx
+  - uvicorn
+  - fastapi
+  - jupyter
   - pip:
-    - bokeh
-    - ray[default]>=1.7
-    - tqdm
-    - pytorch-lightning
-    - torchmetrics
-    - ipyvue
-    - pyroaring
-    - plotnine
-    - annoy
-    - notebook
     - ipykernel
-    - ipywidgets
-    - ftfy 
-    - regex
+    - py-spy
+    - pytorch-lightning>=1.5
+    - ray[default]>=1.9
+    - ray[serve]
+    - ray[tune]
+    - tensorboard
+    - pyarrow # dont use the conda version bc. the protobuf version used there is very new, and pip TF (froms scann)  uses and older version...
+    - transformers # get this from pip to use compatible tensorflow
+    - datasets
+    - einops
+    - psutil
+    - pydantic-to-typescript
+    - scann
+    - annoy
     - git+https://github.com/openai/CLIP.git
-channels:
-  - pytorch
-  - nvidia
-  - conda-forge
-  - anaconda
