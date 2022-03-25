@@ -7,7 +7,7 @@
       class="close"
       @click="close"
     >&times;</span> -->
-    <div
+    <div  
       class="my-modal-content"
     >
       <slot />
@@ -65,9 +65,9 @@ export default defineComponent({
 /* disables scrolling of background while modal is open 
 including if we press space bar*/
 body.modal-is-active {
-  height: 100vh;
+  height: 100vh; 
   overflow: hidden;
-}
+} 
 
 .my-modal-active {
   display: block;
