@@ -16,7 +16,7 @@
       @mouseover="hover(true)"
       @mouseleave="hover(false)"
     />
-    <div
+    <!-- <div
         class="form-check activation-check">
         <input
             class="form-check-input"
@@ -25,7 +25,7 @@
             v-model="this.show_activation"
             @change="this.activation_press()"
         >
-    </div>
+    </div> -->
   </div>
 <!-- question: could the @load callback for img fire before created() or mounted()? (
     eg, the $refs and other vue component object attributes) -->
