@@ -289,32 +289,34 @@ def rel_plot(sbs, variant, jitter=.01):
 
     return scatterplot
 
-def plot_compare(stats, variant, variant_baseline, metric, mode='identity'):
+def plot_compare(stats, variant, variant_baseline, metric, mode='identity', jitter=.01):
+    assert mode in ['identity', 'ratio', 'difference']
     plotdata = compare_stats(stats, variant, variant_baseline)
     bsw = bsw_table2(plotdata, metric=metric, reltol=1.)
     display(bsw)
     baseline_name = f'{metric}_baseline'
-
     plotdata = plotdata[[metric, baseline_name, 'dataset']].assign(ratio=plotdata[metric]/plotdata[baseline_name],
       difference=plotdata[metric] - plotdata[baseline_name])
 
     if mode == 'identity':
       return (ggplot(data=plotdata) +
-          geom_jitter(aes(x=f'{metric}_baseline', y=metric, fill='dataset'), width=.1, height=.1)
+          geom_jitter(aes(x=f'{metric}_baseline', y=metric, fill='dataset'), width=jitter, height=jitter)
           + scale_x_log10()
           + scale_y_log10()
           + geom_abline(aes(slope=1, intercept=0))
       )
     elif mode == 'ratio':
       return (ggplot(data=plotdata)
-          + geom_jitter(aes(x=f'{metric}_baseline', y='ratio', fill='dataset'), width=.1, height=.1)
+          + geom_jitter(aes(x=f'{metric}_baseline', y='ratio', fill='dataset'), width=jitter, height=jitter)
           + scale_x_log10()
-          + scale_y_log10()
-          + geom_abline(aes(slope=0, intercept=1))
+          + scale_y_log10()   
+          ## ablines are drawn wrt the already log-transformed axes. hence 0 = log(1) in scale
+          + geom_abline(aes(slope=0, intercept=0.))
+          + geom_abline(aes(slope=-1, intercept=0.)) # max
       )
     elif mode == 'difference':
             return (ggplot(data=plotdata)
-          + geom_jitter(aes(x=f'{metric}_baseline', y='difference', fill='dataset'), width=.1, height=.1)
+          + geom_jitter(aes(x=f'{metric}_baseline', y='difference', fill='dataset'), width=jitter, height=jitter)
           + scale_x_log10()
           + scale_y_log10()
           + geom_abline(aes(slope=0, intercept=0))
@@ -335,36 +337,64 @@ def make_color_map(df, column_name):
   palette = d3['Category10'][total]
   return factor_cmap(column_name, palette=palette, factors=factors)
 
-def interactive_compare(stats, variant, variant_baseline, metric, tooltip_cols=['dataset', 'category', 'frequency']):
+def interactive_compare(stats, variant, variant_baseline, metric, tooltip_cols=['dataset', 'category', 'ntotal', 'nimages'], metric_cols=['rank_first', 'rank_last', 'nfound'], 
+                            mode='identity', jitter_size=.001):
     plotdata = compare_stats(stats, variant, variant_baseline)
+
+    baseline_name = f'{metric}_baseline'
+    plotdata = (plotdata
+                .assign(ratio=plotdata[metric]/plotdata[baseline_name],
+                        difference=plotdata[metric] - plotdata[baseline_name]))
+
+    assert mode in ['identity', 'ratio']
 
     output_notebook()
 
     base_metric = f'{metric}_baseline'
 
-    if metric not in tooltip_cols:
-      tooltip_cols.extend([metric, base_metric])
+    if metric not in metric_cols:
+        metric_cols = [metric] + metric_cols
+
+    tooltips = []
+    tooltips.append(("(x,y)", '($x{.02f},$y{.02f})'))
+    tooltips.extend([(m, f"@{m}") for m in tooltip_cols])
+    tooltips.extend([(metric, f'(@{metric}_baseline, @{metric})') for metric in metric_cols])
 
     p = figure(title="comparison", y_axis_type="log",x_axis_type="log",
                plot_width=500,
                plot_height=500,
-               match_aspect=True,
                tools=[HoverTool(), PanTool(), WheelZoomTool(), ResetTool()],
-                tooltips=', '.join(['@{}'.format(col) for col in tooltip_cols]),
+               tooltips=tooltips,
                background_fill_color="#fafafa")
     
     source = ColumnDataSource(plotdata)
-    
-    p.circle(x=jitter(base_metric, width=.1), 
-             y=jitter(metric, width=.1),
-             size=10,
-             fill_color=make_color_map(plotdata, 'dataset'),
-             line_color='black', 
-             source=source)
 
-    minval = plotdata[base_metric].min()
-    maxval = (plotdata[base_metric][(plotdata[base_metric] < np.inf)]).max()
-    p.segment(x0=minval, x1=maxval, y0=minval, y1=maxval)
+    if mode == 'identity':    
+        p.circle(x=jitter(base_metric, width=jitter_size), 
+                y=jitter(metric, width=jitter_size),
+                size=10,
+                fill_color=make_color_map(plotdata, 'dataset'),
+                line_color='black', 
+                source=source)
+
+        p.match_aspect = True
+        minval = plotdata[base_metric].min()
+        maxval = (plotdata[base_metric][(plotdata[base_metric] < np.inf)]).max()
+        p.segment(x0=minval, x1=maxval, y0=0, y1=maxval)
+    elif mode == 'ratio':
+        p.circle(x=jitter(base_metric, width=jitter_size), y=jitter('ratio', width=jitter_size),
+        size=10,
+        fill_color=make_color_map(plotdata, 'dataset'),
+        line_color='black', 
+        source=source)
+
+        minval = .001 #plotdata[base_metric].min()
+        maxval = 1. #(plotdata[base_metric][(plotdata[base_metric] < np.inf)]).max()
+        p.segment(x0=minval, x1=1., y0=1., y1=1.)
+        p.segment(x0=minval, x1=1., y0=1./minval, y1=1.)
+    else:
+        assert False
+
 
     def url_tool(url_column1, url_column2):
         url = f"http://localhost:9000/compare?path=@{url_column1}&other=@{url_column2}"
