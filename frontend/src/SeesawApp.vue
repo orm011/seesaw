@@ -275,10 +275,6 @@ export default defineComponent({
               }
             },
     mounted (){
-        console.log('Vue App object avail in window.VueApp');
-        console.log("GOOD LUCK AGAIN"); 
-        console.log("10th time's the charm buddy"); 
-        console.log("Another one"); 
         window.VueApp = this;
         let params = new URLSearchParams(window.location.search)
 
@@ -304,7 +300,6 @@ export default defineComponent({
       checkContainer () {
         let input = document.querySelector('.vue3-input');
         if(input !== null){ //if the container is visible on the page
-          console.log("CHECK CONTAINER GOT THE FOCUS"); 
           input.focus(); 
         } 
         setTimeout(this.checkContainer, 50); //wait 50 ms, then try again
@@ -469,6 +464,10 @@ export default defineComponent({
           if (ev.code == 'Escape'){
             this.handleAnnotatorSelectionChange(null) // save text
             this.close_modal();
+          } else if (ev.code === 'ArrowLeft' || ev.code === 'ArrowRight'){
+            this.handleAnnotatorSelectionChange(null) // save text
+            let delta = (ev.code === 'ArrowLeft') ? -1 : 1
+            this.handle_arrow(delta);
           } else if (ev.code == 'Enter'){ // show the text in the
             this.handleAnnotatorSelectionChange(this.annotator_text_pointer) 
           }
