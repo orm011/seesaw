@@ -1,6 +1,5 @@
 channels:
   - pytorch
-  - huggingface
   - conda-forge
   - defaults
 dependencies:
@@ -13,7 +12,6 @@ dependencies:
   - pillow
   - scikit-learn
   - pandas
-  - pyarrow
   - pyroaring
   - cudatoolkit=11.3
   - pytorch>=1.11
@@ -24,8 +22,6 @@ dependencies:
   - pycocotools
   - plotnine
   - bokeh
-  - transformers
-  - datasets
   - pydantic
  ## serving deps:
   - nginx
@@ -40,6 +36,9 @@ dependencies:
     - ray[serve]
     - ray[tune]
     - tensorboard
+    - pyarrow # dont use the conda version bc. the protobuf version used there is very new, and pip TF (froms scann)  uses and older version...
+    - transformers # get this from pip to use compatible tensorflow
+    - datasets
     - einops
     - psutil
     - pydantic-to-typescript

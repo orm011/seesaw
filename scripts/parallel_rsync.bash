@@ -9,4 +9,6 @@ P=100
 ## the print0 xargs -0 is important for handling file names with spaces or quotes etc (like within some datasets)
 
 ## --progress --human-readable --verbose
-find $basedir/./ -type f,l -print0 | xargs -0 -L 1 -P $P -I{} -t rsync --relative --update --links  "{}" $destdir
+find $basedir/./ -type f,l -print0 | \
+    xargs -0 -L 1 -P $P -I{} -t \
+    rsync --chmod=ugo=rwX --relative --update --links  "{}" $destdir

@@ -26,7 +26,23 @@ def test_average_precision():
     assert AP_01 == (1./2 + 2./3 + 3./4)/10.
     assert AP_01 < AP_0
     assert AP_01 < AP_1
-    
+
+def test_average_precision_max_results():
+    AP = average_precision(np.array([0,1,2]), nseen=10, npositive=3, max_results=1)
+    assert AP < 1
+
+    nAP = normalizedAP(np.array([0,1,2]), nseen=10, npositive=3, max_results=1)
+    assert nAP == 1.0
+
+    nAP = normalizedAP(np.array([0,1,2]), nseen=10, npositive=3, max_results=2)
+    assert nAP == 1.0
+
+    nAP = normalizedAP(np.array([0,1,2]), nseen=10, npositive=3, max_results=3)
+    assert nAP == 1.0
+
+    nAP = normalizedAP(np.array([0,1,2]), nseen=10, npositive=3, max_results=4)
+    assert nAP == 1.0
+  
 
 def test_ndcg():
     ndcg = ndcg_score(np.array([0,1,2]), nseen=10, npositive=3)

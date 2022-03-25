@@ -29,12 +29,14 @@ export default defineComponent({
     emits : ['modalKeyUp'],
     mounted : function () {
       this.$data.handler = this.handle_keyup;
-      console.log('added handler', this)
       window.addEventListener('keyup', this.handle_keyup)
+      let elt = document.getElementsByTagName('body')[0];
+      elt.classList.add("modal-is-active");
     },
     unmounted : function (){
-      console.log('removed handler')
       window.removeEventListener('keyup', this.handle_keyup);
+      let elt = document.getElementsByTagName('body')[0]
+      elt.classList.remove("modal-is-active");
     },
     methods : {
         handle_keyup(ev){
@@ -43,7 +45,7 @@ export default defineComponent({
     }
 })
 </script>
-<style scoped>
+<style>
 /* The Modal (background) */
 .my-modal {
   display: none; /* Hidden by default */
@@ -60,6 +62,12 @@ export default defineComponent({
   background-color: rgba(0,0,0,0.9); /* Black w/ opacity */
 }
 
+/* disables scrolling of background while modal is open 
+including if we press space bar*/
+body.modal-is-active {
+  height: 100vh;
+  overflow: hidden;
+}
 
 .my-modal-active {
   display: block;
