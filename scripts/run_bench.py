@@ -44,14 +44,14 @@ b0 = dict(n_batches=args.result_limit//args.result_batch_size,
           box_drop_prob=0., 
           max_results=max_results, 
           provide_textual_feedback=False, 
-          query_template='a picture of a {}')
+          query_template='a {}')
 
 variants = [
     # dict(name='seesaw_avg_vec', interactive='pytorch', index_name='multiscale', agg_method='avg_vector', method_config=std_linear_config),
     # dict(name='multi_avg_score', interactive='plain', index_name='multiscale', agg_method='avg_score'),
     dict(name='multi_avg_vec', interactive='plain', index_name='multiscale', agg_method='avg_vector'),
     dict(name='seesaw_avg_vec', interactive='pytorch', index_name='multiscale', agg_method='avg_vector', method_config=std_linear_config),
-  # dict(name='seesaw_avg_score', interactive='pytorch', index_name='multiscale', agg_method='avg_score', method_config=std_linear_config),
+    # dict(name='seesaw_avg_score', interactive='pytorch', index_name='multiscale', agg_method='avg_score', method_config=std_linear_config),
     dict(name='baseline', interactive='plain', index_name='coarse'),
     # dict(name='refine', interactive='pytorch', index_name='coarse', method_config=std_linear_config),
     # dict(name='textual_linear_avg_vec', interactive='textual', index_name='multiscale', 
