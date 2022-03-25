@@ -195,13 +195,10 @@ def fill_imdata(imdata : Imdata, box_data : pd.DataFrame, b : BenchParams):
 def benchmark_loop(*, session : Session,  subset : pr.FrozenBitMap, box_data : pd.DataFrame,
                       b : BenchParams, p : SessionParams):
 
-
     def annotation_fun(cat):
       dataset_name = p.index_spec.d_name.split('/')[-2]
       term = category2query(dataset_name, cat)      
-      article = 'an' if term[0] in 'aeiou' else 'a'
-      template = f'{article} {term}'
-      return template
+      return b.query_template.format(term)
 
     box_data = box_data.assign(description=box_data.category.map(annotation_fun))
     all_box_data = box_data
