@@ -140,7 +140,7 @@ export default defineComponent({
           this.activation_paths.push(r); 
           if (this.show_float){
             let strokeColor = 'black'
-            let point = new paper.Point(rdict.x1 + this.text_offset.x, rdict.y1 + this.text_offset.y); 
+            let point = new paper.Point(rdict.x1 + this.text_offset.x, rdict.y2 - this.text_offset.y); 
             let text = new paper.PointText(point);
             text.justification = 'left';
             text.fillColor = strokeColor;
