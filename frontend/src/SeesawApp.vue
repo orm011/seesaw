@@ -201,6 +201,12 @@
       </div>
       <div> 
         <button
+            class="btn btn-danger"
+            @click="moveLeft()"
+          >
+            Previous (Left Arrow)
+        </button>
+        <button
             v-if="front_end_type === 'plain'"
             class="btn btn-danger"
             @click="mark_image_accepted()"
@@ -220,6 +226,12 @@
           @click="create_full_box()"
         >
           Full Box
+        </button>
+        <button
+            class="btn btn-danger"
+            @click="moveRight()"
+          >
+            Next (Right Arrow)
         </button>
       </div>
     </m-modal>
@@ -452,6 +464,14 @@ export default defineComponent({
         this.annotator_text_pointer = null;
       }
       this.updateRecommendations(); 
+    },
+    moveLeft(){
+      let delta =  -1;
+      this.handle_arrow(delta);
+    }, 
+    moveRight(){
+      let delta =  1;
+      this.handle_arrow(delta);
     },
     handleModalKeyUp(ev){
         console.log('within modalKeyUp handler', ev)
