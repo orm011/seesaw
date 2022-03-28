@@ -97,7 +97,6 @@
             <button
               v-else
               class="btn btn-dark btn-block" 
-              :disabled="true"
               @click="toggle_config()"> 
               Show Config
             </button>
@@ -204,6 +203,7 @@
         <button
             class="btn btn-danger"
             ref="left_button"
+            :disabled="this.image_index === 1 || this.image_index === null"
             @click="moveLeft()"
           >
             Previous (Left Arrow)
@@ -232,6 +232,7 @@
         <button
             class="btn btn-danger"
             ref="right_button"
+            :disabled="this.image_index >= this.total_image_count || this.image_index === null"
             @click="moveRight()"
           >
             Next (Right Arrow)
@@ -298,7 +299,9 @@ export default defineComponent({
                 front_end_type : 'textual', // by default textual so it works when using plain url
                 button_labels : {
                   "test" : {"add": "Add Button"},
-                } 
+                }, 
+                image_index : null, 
+                total_image_count : null, 
               }
             },
     mounted (){
@@ -386,7 +389,8 @@ export default defineComponent({
         this.annotator_text_pointer = null;
       }, 
         total_images() {
-            return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
+            this.total_image_count = this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0); 
+            return this.total_image_count; 
         },
         toggle_config() { 
           this.show_config = !this.show_config; 
@@ -446,12 +450,18 @@ export default defineComponent({
           console.assert(false, 'should not reach this', gdata_idx, local_idx);
         },
     handle_selection_change(new_selection){
+      //console.log(this.idx, $event}); 
       if (this.$refs.annotator != undefined){
         let imdata = this.$refs.annotator.get_latest_imdata();
         this.data_update(imdata);
       }
       
       this.selection = new_selection;
+      if (this.selection !== null){
+        this.image_index = 3 * this.selection.gdata_idx + this.selection.local_idx + 1; 
+      } else {
+        this.image_index = null; 
+      }
     },
     toggle_mark_accepted(){
       if (this.annotator_text_pointer.box.data.marked_accepted){
