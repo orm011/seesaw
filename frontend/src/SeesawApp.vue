@@ -246,6 +246,15 @@
             Close (Esc)
         </button>
       </div>
+      <div class="keyword-text">
+        <span> {{this.image_index}} / {{this.total_image_count}} </span>
+        <button
+            class="btn btn-danger"
+            @click="next()"
+          >
+            Load More Images
+        </button>
+      </div>
     </m-modal>
   </div>  
 </template>
@@ -592,7 +601,7 @@ export default defineComponent({
           } else {
             this.selected_index = null
           }
-          this.handle_selection_change(null);
+          //this.handle_selection_change(null);
         },
         reset(index){
           let config = this.$refs.config.currentConfig();           
@@ -620,7 +629,7 @@ export default defineComponent({
             .then(response => response.json())
             .then(this._update_client_data)
         },
-        next(){
+        next(selection = null){
           console.log(' this' , this);
           let body = { client_data : this.$data.client_data };
 
