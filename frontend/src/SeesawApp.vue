@@ -464,13 +464,13 @@ export default defineComponent({
           } else if (ev.code == 'Escape') {
             this.close_modal()
           } else if (ev.code == 'Space'){
-            if (this.front_end_type === 'pytorch') {
-              this.$refs.annotator.toggle_activation()
-            }
             // TODO: make it toggle accept the image
+            this.mark_image_accepted(); 
           }  else if (ev.code == 'KeyE'){
             // TODO: show activation using key 'E' (for explain)
-            this.$refs.annotator.activation_press(); 
+            if (this.front_end_type === 'pytorch'){
+              this.$refs.annotator.activation_press();
+            } 
           }
         } else { // assume text
           if (ev.code == 'Escape'){
