@@ -232,7 +232,7 @@
         <button
             class="btn btn-danger"
             ref="right_button"
-            :disabled="this.image_index >= this.total_image_count || this.image_index === null"
+            :disabled="this.image_index >= this.total_images() || this.image_index === null"
             @click="moveRight()"
           >
             Next (Right Arrow)
@@ -247,7 +247,7 @@
         </button>
       </div>
       <div class="keyword-text">
-        <span> {{this.image_index}} / {{this.total_image_count}} </span>
+        <span> {{this.image_index}} / {{this.total_images()}} </span>
         <button
             class="btn btn-danger"
             @click="next()"
@@ -310,7 +310,6 @@ export default defineComponent({
                   "test" : {"add": "Add Button"},
                 }, 
                 image_index : null, 
-                total_image_count : null, 
               }
             },
     mounted (){
@@ -398,8 +397,7 @@ export default defineComponent({
         this.annotator_text_pointer = null;
       }, 
         total_images() {
-            this.total_image_count = this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0); 
-            return this.total_image_count; 
+            return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0); 
         },
         toggle_config() { 
           this.show_config = !this.show_config; 
@@ -467,7 +465,7 @@ export default defineComponent({
       
       this.selection = new_selection;
       if (this.selection !== null){
-        this.image_index = 3 * this.selection.gdata_idx + this.selection.local_idx + 1; 
+        this.image_index = this.get_global_idx(this.selection.gdata_idx, this.selection.local_idx) + 1; 
       } else {
         this.image_index = null; 
       }
