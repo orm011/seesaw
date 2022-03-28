@@ -201,6 +201,14 @@
       </div>
       <div> 
         <button
+            class="btn btn-danger"
+            ref="left_button"
+            :disabled="this.image_index === 1 || this.image_index === null"
+            @click="moveLeft()"
+          >
+            Previous (Left Arrow)
+        </button>
+        <button
             v-if="front_end_type === 'plain'"
             class="btn btn-danger"
             @click="mark_image_accepted()"
@@ -220,6 +228,31 @@
           @click="create_full_box()"
         >
           Full Box
+        </button>
+        <button
+            class="btn btn-danger"
+            ref="right_button"
+            :disabled="this.image_index >= this.total_images() || this.image_index === null"
+            @click="moveRight()"
+          >
+            Next (Right Arrow)
+        </button>
+      </div>
+      <div>
+        <button
+            class="btn btn-danger"
+            @click="close_modal()"
+          >
+            Close (Esc)
+        </button>
+      </div>
+      <div class="keyword-text">
+        <span> {{this.image_index}} / {{this.total_images()}} </span>
+        <button
+            class="btn btn-danger"
+            @click="next()"
+          >
+            Load More Images
         </button>
       </div>
     </m-modal>
@@ -275,7 +308,8 @@ export default defineComponent({
                 front_end_type : 'textual', // by default textual so it works when using plain url
                 button_labels : {
                   "test" : {"add": "Add Button"},
-                } 
+                }, 
+                image_index : null, 
               }
             },
     mounted (){
@@ -363,7 +397,7 @@ export default defineComponent({
         this.annotator_text_pointer = null;
       }, 
         total_images() {
-            return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0)
+            return this.client_data.session.gdata.map((l) => l.length).reduce((a,b)=>a+b, 0); 
         },
         toggle_config() { 
           this.show_config = !this.show_config; 
@@ -423,12 +457,18 @@ export default defineComponent({
           console.assert(false, 'should not reach this', gdata_idx, local_idx);
         },
     handle_selection_change(new_selection){
+      //console.log(this.idx, $event}); 
       if (this.$refs.annotator != undefined){
         let imdata = this.$refs.annotator.get_latest_imdata();
         this.data_update(imdata);
       }
       
       this.selection = new_selection;
+      if (this.selection !== null){
+        this.image_index = this.get_global_idx(this.selection.gdata_idx, this.selection.local_idx) + 1; 
+      } else {
+        this.image_index = null; 
+      }
     },
     toggle_mark_accepted(){
       if (this.annotator_text_pointer.box.data.marked_accepted){
@@ -453,21 +493,38 @@ export default defineComponent({
       }
       this.updateRecommendations(); 
     },
+    moveLeft(){
+      let delta =  -1;
+      this.handle_arrow(delta);
+      var element = this.$refs.left_button
+      element.blur()
+    }, 
+    moveRight(){
+      let delta =  1;
+      this.handle_arrow(delta);
+      var element = this.$refs.right_button
+      element.blur()
+    },
     handleModalKeyUp(ev){
         console.log('within modalKeyUp handler', ev)
-        if (this.annotator_text_pointer == null){ // ie if text is being entered ignore this
+        //if (this.annotator_text_pointer == null){ // ie if text is being entered ignore this
+        if (this.annotator_text_pointer == null || this.front_end_type !== 'textual'){ // ie if text is being entered ignore this
+          console.log("EV CODE"); 
+          console.log(ev.code); 
           if (ev.code === 'ArrowLeft' || ev.code === 'ArrowRight'){
             let delta = (ev.code === 'ArrowLeft') ? -1 : 1
             this.handle_arrow(delta);
           } else if (ev.code == 'Escape') {
             this.close_modal()
           } else if (ev.code == 'Space'){
-            if (this.front_end_type === 'pytorch') {
-              this.$refs.annotator.toggle_activation()
-            }
             // TODO: make it toggle accept the image
+            this.mark_image_accepted(); 
+          }  else if (ev.code == 'KeyE'){
             // TODO: show activation using key 'E' (for explain)
-          }  
+            if (this.front_end_type === 'pytorch'){
+              this.$refs.annotator.activation_press();
+            } 
+          }
         } else { // assume text
           if (ev.code == 'Escape'){
             this.handleAnnotatorSelectionChange(null) // save text
@@ -542,7 +599,7 @@ export default defineComponent({
           } else {
             this.selected_index = null
           }
-          this.handle_selection_change(null);
+          //this.handle_selection_change(null);
         },
         reset(index){
           let config = this.$refs.config.currentConfig();           
@@ -570,7 +627,7 @@ export default defineComponent({
             .then(response => response.json())
             .then(this._update_client_data)
         },
-        next(){
+        next(selection = null){
           console.log(' this' , this);
           let body = { client_data : this.$data.client_data };
 
