@@ -72,7 +72,8 @@ export default defineComponent({
           return image_accepted(imdata)
     },
     activation_press: function(){
-        console.log("checks"); 
+        console.log("checks");
+        this.show_activation = !this.show_activation;  
         if (this.show_activation){
             this.draw_activation(); 
         } else {

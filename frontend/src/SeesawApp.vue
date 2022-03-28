@@ -456,6 +456,8 @@ export default defineComponent({
     handleModalKeyUp(ev){
         console.log('within modalKeyUp handler', ev)
         if (this.annotator_text_pointer == null){ // ie if text is being entered ignore this
+          console.log("EV CODE"); 
+          console.log(ev.code); 
           if (ev.code === 'ArrowLeft' || ev.code === 'ArrowRight'){
             let delta = (ev.code === 'ArrowLeft') ? -1 : 1
             this.handle_arrow(delta);
@@ -466,8 +468,10 @@ export default defineComponent({
               this.$refs.annotator.toggle_activation()
             }
             // TODO: make it toggle accept the image
+          }  else if (ev.code == 'KeyE'){
             // TODO: show activation using key 'E' (for explain)
-          }  
+            this.$refs.annotator.activation_press(); 
+          }
         } else { // assume text
           if (ev.code == 'Escape'){
             this.handleAnnotatorSelectionChange(null) // save text
