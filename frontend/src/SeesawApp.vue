@@ -97,6 +97,7 @@
             <button
               v-else
               class="btn btn-dark btn-block" 
+              :disabled="true"
               @click="toggle_config()"> 
               Show Config
             </button>
@@ -202,6 +203,7 @@
       <div> 
         <button
             class="btn btn-danger"
+            ref="left_button"
             @click="moveLeft()"
           >
             Previous (Left Arrow)
@@ -229,6 +231,7 @@
         </button>
         <button
             class="btn btn-danger"
+            ref="right_button"
             @click="moveRight()"
           >
             Next (Right Arrow)
@@ -476,10 +479,14 @@ export default defineComponent({
     moveLeft(){
       let delta =  -1;
       this.handle_arrow(delta);
+      var element = this.$refs.left_button
+      element.blur()
     }, 
     moveRight(){
       let delta =  1;
       this.handle_arrow(delta);
+      var element = this.$refs.right_button
+      element.blur()
     },
     handleModalKeyUp(ev){
         console.log('within modalKeyUp handler', ev)
