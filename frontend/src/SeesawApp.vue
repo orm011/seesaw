@@ -234,6 +234,14 @@
             Next (Right Arrow)
         </button>
       </div>
+      <div>
+        <button
+            class="btn btn-danger"
+            @click="close_modal()"
+          >
+            Close (Esc)
+        </button>
+      </div>
     </m-modal>
   </div>  
 </template>
