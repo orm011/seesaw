@@ -475,7 +475,8 @@ export default defineComponent({
     },
     handleModalKeyUp(ev){
         console.log('within modalKeyUp handler', ev)
-        if (this.annotator_text_pointer == null){ // ie if text is being entered ignore this
+        //if (this.annotator_text_pointer == null){ // ie if text is being entered ignore this
+        if (this.annotator_text_pointer == null || this.front_end_type !== 'textual'){ // ie if text is being entered ignore this
           console.log("EV CODE"); 
           console.log(ev.code); 
           if (ev.code === 'ArrowLeft' || ev.code === 'ArrowRight'){
