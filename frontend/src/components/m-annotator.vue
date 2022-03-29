@@ -296,6 +296,24 @@ export default defineComponent({
         paper.view.draw();
         paper.view.update();
     },
+    full_box_present(){
+      let paper = this.paper; 
+      paper.activate(); 
+
+      let boxes = this.annotation_paper_objs.map(this.paper2imdata);
+      let img = this.$refs.image;         
+      let height = img.height;
+      let width = img.width;
+
+      for (var index in boxes){
+        let box = boxes.at(index); 
+        console.log(box); 
+        if (box.x1 == 0 && box.x2 == width && box.y1 == 0 && box.y2 == height){
+          return true; 
+        }
+      }
+      return false; 
+    }, 
     draw_full_frame_box(accepted){
       // implement me
       let paper = this.paper; 
