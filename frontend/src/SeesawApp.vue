@@ -200,7 +200,7 @@
             :disabled="this.image_index === 1 || this.image_index === null"
             @click="moveLeft()"
           >
-            Previous (Left Arrow)
+            Previous (A)
         </button>
         <div 
         class="button-row"
@@ -210,14 +210,14 @@
             class="btn btn-danger"
             @click="delete_full_box()"
           >
-            Remove Accepted (D)
+            Remove Accepted (S)
           </button>
           <button
             v-else
             class="btn btn-danger"
             @click="mark_image_accepted()"
           >
-            Mark Accepted (Space)
+            Mark Accepted (W)
           </button>
         </div>
         <div
@@ -228,14 +228,14 @@
             class="btn btn-danger"
             @click="mark_image_accepted()"
           >
-            Select Full Box (Space)
+            Select Full Box (W)
           </button>
           <button
             v-else
             class="btn btn-danger"
             @click="mark_image_accepted()"
           >
-            Create Full Box (Space) 
+            Create Full Box (W) 
           </button>
         </div>
         <div
@@ -254,7 +254,7 @@
             :disabled="this.image_index >= this.total_images() || this.image_index === null"
             @click="moveRight()"
           >
-            Next (Right Arrow)
+            Next (D)
         </button>
       </div>
       <div>
@@ -272,7 +272,7 @@
             :disabled="annotator_text_pointer == null"
             @click="delete_annotation()"
           >
-            Delete Box (D)
+            Delete Box (S)
           </button>
           <button
             class="btn btn-danger"
@@ -291,7 +291,7 @@
             @click="next()"
             onfocus="blur()"
           >
-            Load More Images (R)
+            Load More Images (Space)
         </button>
       </div>
     </m-modal>
@@ -559,12 +559,12 @@ export default defineComponent({
         if (this.annotator_text_pointer == null || this.front_end_type !== 'textual'){ // ie if text is being entered ignore this
           console.log("EV CODE"); 
           console.log(ev.code); 
-          if (ev.code === 'ArrowLeft' || ev.code === 'ArrowRight'){
-            let delta = (ev.code === 'ArrowLeft') ? -1 : 1
+          if (ev.code === 'KeyA' || ev.code === 'KeyD'){
+            let delta = (ev.code === 'KeyA') ? -1 : 1
             this.handle_arrow(delta);
           } else if (ev.code == 'Escape') {
             this.close_modal()
-          } else if (ev.code == 'Space'){
+          } else if (ev.code == 'KeyW'){
             // TODO: make it toggle accept the image
             if (this.front_end_type === 'pytorch'){
               this.mark_image_accepted(); 
@@ -577,13 +577,13 @@ export default defineComponent({
             if (this.front_end_type === 'pytorch'){
               this.$refs.annotator.activation_press();
             } 
-          } else if (ev.code == 'KeyD'){
+          } else if (ev.code == 'KeyS'){
             if (this.front_end_type !== 'plain' && this.annotator_text_pointer !== null){
               this.delete_annotation(); 
             } else if (this.front_end_type === 'plain' && this.checkForFullBox()){
               this.delete_full_box(); 
             }
-          } else if (ev.code == 'KeyR'){
+          } else if (ev.code == 'Space'){
             this.next(); 
           }
         } else { // assume text
