@@ -277,6 +277,7 @@
           <button
             class="btn btn-danger"
             @click="this.$refs.annotator.activation_press()"
+            onfocus="blur()"
           >
             Toggle Area of Interest (E)
           </button>
@@ -287,6 +288,7 @@
         <button
             class="btn btn-danger"
             @click="next()"
+            onfocus="blur()"
           >
             Load More Images (R)
         </button>
