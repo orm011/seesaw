@@ -202,7 +202,9 @@
           >
             Previous (Left Arrow)
         </button>
-        <div v-if="front_end_type === 'plain'">
+        <div 
+        class="button-row"
+        v-if="front_end_type === 'plain'">
           <button
             v-if="checkForFullBox()"
             class="btn btn-danger"
@@ -218,7 +220,9 @@
             Mark Accepted (Space)
           </button>
         </div>
-        <div v-else-if="front_end_type === 'pytorch'">
+        <div
+        class="button-row" 
+        v-else-if="front_end_type === 'pytorch'">
           <button
             v-if="checkForFullBox()"
             class="btn btn-danger"
@@ -234,7 +238,9 @@
             Create Full Box (Space) 
           </button>
         </div>
-        <div v-else>
+        <div
+        class="button-row" 
+        v-else>
           <button
             class="btn btn-danger"
             @click="create_full_box()"
@@ -258,7 +264,9 @@
           >
             Close (Esc)
         </button>
-        <div v-if="front_end_type !== 'plain'">
+        <div
+        class="button-row" 
+        v-if="front_end_type !== 'plain'">
           <button
             class="btn btn-danger"
             :disabled="annotator_text_pointer == null"
@@ -757,6 +765,10 @@ img {
   .sidebar {
     top: 5rem;
   }
+}
+
+.button-row {
+  display: inline; 
 }
 
 .row .space {
