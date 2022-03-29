@@ -299,6 +299,7 @@
 </template>
 <script lang="ts">
 import {callWithAsyncErrorHandling, defineComponent} from 'vue';
+import {FrontendT, frontends} from './frontend_types'
 
 import MImageGallery from './components/m-image-gallery.vue';
 import MAnnotator from './components/m-annotator.vue';
@@ -311,12 +312,6 @@ import Autocomplete from 'vue3-autocomplete'
 import 'vue3-autocomplete/dist/vue3-autocomplete.css'
 
 import {image_accepted} from './util'
-
-const FRONT_END_TYPE = {
-   PLAIN: 'plain',
-   BOX: 'pytorch',
-   TEXTUAL: 'textual',
-};
 
 export default defineComponent({
     components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete},
@@ -363,6 +358,18 @@ export default defineComponent({
             this.other_url = `${window.location.origin}/session?path=${params.get('other')}`
             this.load_session(session_path)
         } else if (window.location.pathname == '/user_session'){
+            // set front-end mode here based on user session params
+            switch (params.get('mode')) {
+                case 'default':
+                  this.front_end_type = 'plain';
+                  break;
+                case 'pytorch':
+                case 'fine':
+                  this.front_end_type = 'pytorch';
+                  break
+                default:
+                  console.log(`unknown mode ${params.get('mode')}.`);
+            }
             fetch('/api/user_session?' + params, {method: 'POST'})
             .then(response => response.json())
             .then(this._update_client_data)
@@ -381,10 +388,6 @@ export default defineComponent({
         } 
         setTimeout(this.checkContainer, 50); //wait 50 ms, then try again
       },
-      updateFrontEnd() { 
-        let mode = this.client_data.session ?  this.client_data.session.params.interactive : 'textual';
-        this.front_end_type = mode;
-      }, 
       mark_image_accepted(){
           this.$refs.annotator.draw_full_frame_box(true); 
       }, 
@@ -655,7 +658,6 @@ export default defineComponent({
           console.log('update client data', data, reset);
           this.client_data = data;
           this.$refs.config.updateClientData(data.default_params); 
-          this.updateFrontEnd(); 
           this.updateRecommendations(); 
           if (this.client_data.session != null){
             this.selected_index = this.client_data.session.params.index_spec;

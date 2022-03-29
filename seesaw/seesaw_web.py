@@ -51,7 +51,7 @@ def session_params(session_mode, dataset_name):
 
   base = _session_modes[session_mode].copy(deep=True)
   base.index_spec.d_name = _dataset_map[dataset_name]
-  base.index_spec.i_name = 'coarse' if session_mode in ['default'] else 'multiscale'
+  ## base.index_spec.i_name set in template
   return base
 
 def add_routes(app : FastAPI):
@@ -140,11 +140,12 @@ def add_routes(app : FastAPI):
       @app.post('/user_session', response_model=AppState)
       def user_session(self, mode, dataset):
         ## makes a new session using a config for the given mode
-        print('start user session request: ', mode, dataset)
+        print('start user_session request: ', mode, dataset)
         new_params = session_params(mode, dataset)
+        print('new user_session params used:', new_params)
         self._reset_dataset(new_params)
         st =  self._getstate()
-        print('done with user session req')
+        print('completed user_session request')
         return st
 
   return WebSeesaw
