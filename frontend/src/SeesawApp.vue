@@ -350,7 +350,7 @@ export default defineComponent({
                 annotator_text_pointer : null,
                 show_config : false,
                 other_url : null,
-                autocomplete_items: [], 
+                autocomplete_items: [],
                 front_end_type : 'textual', // by default textual so it works when using plain url
                 button_labels : {
                   "test" : {"add": "Add Button"},
@@ -417,6 +417,13 @@ export default defineComponent({
       }, 
       image_accepted(imdata){ // make it accessible from the <template>
           return image_accepted(imdata)
+      },
+      get_session_id(){
+        if (this.client_data.session){
+          return this.client_data.session.params.session_id
+        } else {
+          return null
+        }
       },
       updateRecommendations() {
         this.autocomplete_items = []; 
@@ -682,7 +689,7 @@ export default defineComponent({
         },
         reset(index){
           let config = this.$refs.config.currentConfig();           
-          let reqdata = {config: null};
+          let reqdata = {config: null, session_id: this.get_session_id()};
           if (index != null){
             reqdata.config = {...config};
           }
@@ -697,8 +704,9 @@ export default defineComponent({
           .then(response => response.json())
           .then(data => this._update_client_data(data, true))
         },
-        text(text_query){
-            fetch(`/api/text?key=${encodeURIComponent(text_query)}`,   
+        text(text_query : string){
+            let params = new URLSearchParams({key:text_query, session_id:this.get_session_id()})
+            fetch(`/api/text?` + params,   
                 {method: 'POST', 
                 headers: {'Content-Type': 'application/json'}, 
                 body: JSON.stringify({})}
@@ -710,7 +718,7 @@ export default defineComponent({
           console.log(' this' , this);
           if (!this.loading_next){
             this.loading_next = true; 
-            let body = { client_data : this.$data.client_data };
+            let body = { client_data : this.$data.client_data, session_id : this.get_session_id() };
 
               fetch(`/api/next`, {method:'POST',
                               headers: {'Content-Type': 'application/json'},
@@ -724,9 +732,10 @@ export default defineComponent({
           } else { 
             console.log("PREVENTED NEXT DUE TO WAITING");
           }
+
         },
         save(){
-          let body = { client_data : this.$data.client_data};
+          let body = { client_data : this.$data.client_data, session_id : this.get_session_id() };
           fetch(`/api/save`, {method:'POST',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify(body) // body data type must match "Content-Type" header
