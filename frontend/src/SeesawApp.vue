@@ -258,14 +258,21 @@
           >
             Close (Esc)
         </button>
-        <button
-            v-if="front_end_type !== 'plain'"
+        <div v-if="front_end_type !== 'plain'">
+          <button
             class="btn btn-danger"
             :disabled="annotator_text_pointer == null"
             @click="delete_annotation()"
           >
             Delete Box (D)
           </button>
+          <button
+            class="btn btn-danger"
+            @click="this.$refs.annotator.activation_press()"
+          >
+            Toggle Area of Interest (E)
+          </button>
+        </div>
       </div>
       <div class="keyword-text">
         <span> {{this.image_index}} / {{this.total_images()}} </span>
