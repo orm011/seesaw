@@ -16,19 +16,12 @@ class AppState(BaseModel): # Using this as a response for every state transition
     session : Optional[SessionState] #sometimes there is no active session
 
 class SessionReq(BaseModel):
+    session_id : str
     client_data : AppState
 
 class ResetReq(BaseModel):
+    session_id : str
     config : Optional[SessionParams]
-
-class GroundTruthReq(BaseModel):
-    dataset_name : str
-    ground_truth_category : str
-    dbidx : int
-
-class GroundTruthResp(BaseModel):
-    dbidx : int
-    boxes : List[Box]
 
 class SessionInfoReq(BaseModel):
     path : str
@@ -37,7 +30,6 @@ class SaveResp(BaseModel):
     path : str
 
 def prep_db(gdm, index_spec):
-    print('call load index')
     hdb = gdm.load_index(index_spec.d_name, index_spec.i_name)
     # TODO: add subsetting here
     return hdb
@@ -45,13 +37,14 @@ def prep_db(gdm, index_spec):
 from .util import reset_num_cpus
 from .configs import _session_modes, _dataset_map, std_linear_config,std_textual_config
 
-def session_params(session_mode, dataset_name):
+def session_params(session_mode, dataset_name, session_id):
   assert session_mode in _session_modes.keys()
   assert dataset_name in _dataset_map.keys()
 
   base = _session_modes[session_mode].copy(deep=True)
   base.index_spec.d_name = _dataset_map[dataset_name]
   ## base.index_spec.i_name set in template
+  base.session_id = session_id
   return base
 
 def add_routes(app : FastAPI):
@@ -70,13 +63,15 @@ def add_routes(app : FastAPI):
           print('indices done')
           self.default_params = _session_modes['textual']
           self.session = None
-
+          self.sessions = {}
 
       def _reset_dataset(self,  s: SessionParams):
           hdb = prep_db(self.gdm, s.index_spec)
           print('prep db done')
           res = make_session(self.gdm, s)
-          self.session = res['session']
+          session = res['session']
+          self.sessions[s.session_id] = session
+          self.session = session
           print('new session ready')
 
       def _getstate(self):
@@ -85,26 +80,22 @@ def add_routes(app : FastAPI):
                           session=self.session.get_state() if self.session is not None else None)
 
       @app.get('/getstate', response_model=AppState)
-      def getstate(self):
+      def getstate(self, session_id):
+          self.session = self.sessions[session_id]
           return self._getstate()
 
       @app.post('/reset', response_model=AppState)
       def reset(self, r : ResetReq):
           print('reset request', r)
-          if r.config is None:
-            self.session = None
-          else:
+          if r.config is not None:
             self._reset_dataset(r.config)
 
           return self._getstate()
 
-      @app.post('/get_ground_truth', response_model=GroundTruthResp)
-      def get_ground_truth(self, r : GroundTruthReq):
-          pass
-          # self.ground_truth_manager.get_ground_truth()
-
       @app.post('/next', response_model=AppState)
       def next(self, body : SessionReq):
+          assert body.session_id in self.sessions
+          self.session = self.sessions[body.session_id]
           state = body.client_data.session
           if state is not None: ## refinement code
               self.session.update_state(state)
@@ -113,18 +104,23 @@ def add_routes(app : FastAPI):
           return self._getstate()
 
       @app.post('/text', response_model=AppState)
-      def text(self, key : str):
+      def text(self, session_id: str, key : str):
+          assert session_id in self.sessions
+          self.session = self.sessions[session_id]
           self.session.set_text(key=key)
           self.session.next()
           return self._getstate()
 
       @app.post('/save', response_model=SaveResp)
       def save(self, body : SessionReq):
+          assert body.session_id in self.sessions
+          self.session = self.sessions[body.session_id]
           self.session.update_state(body.client_data.session)
-          output_path = f'{self.save_path}/session_{time.strftime("%Y%m%d-%H%M%S")}'
+          output_path = f'{self.save_path}/session_{body.session_id}/session_time_{time.strftime("%Y%m%d-%H%M%S")}'
           os.makedirs(output_path, exist_ok=False)
           base = self._getstate().dict()
           json.dump(base, open(f'{output_path}/summary.json', 'w'))
+          print(f'Saved session {output_path}')
           return SaveResp(path=output_path)
 
       @app.post('/session_info', response_model=AppState)
@@ -138,14 +134,20 @@ def add_routes(app : FastAPI):
             return AppState(indices=all_info['indices'], session=all_info['session'], default_params=all_info['session']['params'])
 
       @app.post('/user_session', response_model=AppState)
-      def user_session(self, mode, dataset):
-        ## makes a new session using a config for the given mode
-        print('start user_session request: ', mode, dataset)
-        new_params = session_params(mode, dataset)
-        print('new user_session params used:', new_params)
-        self._reset_dataset(new_params)
+      def user_session(self, mode, dataset, session_id):
+        if session_id in self.sessions:
+            print('using existing session')
+            self.session = self.sessions[session_id]
+        else:
+            ## makes a new session using a config for the given mode
+            print('start user_session request: ', mode, dataset, session_id)
+            new_params = session_params(mode, dataset, session_id)
+            print('new user_session params used:', new_params)
+            self._reset_dataset(new_params)
+
         st =  self._getstate()
         print('completed user_session request')
+
         return st
 
   return WebSeesaw
