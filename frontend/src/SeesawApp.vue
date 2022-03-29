@@ -118,12 +118,12 @@
           v-for="(imdata,idx) in client_data.session.gdata"
           :key="idx"
         >
-          <div
+          <!-- <div
             v-if="client_data.session.timing.length > 0"
             class="row"
           >
             <span>Search refinement took {{ client_data.session.timing[idx].toFixed(2) }} seconds</span>
-          </div>
+          </div> -->
           <div class="row">
             <m-image-gallery
               ref="galleries"
@@ -143,7 +143,7 @@
             @click="next()"
             class="btn btn-dark btn-block"
           >
-            More...
+            Load More Images
           </button>
         </div>
       </main>
@@ -248,6 +248,7 @@
       </div>
       <div class="keyword-text">
         <span> {{this.image_index}} / {{this.total_images()}} </span>
+        <span> (Total accepted: {{this.total_accepted()}}) </span>
         <button
             class="btn btn-danger"
             @click="next()"
