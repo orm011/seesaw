@@ -172,6 +172,7 @@
               class="btn btn-danger"
               v-if="annotator_text_pointer.box.data.marked_accepted"
               @click="toggle_box_accepted()"
+              onfocus="blur()"
             >
               Mark Negative
             </button>
@@ -179,6 +180,7 @@
               class="btn btn-danger"
               v-else
               @click="toggle_box_accepted()"
+              onfocus="blur()"
             >
               Mark Accepted
             </button>
@@ -199,6 +201,7 @@
             ref="left_button"
             :disabled="this.image_index === 1 || this.image_index === null"
             @click="moveLeft()"
+            onfocus="blur()"
           >
             Previous (A)
         </button>
@@ -209,6 +212,7 @@
             v-if="checkForFullBox()"
             class="btn btn-danger"
             @click="delete_full_box()"
+            onfocus="blur()"
           >
             Remove Accepted (S)
           </button>
@@ -216,6 +220,7 @@
             v-else
             class="btn btn-danger"
             @click="mark_image_accepted()"
+            onfocus="blur()"
           >
             Mark Accepted (W)
           </button>
@@ -227,6 +232,7 @@
             v-if="checkForFullBox()"
             class="btn btn-danger"
             @click="mark_image_accepted()"
+            onfocus="blur()"
           >
             Select Full Box (W)
           </button>
@@ -234,6 +240,7 @@
             v-else
             class="btn btn-danger"
             @click="mark_image_accepted()"
+            onfocus="blur()"
           >
             Create Full Box (W) 
           </button>
@@ -244,6 +251,7 @@
           <button
             class="btn btn-danger"
             @click="create_full_box()"
+            onfocus="blur()"
           >
             Full Box
           </button>
@@ -253,6 +261,7 @@
             ref="right_button"
             :disabled="this.image_index >= this.total_images() || this.image_index === null"
             @click="moveRight()"
+            onfocus="blur()"
           >
             Next (D)
         </button>
@@ -261,6 +270,7 @@
         <button
             class="btn btn-danger"
             @click="close_modal()"
+            onfocus="blur()"
           >
             Close (Esc)
         </button>
@@ -271,6 +281,7 @@
             class="btn btn-danger"
             :disabled="annotator_text_pointer == null"
             @click="delete_annotation()"
+            onfocus="blur()"
           >
             Delete Box (S)
           </button>
@@ -546,14 +557,14 @@ export default defineComponent({
     moveLeft(){
       let delta =  -1;
       this.handle_arrow(delta);
-      var element = this.$refs.left_button
-      element.blur()
+      //var element = this.$refs.left_button
+      //element.blur()
     }, 
     moveRight(){
       let delta =  1;
       this.handle_arrow(delta);
-      var element = this.$refs.right_button
-      element.blur()
+      //var element = this.$refs.right_button
+      //element.blur()
     },
     handleModalKeyUp(ev){
         console.log('within modalKeyUp handler', ev)
