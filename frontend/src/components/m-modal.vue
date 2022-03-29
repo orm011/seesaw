@@ -54,7 +54,7 @@ export default defineComponent({
   height: 100%; /* Full height */
   overflow: auto; /* Enable scroll if needed */
   background-color: rgb(0,0,0); /* Fallback color */
-  background-color: rgba(0,0,0,0.9); /* Black w/ opacity */
+  background-color: rgba(0,0,0,1.); /* Black w/ opacity */
 }
 
 /* disables scrolling of background while modal is open 
