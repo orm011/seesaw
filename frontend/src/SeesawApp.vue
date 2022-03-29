@@ -172,6 +172,7 @@
               class="btn btn-danger"
               v-if="annotator_text_pointer.box.data.marked_accepted"
               @click="toggle_box_accepted()"
+              onfocus="blur()"
             >
               Mark Negative
             </button>
@@ -179,6 +180,7 @@
               class="btn btn-danger"
               v-else
               @click="toggle_box_accepted()"
+              onfocus="blur()"
             >
               Mark Accepted
             </button>
@@ -199,6 +201,7 @@
             ref="left_button"
             :disabled="this.image_index === 1 || this.image_index === null"
             @click="moveLeft()"
+            onfocus="blur()"
           >
             Previous (A)
         </button>
@@ -209,6 +212,7 @@
             v-if="checkForFullBox()"
             class="btn btn-danger"
             @click="delete_full_box()"
+            onfocus="blur()"
           >
             Remove Accepted (S)
           </button>
@@ -216,6 +220,7 @@
             v-else
             class="btn btn-danger"
             @click="mark_image_accepted()"
+            onfocus="blur()"
           >
             Mark Accepted (W)
           </button>
@@ -227,6 +232,7 @@
             v-if="checkForFullBox()"
             class="btn btn-danger"
             @click="mark_image_accepted()"
+            onfocus="blur()"
           >
             Select Full Box (W)
           </button>
@@ -234,6 +240,7 @@
             v-else
             class="btn btn-danger"
             @click="mark_image_accepted()"
+            onfocus="blur()"
           >
             Create Full Box (W) 
           </button>
@@ -244,6 +251,7 @@
           <button
             class="btn btn-danger"
             @click="create_full_box()"
+            onfocus="blur()"
           >
             Full Box
           </button>
@@ -253,6 +261,7 @@
             ref="right_button"
             :disabled="this.image_index >= this.total_images() || this.image_index === null"
             @click="moveRight()"
+            onfocus="blur()"
           >
             Next (D)
         </button>
@@ -261,6 +270,7 @@
         <button
             class="btn btn-danger"
             @click="close_modal()"
+            onfocus="blur()"
           >
             Close (Esc)
         </button>
@@ -271,6 +281,7 @@
             class="btn btn-danger"
             :disabled="annotator_text_pointer == null"
             @click="delete_annotation()"
+            onfocus="blur()"
           >
             Delete Box (S)
           </button>
@@ -290,6 +301,7 @@
             class="btn btn-danger"
             @click="next()"
             onfocus="blur()"
+            :disabled="loading_next"
           >
             Load More Images (Space)
         </button>
@@ -344,6 +356,7 @@ export default defineComponent({
                   "test" : {"add": "Add Button"},
                 }, 
                 image_index : null, 
+                loading_next : false, 
               }
             },
     mounted (){
@@ -551,14 +564,14 @@ export default defineComponent({
     moveLeft(){
       let delta =  -1;
       this.handle_arrow(delta);
-      var element = this.$refs.left_button
-      element.blur()
+      //var element = this.$refs.left_button
+      //element.blur()
     }, 
     moveRight(){
       let delta =  1;
       this.handle_arrow(delta);
-      var element = this.$refs.right_button
-      element.blur()
+      //var element = this.$refs.right_button
+      //element.blur()
     },
     handleModalKeyUp(ev){
         console.log('within modalKeyUp handler', ev)
@@ -703,15 +716,23 @@ export default defineComponent({
         },
         next(selection = null){
           console.log(' this' , this);
-          let body = { client_data : this.$data.client_data, 
-                      session_id : this.get_session_id()};
+          if (!this.loading_next){
+            this.loading_next = true; 
+            let body = { client_data : this.$data.client_data, session_id : this.get_session_id() };
 
-            fetch(`/api/next`, {method:'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(body) // body data type must match "Content-Type" header
-                            })
-            .then(response => response.json())
-            .then(this._update_client_data)
+              fetch(`/api/next`, {method:'POST',
+                              headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify(body) // body data type must match "Content-Type" header
+                              })
+              .then((response) => {
+                this.loading_next = false;
+                return response.json(); 
+                })
+              .then(this._update_client_data)
+          } else { 
+            console.log("PREVENTED NEXT DUE TO WAITING");
+          }
+
         },
         save(){
           let body = { client_data : this.$data.client_data, session_id : this.get_session_id() };
