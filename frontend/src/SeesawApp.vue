@@ -227,7 +227,7 @@
         </div>
         <div
         class="button-row" 
-        v-else-if="front_end_type === 'pytorch'">
+        v-else-if="front_end_type === 'pytorch' && allow_full_box">
           <button
             v-if="checkForFullBox()"
             class="btn btn-danger"
@@ -247,7 +247,7 @@
         </div>
         <div
         class="button-row" 
-        v-else>
+        v-else-if="front_end_type === 'textual'">
           <button
             class="btn btn-danger"
             @click="create_full_box()"
@@ -356,7 +356,8 @@ export default defineComponent({
                   "test" : {"add": "Add Button"},
                 }, 
                 image_index : null, 
-                loading_next : false, 
+                loading_next : false,
+                allow_full_box : false,  
               }
             },
     mounted (){
@@ -579,7 +580,7 @@ export default defineComponent({
             this.close_modal()
           } else if (ev.code == 'KeyW'){
             // TODO: make it toggle accept the image
-            if (this.front_end_type === 'pytorch'){
+            if (this.front_end_type === 'pytorch' && this.allow_full_box){
               this.mark_image_accepted(); 
             } else if (this.front_end_type === 'plain' && !this.checkForFullBox()){
               this.mark_image_accepted(); 
@@ -637,6 +638,7 @@ export default defineComponent({
           let target = glidx + delta;
           if (target >= 0 && target < total){
             console.log('about to switch'); 
+            this.annotator_text_pointer = null; 
             let new_idx = this.get_nth_idcs(target);
             this.handle_selection_change(new_idx);
             // this.$refs.galleries[idx].close_modal();
