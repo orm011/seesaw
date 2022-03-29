@@ -39,7 +39,7 @@ std_textual_config=_method_configs['textual']
 std_linear_config=_method_configs['pytorch']
 
 _session_modes = {
-  'base':SessionParams(index_spec={'d_name':'', 'i_name':'coarse'},
+  'default':SessionParams(index_spec={'d_name':'', 'i_name':'coarse'},
           interactive='plain', 
           method_config=_method_configs['plain'],
           agg_method='avg_vector',
