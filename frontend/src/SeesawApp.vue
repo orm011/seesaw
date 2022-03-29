@@ -280,7 +280,7 @@
             class="btn btn-danger"
             @click="next()"
           >
-            Load More Images
+            Load More Images (R)
         </button>
       </div>
     </m-modal>
@@ -569,6 +569,8 @@ export default defineComponent({
             } else if (this.front_end_type === 'plain' && this.checkForFullBox()){
               this.delete_full_box(); 
             }
+          } else if (ev.code == 'KeyR'){
+            this.next(); 
           }
         } else { // assume text
           if (ev.code == 'Escape'){
