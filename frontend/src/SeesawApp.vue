@@ -183,12 +183,6 @@
               Mark Accepted
             </button>
           </div>
-          <button
-            class="btn btn-danger"
-            @click="delete_annotation()"
-          >
-            Delete Box
-          </button>
           <Autocomplete 
               v-if="this.front_end_type === 'textual'"
               @input="changeInput"
@@ -245,6 +239,14 @@
           >
             Close (Esc)
         </button>
+        <button
+            v-if="front_end_type !== 'default'"
+            class="btn btn-danger"
+            :disabled="annotator_text_pointer == null"
+            @click="delete_annotation()"
+          >
+            Delete Box (D)
+          </button>
       </div>
       <div class="keyword-text">
         <span> {{this.image_index}} / {{this.total_images()}} </span>
@@ -524,6 +526,10 @@ export default defineComponent({
             if (this.front_end_type === 'pytorch'){
               this.$refs.annotator.activation_press();
             } 
+          } else if (ev.code == 'KeyD'){
+            if (this.front_end_type !== 'default' && this.annotator_text_pointer !== null){
+              this.delete_annotation(); 
+            }
           }
         } else { // assume text
           if (ev.code == 'Escape'){
