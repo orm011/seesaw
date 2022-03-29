@@ -202,27 +202,46 @@
           >
             Previous (Left Arrow)
         </button>
-        <button
-            v-if="front_end_type === 'plain'"
+        <div v-if="front_end_type === 'plain'">
+          <button
+            v-if="checkForFullBox()"
+            class="btn btn-danger"
+            @click="delete_full_box()"
+          >
+            Remove Accepted (D)
+          </button>
+          <button
+            v-else
             class="btn btn-danger"
             @click="mark_image_accepted()"
           >
-            Mark Accepted
-        </button>
-        <button
-            v-else-if="front_end_type === 'pytorch'"
+            Mark Accepted (Space)
+          </button>
+        </div>
+        <div v-else-if="front_end_type === 'pytorch'">
+          <button
+            v-if="checkForFullBox()"
             class="btn btn-danger"
             @click="mark_image_accepted()"
+          >
+            Select Full Box (Space)
+          </button>
+          <button
+            v-else
+            class="btn btn-danger"
+            @click="mark_image_accepted()"
+          >
+            Create Full Box (Space) 
+          </button>
+        </div>
+        <div v-else>
+          <button
+            class="btn btn-danger"
+            @click="create_full_box()"
           >
             Full Box
-        </button>
-        <button
-          v-else
-          class="btn btn-danger"
-          @click="create_full_box()"
-        >
-          Full Box
-        </button>
+          </button>
+        </div>
         <button
             class="btn btn-danger"
             ref="right_button"
@@ -240,7 +259,7 @@
             Close (Esc)
         </button>
         <button
-            v-if="front_end_type !== 'default'"
+            v-if="front_end_type !== 'plain'"
             class="btn btn-danger"
             :disabled="annotator_text_pointer == null"
             @click="delete_annotation()"
@@ -495,6 +514,12 @@ export default defineComponent({
       }
       this.updateRecommendations(); 
     },
+    checkForFullBox(){
+      if (this.$refs.annotator === null || this.$refs.annotator === undefined){
+        return false; 
+      }
+      return this.$refs.annotator.full_box_present(); 
+    }, 
     moveLeft(){
       let delta =  -1;
       this.handle_arrow(delta);
@@ -520,15 +545,22 @@ export default defineComponent({
             this.close_modal()
           } else if (ev.code == 'Space'){
             // TODO: make it toggle accept the image
-            this.mark_image_accepted(); 
+            if (this.front_end_type === 'pytorch'){
+              this.mark_image_accepted(); 
+            } else if (this.front_end_type === 'plain' && !this.checkForFullBox()){
+              this.mark_image_accepted(); 
+            }
+            //this.mark_image_accepted(); 
           }  else if (ev.code == 'KeyE'){
             // TODO: show activation using key 'E' (for explain)
             if (this.front_end_type === 'pytorch'){
               this.$refs.annotator.activation_press();
             } 
           } else if (ev.code == 'KeyD'){
-            if (this.front_end_type !== 'default' && this.annotator_text_pointer !== null){
+            if (this.front_end_type !== 'plain' && this.annotator_text_pointer !== null){
               this.delete_annotation(); 
+            } else if (this.front_end_type === 'plain' && this.checkForFullBox()){
+              this.delete_full_box(); 
             }
           }
         } else { // assume text
@@ -548,6 +580,12 @@ export default defineComponent({
           this.$refs.annotator.delete_paper_obj(this.annotator_text_pointer);
           this.handleAnnotatorSelectionChange(null);
     },
+    delete_full_box(){
+      if(this.checkForFullBox()){
+        this.$refs.annotator.draw_full_frame_box(true); 
+        this.delete_annotation(); 
+      }
+    }, 
     create_full_box(){
       //TODO
       console.log("create full box ran");
