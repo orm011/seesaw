@@ -290,6 +290,7 @@
             class="btn btn-danger"
             @click="next()"
             onfocus="blur()"
+            :disabled="loading_next"
           >
             Load More Images (Space)
         </button>
@@ -344,6 +345,7 @@ export default defineComponent({
                   "test" : {"add": "Add Button"},
                 }, 
                 image_index : null, 
+                loading_next : false, 
               }
             },
     mounted (){
@@ -695,14 +697,22 @@ export default defineComponent({
         },
         next(selection = null){
           console.log(' this' , this);
-          let body = { client_data : this.$data.client_data };
+          if (!this.loading_next){
+            this.loading_next = true; 
+            let body = { client_data : this.$data.client_data };
 
-            fetch(`/api/next`, {method:'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(body) // body data type must match "Content-Type" header
-                            })
-            .then(response => response.json())
-            .then(this._update_client_data)
+              fetch(`/api/next`, {method:'POST',
+                              headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify(body) // body data type must match "Content-Type" header
+                              })
+              .then((response) => {
+                this.loading_next = false;
+                return response.json(); 
+                })
+              .then(this._update_client_data)
+          } else { 
+            console.log("PREVENTED NEXT DUE TO WAITING");
+          }
         },
         save(){
           let body = { client_data : this.$data.client_data};
