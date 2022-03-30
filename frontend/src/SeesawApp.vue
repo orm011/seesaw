@@ -195,6 +195,43 @@
               />
         </div>
       </div>
+      <div>
+        <button
+            class="btn btn-danger"
+            @click="close_modal()"
+            onfocus="blur()"
+          >
+            Close (Esc)
+        </button>
+        <div
+        class="button-row" 
+        v-if="front_end_type === 'pytorch' && allow_full_box">
+          <button
+            v-if="checkForFullBox()"
+            class="btn btn-danger"
+            @click="mark_image_accepted()"
+            onfocus="blur()"
+          >
+            Select Full Box (W)
+          </button>
+          <button
+            v-else
+            class="btn btn-danger"
+            @click="mark_image_accepted()"
+            onfocus="blur()"
+          >
+            Create Full Box (W) 
+          </button>
+        </div>
+          <button
+            class="btn btn-danger"
+            v-if="front_end_type !== 'plain'"
+            @click="this.$refs.annotator.activation_press()"
+            onfocus="blur()"
+          >
+            Toggle Area of Interest (E)
+          </button>
+      </div>
       <div> 
         <button
             class="btn btn-danger"
@@ -227,26 +264,6 @@
         </div>
         <div
         class="button-row" 
-        v-else-if="front_end_type === 'pytorch' && allow_full_box">
-          <button
-            v-if="checkForFullBox()"
-            class="btn btn-danger"
-            @click="mark_image_accepted()"
-            onfocus="blur()"
-          >
-            Select Full Box (W)
-          </button>
-          <button
-            v-else
-            class="btn btn-danger"
-            @click="mark_image_accepted()"
-            onfocus="blur()"
-          >
-            Create Full Box (W) 
-          </button>
-        </div>
-        <div
-        class="button-row" 
         v-else-if="front_end_type === 'textual'">
           <button
             class="btn btn-danger"
@@ -258,6 +275,15 @@
         </div>
         <button
             class="btn btn-danger"
+            v-if="front_end_type !== 'plain'"
+            :disabled="annotator_text_pointer == null"
+            @click="delete_annotation()"
+            onfocus="blur()"
+          >
+            Delete Box (S)
+          </button>
+        <button
+            class="btn btn-danger"
             ref="right_button"
             :disabled="this.image_index >= this.total_images() || this.image_index === null"
             @click="moveRight()"
@@ -265,34 +291,6 @@
           >
             Next (D)
         </button>
-      </div>
-      <div>
-        <button
-            class="btn btn-danger"
-            @click="close_modal()"
-            onfocus="blur()"
-          >
-            Close (Esc)
-        </button>
-        <div
-        class="button-row" 
-        v-if="front_end_type !== 'plain'">
-          <button
-            class="btn btn-danger"
-            :disabled="annotator_text_pointer == null"
-            @click="delete_annotation()"
-            onfocus="blur()"
-          >
-            Delete Box (S)
-          </button>
-          <button
-            class="btn btn-danger"
-            @click="this.$refs.annotator.activation_press()"
-            onfocus="blur()"
-          >
-            Toggle Area of Interest (E)
-          </button>
-        </div>
       </div>
       <div class="keyword-text">
         <span> {{this.image_index}} / {{this.total_images()}} </span>
