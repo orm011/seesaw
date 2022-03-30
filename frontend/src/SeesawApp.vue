@@ -133,7 +133,7 @@
               @selection="handle_selection_change({gdata_idx:idx, local_idx:$event})"
             />
           </div>
-          <div class="row space" />
+          <!-- <div class="row space" /> -->
         </div>
         <div
           class="row"
