@@ -45,12 +45,19 @@ class SessionParams(BaseModel):
     session_id : str = ''
     other_params : dict = {}
 
+class LogEntry(BaseModel):
+    message : str
+    time : float
+    seen : int
+    accepted : int
+    
 class SessionState(BaseModel):
     params : SessionParams
     gdata : List[List[Imdata]]
     timing : List[float]
     reference_categories : List[str]
     query_string : Optional[str]
+    action_log : List[LogEntry] = []
 
 class BenchParams(BaseModel):
     name : str

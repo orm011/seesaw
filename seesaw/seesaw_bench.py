@@ -347,12 +347,13 @@ def parse_batch(batch):
     return acc
 
 def load_session_data(base_dir):
-    summary_paths = glob.glob(base_dir + '/**/summary.json')
+    summary_paths = glob.glob(base_dir + '/**/summary.json', recursive=True)
     r = ray.data.read_binary_files(summary_paths, include_paths=True)
     res = r.map_batches(parse_batch)
     return res
 
-def process_dict(obj):
+def process_dict(obj, mode='benchmark'):
+    assert mode in ['benchmark', 'session']
     if len(obj) != 1: 
         bs = BenchSummary(**obj)
         b = bs.bench_params

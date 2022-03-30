@@ -234,6 +234,7 @@ class Session:
     acc_activations : list
     total_results : int
     timing : list
+    seen : pr.BitMap
     accepted : pr.BitMap
     q : InteractiveQuery
     index : AccessMethod
@@ -243,16 +244,26 @@ class Session:
         self.dataset = dataset
         self.acc_indices = []
         self.acc_activations = []
-        self.accepted = pr.BitMap()
+        self.seen = pr.BitMap([])
+        self.accepted = pr.BitMap([])
         self.params = params
         self.init_q = None
         self.timing = []
-        self.index = hdb 
+        self.index = hdb
         self.q = hdb.new_query()
-
         self.loop = SeesawLoop(self.gdm, self.q, params=self.params)
+        self.action_log = []
+        self._log('init')
+
+    def get_totals(self):
+        return {'seen':len(self.seen), 'accepted':len(self.accepted)}
+
+    def _log(self, message : str):
+        self.action_log.append({'time':time.time(), 'message':message, 'seen':len(self.seen), 'accepted':len(self.accepted)})
 
     def next(self):
+        self._log('next.start')       
+
         start = time.time()
         r = self.loop.next_batch()
 
@@ -261,10 +272,11 @@ class Session:
         self.acc_indices.append(r['dbidxs'])
         self.acc_activations.append(r['activations'])
         self.timing.append(delta)
-
+        self._log('next.end')
         return r['dbidxs']
 
-    def set_text(self, key):        
+    def set_text(self, key):
+        self._log('set_text')
         self.init_q = key
         p = self.loop.params
         s = self.loop.state
@@ -277,9 +289,13 @@ class Session:
 
     def update_state(self, state: SessionState):
         self._update_labeldb(state.gdata)
+        self._log('update_state.end') # log this after updating so that it includes all new information
+
 
     def refine(self):
+        self._log('refine.start')
         self.loop.refine()
+        self._log('refine.end')
 
     def get_state(self) -> SessionState:
         gdata = []
@@ -288,6 +304,7 @@ class Session:
             gdata.append(imdata)
         
         dat = {}
+        dat['action_log'] = self.action_log
         dat['gdata'] = gdata
         dat['timing']  = self.timing
         dat['reference_categories'] = []
@@ -316,18 +333,15 @@ class Session:
         return reslabs
 
     def _update_labeldb(self, gdata):
+        ## clear bitmap and reconstruct bc user may have erased previously accepted images
+        self.accepted.clear()
+        self.seen.clear()
         for ldata in gdata:
             for imdata in ldata:
+                self.seen.add(imdata.dbidx)
                 if is_image_accepted(imdata):
                     self.accepted.add(imdata.dbidx)
                 self.q.label_db.put(imdata.dbidx, imdata.boxes)
-
-    def get_data(self):
-        #os.makedirs(path, exist_ok=True)
-        #json.dump(self.params.__dict__,open(f'{path}/loop_params.json', 'w'))
-        st = self.get_state()
-        return dict(session_params=self.params.dict(), session_state=st.dict())
-
 
 def prep_data(ds, p : SessionParams):
     box_data, qgt = ds.load_ground_truth()

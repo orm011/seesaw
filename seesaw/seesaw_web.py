@@ -37,7 +37,7 @@ def prep_db(gdm, index_spec):
 from .util import reset_num_cpus
 from .configs import _session_modes, _dataset_map, std_linear_config,std_textual_config
 
-def session_params(session_mode, dataset_name, session_id):
+def session_params(session_mode, dataset_name, session_id, qkey, user):
   assert session_mode in _session_modes.keys()
   assert dataset_name in _dataset_map.keys()
 
@@ -45,10 +45,13 @@ def session_params(session_mode, dataset_name, session_id):
   base.index_spec.d_name = _dataset_map[dataset_name]
   ## base.index_spec.i_name set in template
   base.session_id = session_id
+  base.other_params = {'mode':session_mode, 'dataset':dataset_name, 'qkey':qkey, 'user':user}
   return base
 
 def add_routes(app : FastAPI):
   class WebSeesaw:
+      session : Session
+      sessions : Dict[str,Session]
       def __init__(self, root_dir, save_path, num_cpus=None):
           if num_cpus is not None:
             reset_num_cpus(num_cpus)
@@ -116,6 +119,7 @@ def add_routes(app : FastAPI):
           assert body.session_id in self.sessions
           self.session = self.sessions[body.session_id]
           self.session.update_state(body.client_data.session)
+          self.session._log('save')
           output_path = f'{self.save_path}/session_{body.session_id}/session_time_{time.strftime("%Y%m%d-%H%M%S")}'
           os.makedirs(output_path, exist_ok=False)
           base = self._getstate().dict()
@@ -134,14 +138,14 @@ def add_routes(app : FastAPI):
             return AppState(indices=all_info['indices'], session=all_info['session'], default_params=all_info['session']['params'])
 
       @app.post('/user_session', response_model=AppState)
-      def user_session(self, mode, dataset, session_id):
+      def user_session(self, mode, dataset, session_id, qkey, user):
         if session_id in self.sessions:
             print('using existing session')
             self.session = self.sessions[session_id]
         else:
             ## makes a new session using a config for the given mode
             print('start user_session request: ', mode, dataset, session_id)
-            new_params = session_params(mode, dataset, session_id)
+            new_params = session_params(mode, dataset, session_id, qkey, user)
             print('new user_session params used:', new_params)
             self._reset_dataset(new_params)
 
@@ -149,5 +153,4 @@ def add_routes(app : FastAPI):
         print('completed user_session request')
 
         return st
-
   return WebSeesaw
