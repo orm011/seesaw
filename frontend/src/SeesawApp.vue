@@ -152,18 +152,7 @@
       v-if="selection != null"
       ref="modal"
       @modalKeyUp="handleModalKeyUp($event)"
-    >
-      <div class="row">
-        <m-annotator
-          ref="annotator"
-          :initial_imdata="this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx]"
-          :read_only="false"
-          :front_end_type="this.front_end_type"
-          @selection="handleAnnotatorSelectionChange($event)"
-          :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
-        />
-      </div>
-      <div
+    >       <div
         v-if="annotator_text_pointer != null"
       >
         <div v-if="front_end_type !== 'plain'">
@@ -293,8 +282,6 @@
         </button>
       </div>
       <div class="keyword-text">
-        <span> {{this.image_index}} / {{this.total_images()}} </span>
-        <span> (Total accepted: {{this.total_accepted()}}) </span>
         <button
             class="btn btn-danger"
             @click="next()"
@@ -303,7 +290,19 @@
           >
             Load More Images (Space)
         </button>
+        <span> Image {{this.image_index}} of {{this.total_images()}} ({{this.total_accepted()}} accepted)</span>
       </div>
+      <div class="row">
+        <m-annotator
+          ref="annotator"
+          :initial_imdata="this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx]"
+          :read_only="false"
+          :front_end_type="this.front_end_type"
+          @selection="handleAnnotatorSelectionChange($event)"
+          :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
+        />
+      </div>
+
     </m-modal>
   </div>  
 </template>
