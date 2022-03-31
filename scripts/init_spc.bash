@@ -29,7 +29,7 @@ if [ $# -gt 0 ]; then
     python ./seesaw_deploy/scripts/session_server.py $SERVER_FLAGS
 
     ## for user study also warm cache with the datasets so we don't wait
-    bash $DIR/warmup.bash &
+    bash $DIR/warmup.bash
 
     ## NB assumes we are building in the same machine. disable if not
     #(cd $DIR/../frontend && yarn run vite build) & # ensure we use latest frontend code
