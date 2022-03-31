@@ -71,14 +71,14 @@
           <div class="row" v-if="client_data.session != null">
             <span>Total accepted: {{ total_accepted() }}</span>
           </div>
-          <div class="row" v-if="client_data.session != null">
+          <!-- <div class="row" v-if="client_data.session != null">
             <button 
               class="btn btn-dark btn-block" 
               @click="save()"
             > 
               Save 
             </button>
-          </div>
+          </div> -->
           <!-- <div class="row" v-if="client_data.session != null">
             <button
               class="btn btn-dark btn-block"
@@ -140,7 +140,7 @@
           v-if="client_data.session.gdata.length > 0"
         >
           <button
-            @click="next()"
+            @click="next(false)"
             class="btn btn-dark btn-block"
           >
             Load More Images
@@ -218,7 +218,7 @@
             @click="this.$refs.annotator.activation_press()"
             onfocus="blur()"
           >
-            Toggle Area of Interest (E)
+            Toggle Highlight (E)
           </button>
       </div>
       <div> 
@@ -283,11 +283,11 @@
         <button
             class="btn btn-danger"
             v-else
-            @click="next()"
+            @click="next(true)"
             onfocus="blur()"
             :disabled="loading_next"
           >
-            More Images (D)
+            Next (D)
         </button>
       </div>
       <div class="keyword-text">
@@ -581,7 +581,7 @@ export default defineComponent({
           console.log("EV CODE"); 
           console.log(ev.code); 
           if (ev.code === 'KeyD' && this.image_index >= this.total_images()){
-            this.next(); 
+            this.next(true); 
           } else if (ev.code === 'KeyA' || ev.code === 'KeyD'){
             let delta = (ev.code === 'KeyA') ? -1 : 1
             this.handle_arrow(delta);
@@ -723,8 +723,18 @@ export default defineComponent({
               }
             })
         },
-        next(selection = null){
-          console.log(' this' , this);
+        next(move_right: boolean = false){
+          let handle_ret = (new_data) => {
+            this._update_client_data(new_data);
+            this.loading_next = false;
+            if (move_right){ 
+                console.log('hanlding ret', move_right, 'this', this); 
+                this.moveRight() 
+            }   else {
+              console.log('no move right');
+            }
+          }
+
           if (!this.loading_next){
             this.loading_next = true; 
             let body = { client_data : this.$data.client_data, session_id : this.get_session_id() };
@@ -734,10 +744,9 @@ export default defineComponent({
                               body: JSON.stringify(body) // body data type must match "Content-Type" header
                               })
               .then((response) => {
-                this.loading_next = false;
                 return response.json(); 
                 })
-              .then(this._update_client_data)
+              .then(handle_ret)
               .catch((error) => {
                 console.log("Error in next: ", error); 
                 this.loading_next = false; 
@@ -754,12 +763,16 @@ export default defineComponent({
                             body: JSON.stringify(body) // body data type must match "Content-Type" header
                             })
             .then(response => response.json())
-            .then(p => console.log('save response', p))
+            .then(p => window.alert('Saved session data'))
+            .catch((error) => {
+              console.log('error saving', error)
+              window.alert('Error saving session data');
+            })
         },
         close_modal(){
           this.handle_selection_change(null)
+          this.save()
         }
-        
     }
 })
 </script>
