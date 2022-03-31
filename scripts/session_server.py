@@ -4,7 +4,10 @@ from seesaw import add_routes
 import os
 import argparse
 from ray import serve
-import torch
+
+"""
+deploys session server and exits. if it has been run before, when re-run it will re-deploy the current version.
+"""
 
 parser = argparse.ArgumentParser(description='start a seesaw session server')
 parser.add_argument('--seesaw_root', type=str, help='Seesaw root folder')
@@ -16,7 +19,7 @@ os.makedirs(args.save_path, exist_ok=True)
 assert os.path.isdir(args.seesaw_root)
 
 ray.init('auto', namespace="seesaw", log_to_driver=True)
-serve.start(http_options={'port':8000})
+serve.start() # started in init_spc.sh
 
 app = FastAPI()
 WebSeesaw = add_routes(app)
@@ -30,10 +33,11 @@ seesaw_root = os.path.abspath(os.path.expanduser(args.seesaw_root))
 save_path = os.path.abspath(os.path.expanduser(args.save_path))
 
 
-deploy_options = dict(name="seesaw_deployment", ray_actor_options={'num_cpus': args.num_cpus, 'num_gpus':num_gpus}, route_prefix='/')
+deploy_options = dict(name="seesaw_deployment", 
+                    num_replicas=1,
+                    ray_actor_options={'num_cpus': args.num_cpus, 'num_gpus':num_gpus}, 
+                    route_prefix='/')
+
 WebSeesawServe = serve.deployment(**deploy_options)(serve.ingress(app)(WebSeesaw))
 WebSeesawServe.deploy(root_dir=seesaw_root, save_path=save_path, num_cpus=args.num_cpus)
-
-print('sessionserver is ready. visit it through http://localhost:9000')
-while True: # wait 
-    input()
+print('new session server deployment is ready, visit it through http://localhost:9000')
