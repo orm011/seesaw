@@ -231,6 +231,7 @@ class Session:
     current_index : str
     loop : SeesawLoop
     acc_indices : list
+    image_timing : dict
     acc_activations : list
     total_results : int
     timing : list
@@ -249,6 +250,7 @@ class Session:
         self.params = params
         self.init_q = None
         self.timing = []
+        self.image_timing = {}
         self.index = hdb
         self.q = hdb.new_query()
         self.loop = SeesawLoop(self.gdm, self.q, params=self.params)
@@ -328,7 +330,7 @@ class Session:
                 del row['score']
                 activations.append(ActivationData(box=Box(**row), score=score))
 
-            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, activations=activations)
+            elt = Imdata(url=url, dbidx=dbidx, boxes=boxes, activations=activations, timing=self.image_timing.get(dbidx,[]))
             reslabs.append(elt)
         return reslabs
 
@@ -338,6 +340,7 @@ class Session:
         self.seen.clear()
         for ldata in gdata:
             for imdata in ldata:
+                self.image_timing[imdata.dbidx] = imdata.timing
                 self.seen.add(imdata.dbidx)
                 if is_image_accepted(imdata):
                     self.accepted.add(imdata.dbidx)

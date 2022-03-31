@@ -97,6 +97,7 @@ def add_routes(app : FastAPI):
 
       @app.post('/next', response_model=AppState)
       def next(self, body : SessionReq):
+          print('/next req for session ', body.session_id)
           assert body.session_id in self.sessions
           self.session = self.sessions[body.session_id]
           state = body.client_data.session
@@ -104,7 +105,9 @@ def add_routes(app : FastAPI):
               self.session.update_state(state)
               self.session.refine()
           self.session.next()
-          return self._getstate()
+          s =  self._getstate()
+          print('done with /next req')
+          return s
 
       @app.post('/text', response_model=AppState)
       def text(self, session_id: str, key : str):
