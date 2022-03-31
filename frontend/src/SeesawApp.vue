@@ -717,6 +717,11 @@ export default defineComponent({
             )
             .then(response => response.json())
             .then(this._update_client_data)
+            .then(() => {
+              if (this.selection === undefined || this.selection === null){
+                this.handle_selection_change({gdata_idx:0, local_idx:0})
+              }
+            })
         },
         next(selection = null){
           console.log(' this' , this);
