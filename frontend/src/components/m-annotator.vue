@@ -68,13 +68,6 @@ export default defineComponent({
         console.log('mounted annotator'); 
         this.start_time = Date.now(); 
   },
-  destroyed : function(){
-      console.log("Destroyed called");
-      var end_time = Date.now(); 
-      var interval = {start_ms: this.start_time, end_ms: end_time};
-      console.log("Interval:", interval); 
-      this.imdata.timing.push(interval);
-  }, 
   methods : {
     annotator_end : function(){
       console.log("Annotator End called");
