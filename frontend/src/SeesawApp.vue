@@ -523,7 +523,9 @@ export default defineComponent({
         let imdata = this.$refs.annotator.get_latest_imdata();
         this.data_update(imdata);
       }
-      
+      if (this.selection != new_selection && this.$refs.annotator != undefined){
+        this.$refs.annotator.annotator_end(); 
+      }
       this.selection = new_selection;
       if (this.selection !== null){
         this.image_index = this.get_global_idx(this.selection.gdata_idx, this.selection.local_idx) + 1; 
