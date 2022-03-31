@@ -731,6 +731,10 @@ export default defineComponent({
                 return response.json(); 
                 })
               .then(this._update_client_data)
+              .catch((error) => {
+                console.log("Error in next: ", error); 
+                this.loading_next = false; 
+              })
           } else { 
             console.log("PREVENTED NEXT DUE TO WAITING");
           }
