@@ -20,11 +20,16 @@ class ActivationData(BaseModel):
     box : Box
     score : float
 
+class Interval(BaseModel):
+    start_ms : int
+    end_ms : int
+
 class Imdata(BaseModel):
     url : str
     dbidx : int
     boxes : Optional[List[Box]] # None means not labelled (neutral). [] means positively no boxes.
     activations : Optional[List[ActivationData]]
+    timing : List[Interval] = []
 
 def is_image_accepted(imdata : Imdata):
   return any(map(lambda box : box.marked_accepted, imdata.boxes)) if imdata.boxes is not None else False

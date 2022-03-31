@@ -28,9 +28,10 @@ export interface BenchParams {
   qstr: string;
   provide_textual_feedback?: boolean;
   n_batches: number;
-  max_results: number;
+  max_results?: number;
   max_feedback?: number;
-  box_drop_prob: number;
+  box_drop_prob?: number;
+  query_template?: string;
 }
 export interface BenchResult {
   nimages: number;
@@ -47,6 +48,7 @@ export interface SessionState {
   timing: number[];
   reference_categories: string[];
   query_string?: string;
+  action_log?: LogEntry[];
 }
 export interface SessionParams {
   index_spec: IndexSpec;
@@ -58,6 +60,10 @@ export interface SessionParams {
     [k: string]: unknown;
   };
   image_vector_strategy?: string;
+  session_id?: string;
+  other_params?: {
+    [k: string]: unknown;
+  };
 }
 export interface IndexSpec {
   d_name: string;
@@ -69,6 +75,17 @@ export interface Imdata {
   dbidx: number;
   boxes?: Box[];
   activations?: ActivationData[];
+  timing?: Interval[];
+}
+export interface Interval {
+  start_ms: number;
+  end_ms: number;
+}
+export interface LogEntry {
+  message: string;
+  time: number;
+  seen: number;
+  accepted: number;
 }
 export interface BenchSummary {
   bench_params: BenchParams;

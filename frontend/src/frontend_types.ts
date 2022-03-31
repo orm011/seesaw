@@ -7,15 +7,15 @@ type BoxT = "box_positive" | "box_binary" | "box_textual"
 
 type LocT =  "loc_coarse" | "loc_fine"
 // used for box drawing/ selection controls and for activation display controls
-
 // coarse means boxes span the full image (there are no localized boxes) also only one box at most per im
 // fine means can be drawn within image
-// Also relevant to activations: fine implies scores/activation are associated with a part of the image
+// when used for explanation: also relevant to activations: fine implies scores/activation are associated with a part of the image
 
-type FrontendT = { box_type : BoxT, loc_type : LocT };
+type FrontendT = { box_type : BoxT, exp_type : LocT, loc_type : LocT };
 
-const frontends   = {
-        'pytorch': { box_type: "box_positive", loc_type : "loc_fine"} as FrontendT, 
-        'default': { box_type: "box_positive", loc_type: "loc_coarse"} as FrontendT,
-        // 'multi': {box_type: "box_positive", loc_type : "loc_coarse"}
-    }
+const frontends = {
+    'pytorch': { box_type: "box_positive", exp_type: "loc_fine",   loc_type: "loc_fine"} as FrontendT, 
+    'default': { box_type: "box_positive", exp_type: "loc_coarse", loc_type: "loc_coarse"} as FrontendT,
+    'coarse':  { box_type: "box_positive", exp_type: "loc_coarse", loc_type: "loc_coarse"} as FrontendT,
+    'fine':    { box_type: "box_positive", exp_type: "loc_fine",   loc_type: 'loc_coarse' } as FrontendT,
+}
