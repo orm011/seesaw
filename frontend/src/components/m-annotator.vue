@@ -295,6 +295,10 @@ export default defineComponent({
 
         paper.view.draw();
         paper.view.update();
+
+        if (this.front_end_type === 'pytorch' && !this.read_only){
+          this.activation_press(); 
+        }
     },
     full_box_present(){
       let paper = this.paper; 

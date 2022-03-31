@@ -248,7 +248,7 @@
             @click="mark_image_accepted()"
             onfocus="blur()"
           >
-            Mark Accepted (W)
+            Mark Accepted (S)
           </button>
         </div>
         <div
@@ -274,22 +274,23 @@
         <button
             class="btn btn-danger"
             ref="right_button"
-            :disabled="this.image_index >= this.total_images() || this.image_index === null"
+            v-if="this.image_index < this.total_images()"
             @click="moveRight()"
             onfocus="blur()"
           >
             Next (D)
         </button>
-      </div>
-      <div class="keyword-text">
         <button
             class="btn btn-danger"
+            v-else
             @click="next()"
             onfocus="blur()"
             :disabled="loading_next"
           >
-            Load More Images (Space)
+            More Images (D)
         </button>
+      </div>
+      <div class="keyword-text">
         <span> Image {{this.image_index}} of {{this.total_images()}} ({{this.total_accepted()}} accepted)</span>
       </div>
       <div class="row">
@@ -577,7 +578,9 @@ export default defineComponent({
         if (this.annotator_text_pointer == null || this.front_end_type !== 'textual'){ // ie if text is being entered ignore this
           console.log("EV CODE"); 
           console.log(ev.code); 
-          if (ev.code === 'KeyA' || ev.code === 'KeyD'){
+          if (ev.code === 'KeyD' && this.image_index >= this.total_images()){
+            this.next(); 
+          } else if (ev.code === 'KeyA' || ev.code === 'KeyD'){
             let delta = (ev.code === 'KeyA') ? -1 : 1
             this.handle_arrow(delta);
           } else if (ev.code == 'Escape') {
@@ -586,12 +589,10 @@ export default defineComponent({
             // TODO: make it toggle accept the image
             if (this.front_end_type === 'pytorch' && this.allow_full_box){
               this.mark_image_accepted(); 
-            } else if (this.front_end_type === 'plain' && !this.checkForFullBox()){
-              this.mark_image_accepted(); 
-            }
+            } 
             //this.mark_image_accepted(); 
           }  else if (ev.code == 'KeyE'){
-            // TODO: show activation using key 'E' (for explain)
+            // TODO: show activation using key 'E' (for explain)x
             if (this.front_end_type === 'pytorch'){
               this.$refs.annotator.activation_press();
             } 
@@ -600,9 +601,11 @@ export default defineComponent({
               this.delete_annotation(); 
             } else if (this.front_end_type === 'plain' && this.checkForFullBox()){
               this.delete_full_box(); 
+            } else if (this.front_end_type === 'plain' && !this.checkForFullBox()){
+              this.mark_image_accepted(); 
             }
           } else if (ev.code == 'Space'){
-            this.next(); 
+            //this.next(); 
           }
         } else { // assume text
           if (ev.code == 'Escape'){
