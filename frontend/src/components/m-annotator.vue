@@ -35,7 +35,7 @@
 import {defineComponent} from 'vue';
 import paper from 'paper/dist/paper-core';
 import {image_accepted} from '../util';
-import {Imdata, Box} from '../basic_types';
+import {Imdata, Box, Interval} from '../basic_types';
 
 interface PaperObject {
   box : paper.Path.Rectangle,
@@ -56,7 +56,8 @@ export default defineComponent({
                 activation_layer : null,
                 text_offset : null, 
                 text_dict: {}, 
-                show_float: true}
+                show_float: true, 
+                start_time: Date.now(), }
   },
   created : function (){
       console.log('created annotator')
@@ -65,9 +66,19 @@ export default defineComponent({
         new paper.Tool(); // also implicitly adds tool to paper scope
         this.text_offset = new this.paper.Point(5, 20); 
         console.log('mounted annotator'); 
-        
+        this.start_time = Date.now(); 
   },
   methods : {
+    annotator_end : function(){
+      console.log("Annotator End called");
+      var end_time = Date.now(); 
+      var interval = {start_ms: this.start_time, end_ms: end_time};
+      console.log("Interval:", interval); 
+      if (this.imdata.timing == undefined){
+        this.imdata.timing = []; 
+      }
+      this.imdata.timing.push(interval);
+    }, 
     image_accepted(imdata : Imdata): boolean{ // make it accessible from the <template>
           return image_accepted(imdata)
     },
