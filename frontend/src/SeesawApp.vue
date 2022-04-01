@@ -12,6 +12,7 @@
         placeholder="Search"
         aria-label="Search" 
         v-model="text_query"
+        ref="text_input"
         @keydown.enter="text(text_query)"
       >
       <button
@@ -558,7 +559,9 @@ export default defineComponent({
       if (this.$refs.annotator === null || this.$refs.annotator === undefined){
         return false; 
       }
-      return this.$refs.annotator.full_box_present(); 
+      let retval =  this.$refs.annotator.full_box_present(); 
+      console.log('check for full box returning', retval, this.$refs.annotator)
+      return retval
     }, 
     moveLeft(){
       let delta =  -1;
@@ -717,6 +720,7 @@ export default defineComponent({
             .then(this._update_client_data)
             .then(() => {
               if (this.selection === undefined || this.selection === null){
+                this.$refs.text_input.blur();
                 this.handle_selection_change({gdata_idx:0, local_idx:0})
               }
             })
