@@ -234,7 +234,7 @@ export default defineComponent({
         let r = new paper.Path.Rectangle(rect);
         r.data.marked_accepted = boxdict.marked_accepted;
         r.strokeColor = strokeColor; 
-        r.strokeWidth = 4;
+        r.strokeWidth = 6;
         r.data.state = null;
         r.selected = false;
 

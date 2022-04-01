@@ -235,20 +235,11 @@
         class="button-row"
         v-if="front_end_type === 'plain'">
           <button
-            v-if="checkForFullBox()"
             class="btn btn-danger"
-            @click="delete_full_box()"
+            @click="toggle_plain_accepted()"
             onfocus="blur()"
           >
-            Remove Accepted (S)
-          </button>
-          <button
-            v-else
-            class="btn btn-danger"
-            @click="mark_image_accepted()"
-            onfocus="blur()"
-          >
-            Mark Accepted (S)
+            Toggle Accepted (S)
           </button>
         </div>
         <div
@@ -533,6 +524,13 @@ export default defineComponent({
         this.image_index = null; 
       }
     },
+    toggle_plain_accepted(){
+      if (this.checkForFullBox()){
+        this.delete_full_box(); 
+      } else {
+        this.mark_image_accepted(); 
+      }
+    }, 
     toggle_mark_accepted(){
       if (this.annotator_text_pointer.box.data.marked_accepted){
           this.annotator_text_pointer.box.strokeColor = 'green'
