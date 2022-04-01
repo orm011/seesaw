@@ -241,7 +241,7 @@
             @click="toggle_plain_accepted()"
             onfocus="blur()"
           >
-            Toggle Accepted (S)
+            Toggle Accept (S)
           </button>
         </div>
         <div
@@ -377,6 +377,13 @@ export default defineComponent({
         this.checkContainer(); 
     },
     methods : {
+      nextButtonClick(){
+        if (this.image_index < this.total_images()){
+          moveRight()
+        } else {
+          next(true)
+        }
+      },
       checkContainer () {
         let input = document.querySelector('.vue3-input');
         if(input !== null){ //if the container is visible on the page
