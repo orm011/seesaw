@@ -8,25 +8,23 @@ which nginx; which python; which ray
 
 DIR=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 nginx -s stop || echo 'starting nginx....'
-nginx -c conf/seesaw.spc.conf & # refers to conf/ folder relative to nginx root
+nginx -c conf/seesaw.spc.conf # refers to conf/ folder relative to nginx root
 
 # echo 'starting head node'
 ray stop || echo 'starting ray head node...'
-bash +x $DIR/start_worker.bash --head &
+bash +x $DIR/start_worker.bash --head
 
-wait # for nginx and for ray head node
-
-python $DIR/cache_server.py &
+python $DIR/cache_server.py 
 ## start sreve
-python -c 'import ray; from ray import serve; ray.init("auto", namespace="seesaw"); serve.start(detached=True, http_options={"port":8000})' &
+python -c 'import ray; from ray import serve; ray.init("auto", namespace="seesaw"); serve.start(detached=True, http_options={"port":8000})' 
 
-wait # for cache and serve
+#wait # for cache and serve
 
 if [ $# -gt 0 ]; then
     ## used by orm for user study.
     # if some arguments are passed in then use them to start a server and then warm up the server
     SERVER_FLAGS=$@
-    python ./seesaw_deploy/scripts/session_server.py $SERVER_FLAGS
+    python ./seesaw_deploy/scripts/session_server.py --no_block $SERVER_FLAGS
 
     ## for user study also warm cache with the datasets so we don't wait
     bash $DIR/warmup.bash
