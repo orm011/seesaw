@@ -136,7 +136,7 @@
           </div>
           <!-- <div class="row space" /> -->
         </div>
-        <div
+        <!-- <div
           class="row"
           v-if="client_data.session.gdata.length > 0"
         >
@@ -146,13 +146,14 @@
           >
             Load More Images
           </button>
-        </div>
+        </div> -->
       </main>
     </div> 
     <m-modal
       v-if="selection != null"
       ref="modal"
-      @modalKeyUp="handleModalKeyUp($event)"
+      @modalKeyDown="handleModalKeyUp('down', $event)"
+      @modalKeyUp="handleModalKeyUp('up', $event)"
     >       <div
         v-if="annotator_text_pointer != null"
       >
@@ -214,10 +215,10 @@
           </button>
         </div>
           <button
-            class="btn btn-danger"
+            class="btn btn-warning highlight-button"
             v-if="front_end_type !== 'plain'"
-            @click="this.$refs.annotator.activation_press()"
-            onfocus="blur()"
+            ref="highlight_btn"
+            @click="() => {this.$refs.highlight_btn.blur(); this.$refs.annotator.activation_press()}"
           >
             Toggle Highlight (E)
           </button>
@@ -575,7 +576,19 @@ export default defineComponent({
       //var element = this.$refs.right_button
       //element.blur()
     },
-    handleModalKeyUp(ev){
+    handleModalKeyUp(up_or_down, ev){
+      if (up_or_down === 'down'){
+        if (ev.code == 'KeyE'){
+            // TODO: show activation using key 'E' (for explain)x
+            if (this.front_end_type === 'pytorch'){
+              console.log('focus on')
+              this.$refs.highlight_btn.focus();
+              // this.$refs.annotator.activation_press();
+            }
+          }
+      }
+
+      if (up_or_down === 'up') {
         console.log('within modalKeyUp handler', ev)
         //if (this.annotator_text_pointer == null){ // ie if text is being entered ignore this
         if (this.annotator_text_pointer == null || this.front_end_type !== 'textual'){ // ie if text is being entered ignore this
@@ -597,7 +610,8 @@ export default defineComponent({
           }  else if (ev.code == 'KeyE'){
             // TODO: show activation using key 'E' (for explain)x
             if (this.front_end_type === 'pytorch'){
-              this.$refs.annotator.activation_press();
+              this.$refs.highlight_btn.click();
+              // this.$refs.annotator.activation_press();
             } 
           } else if (ev.code == 'KeyS'){
             if (this.front_end_type !== 'plain' && this.annotator_text_pointer !== null){
@@ -622,6 +636,7 @@ export default defineComponent({
             this.handleAnnotatorSelectionChange(this.annotator_text_pointer) 
           }
         }
+      }
     },
     delete_annotation(){
           this.$refs.annotator.delete_paper_obj(this.annotator_text_pointer);

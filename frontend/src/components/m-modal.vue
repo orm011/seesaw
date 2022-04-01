@@ -24,11 +24,13 @@ export default defineComponent({
     emits : ['modalKeyUp'],
     mounted : function () {
       this.$data.handler = this.handle_keyup;
+      window.addEventListener('keydown', this.handle_keydown)
       window.addEventListener('keyup', this.handle_keyup)
       let elt = document.getElementsByTagName('body')[0];
       elt.classList.add("modal-is-active");
     },
     unmounted : function (){
+      window.removeEventListener('keydown', this.handle_keyup);
       window.removeEventListener('keyup', this.handle_keyup);
       let elt = document.getElementsByTagName('body')[0]
       elt.classList.remove("modal-is-active");
@@ -37,6 +39,9 @@ export default defineComponent({
         handle_keyup(ev){
             this.$emit('modalKeyUp', ev);
         },
+        handle_keydown(ev){
+            this.$emit('modalKeyDown', ev);
+        }
     }
 })
 </script>
