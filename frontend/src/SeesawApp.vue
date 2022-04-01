@@ -267,16 +267,7 @@
         <button
             class="btn btn-danger"
             ref="right_button"
-            v-if="this.image_index < this.total_images()"
-            @click="moveRight()"
-            onfocus="blur()"
-          >
-            Next (D)
-        </button>
-        <button
-            class="btn btn-danger"
-            v-else
-            @click="next(true)"
+            @click="nextButtonClick()"
             onfocus="blur()"
             :disabled="loading_next"
           >
