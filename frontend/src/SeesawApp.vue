@@ -238,6 +238,7 @@
         v-if="front_end_type === 'plain'">
           <button
             class="btn btn-danger"
+            ref="accept_button"
             @click="toggle_plain_accepted()"
             onfocus="blur()"
           >
@@ -598,11 +599,10 @@ export default defineComponent({
         if (this.annotator_text_pointer == null || this.front_end_type !== 'textual'){ // ie if text is being entered ignore this
           console.log("EV CODE"); 
           console.log(ev.code); 
-          if (ev.code === 'KeyD' && this.image_index >= this.total_images()){
-            this.next(true); 
-          } else if (ev.code === 'KeyA' || ev.code === 'KeyD'){
-            let delta = (ev.code === 'KeyA') ? -1 : 1
-            this.handle_arrow(delta);
+          if (ev.code === 'KeyD'){
+            this.$refs.right_button.click()
+          } else if (ev.code === 'KeyA'){
+            this.$refs.left_button.click();
           } else if (ev.code == 'Escape') {
             this.close_modal()
           } else if (ev.code == 'KeyW'){
