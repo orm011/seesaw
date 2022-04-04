@@ -561,6 +561,7 @@ export default defineComponent({
     border:0px;
     padding:0px;
     object-fit:none; /* never rescale up */ 
+    user-select: none; /* don't allow the broswer selection to work on the image so labeling is easier (see canvas too) */
 }
 
 .annotator-check {
@@ -592,6 +593,7 @@ export default defineComponent({
     padding:0px;
     /* display:;  */
     /* for now not showing it to try to fix centering issue...*/
+    user-select: none;
 }
 
 </style>
