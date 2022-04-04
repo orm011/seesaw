@@ -384,6 +384,10 @@ export default defineComponent({
           next(true)
         }
       },
+      log(message : string, other_fields : Object) {
+        this.client_data.session.action_log.push({logger:'client', time:Date.now()/1000, seen:this.total_images(), accepted:this.total_accepted(),
+         message:message, other_fields : other_fields});
+      },
       checkContainer () {
         let input = document.querySelector('.vue3-input');
         if(input !== null){ //if the container is visible on the page
@@ -517,7 +521,9 @@ export default defineComponent({
       if (this.selection != new_selection && this.$refs.annotator != undefined){
         this.$refs.annotator.annotator_end(); 
       }
+      this.log('selection.end', this.selection);
       this.selection = new_selection;
+      this.log('selection.start', new_selection);
       if (this.selection !== null){
         this.image_index = this.get_global_idx(this.selection.gdata_idx, this.selection.local_idx) + 1; 
       } else {
@@ -740,6 +746,7 @@ export default defineComponent({
         },
         next(move_right: boolean = false){
           let handle_ret = (new_data) => {
+            this.log('next.end');
             this._update_client_data(new_data);
             this.loading_next = false;
             if (move_right){ 
@@ -751,6 +758,7 @@ export default defineComponent({
           }
 
           if (!this.loading_next){
+            this.log('next.start');
             this.loading_next = true; 
             let body = { client_data : this.$data.client_data, session_id : this.get_session_id() };
 

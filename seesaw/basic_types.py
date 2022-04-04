@@ -51,10 +51,12 @@ class SessionParams(BaseModel):
     other_params : dict = {}
 
 class LogEntry(BaseModel):
+    logger : str = 'server' # client | server
     message : str
     time : float
     seen : int
     accepted : int
+    other_fields : Optional[dict]
     
 class SessionState(BaseModel):
     params : SessionParams

@@ -261,7 +261,7 @@ class Session:
         return {'seen':len(self.seen), 'accepted':len(self.accepted)}
 
     def _log(self, message : str):
-        self.action_log.append({'time':time.time(), 'message':message, 'seen':len(self.seen), 'accepted':len(self.accepted)})
+        self.action_log.append({'logger':'server', 'time':time.time(), 'message':message, 'seen':len(self.seen), 'accepted':len(self.accepted)})
 
     def next(self):
         self._log('next.start')       
@@ -290,7 +290,7 @@ class Session:
             opt_params={'lr':p.learning_rate})
 
     def update_state(self, state: SessionState):
-        self._update_labeldb(state.gdata)
+        self._update_labeldb(state)
         self._log('update_state.end') # log this after updating so that it includes all new information
 
 
@@ -334,8 +334,10 @@ class Session:
             reslabs.append(elt)
         return reslabs
 
-    def _update_labeldb(self, gdata):
+    def _update_labeldb(self, state : SessionState):
         ## clear bitmap and reconstruct bc user may have erased previously accepted images
+        self.action_log = state.action_log # just replace the log
+        gdata = state.gdata
         self.accepted.clear()
         self.seen.clear()
         for ldata in gdata:
