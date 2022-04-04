@@ -379,9 +379,9 @@ export default defineComponent({
     methods : {
       nextButtonClick(){
         if (this.image_index < this.total_images()){
-          moveRight()
+          this.moveRight()
         } else {
-          next(true)
+          this.next(true)
         }
       },
       log(message : string, other_fields : Object) {
