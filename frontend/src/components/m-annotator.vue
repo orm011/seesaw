@@ -57,7 +57,8 @@ export default defineComponent({
                 text_offset : null, 
                 text_dict: {}, 
                 show_float: true, 
-                start_time: Date.now(), }
+                start_time: Date.now(), 
+                drawing_rect: false, }
   },
   created : function (){
       console.log('created annotator')
@@ -430,6 +431,7 @@ export default defineComponent({
               this.text_dict[rect] = text; 
               let sel = {box:rect, description:text};
               this.annotation_paper_objs.push(sel)
+              this.drawing_rect = true; 
           } else { // existing rect
               rect = hr.item;
           }
@@ -477,7 +479,7 @@ export default defineComponent({
             var map = sels.map(this.paper2imdata);
             var select = map[0]; 
             //console.log("SELECT HERE: ", select); 
-            if (select.x2 - select.x1 < 10 || select.y2 - select.y1 < 10){
+            if (this.drawing_rect && (select.x2 - select.x1 < 10 || select.y2 - select.y1 < 10)){
               //console.log("DELETED BOX: ", select); 
               this.delete_paper_obj(sels[0])
             } else {
@@ -486,6 +488,7 @@ export default defineComponent({
           } else {
             this.$emit('selection', null)
           }
+          this.drawing_rect = false; 
       };
 
       tool.onKeyUp = (e) => {
