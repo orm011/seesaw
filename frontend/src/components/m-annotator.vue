@@ -7,6 +7,7 @@
       :class="read_only ? 'annotator_image_small':'annotator_image'"
       :src="imdata.url"
       ref="image" 
+      @error="handle_error"
       @load="draw_initial_contents"
     >
     <canvas
@@ -70,6 +71,9 @@ export default defineComponent({
         this.start_time = Date.now(); 
   },
   methods : {
+    handle_error(ev){
+      console.log('error loading image', ev)
+    },
     annotator_end : function(){
       console.log("Annotator End called");
       var end_time = Date.now(); 
