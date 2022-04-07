@@ -154,7 +154,11 @@
       ref="modal"
       @modalKeyDown="handleModalKeyUp('down', $event)"
       @modalKeyUp="handleModalKeyUp('up', $event)"
-    >       <div
+    >      
+      <div class="keyword-text">
+        <span> Object We Are Looking For: {{this.client_data.session.query_string}} </span>
+      </div> 
+      <div
         v-if="annotator_text_pointer != null"
       >
         <div v-if="front_end_type !== 'plain'">
@@ -586,8 +590,7 @@ export default defineComponent({
         if (ev.code == 'KeyE'){
             // TODO: show activation using key 'E' (for explain)x
             if (this.front_end_type === 'pytorch'){
-              console.log('focus on')
-              this.$refs.highlight_btn.focus();
+              this.$refs.highlight_btn.blur(); this.$refs.annotator.activation_press()
               // this.$refs.annotator.activation_press();
             }
           }
