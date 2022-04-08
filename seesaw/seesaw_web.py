@@ -13,8 +13,22 @@ from .seesaw_session import Session, make_session
 
 import pandas as pd
 
+
+class TaskParams(BaseModel):
+    session_id : str
+    task_index : int
+    qkey : str
+    mode : str
+    qstr : str
+    dataset : str
+
+class WorkerState(BaseModel):
+    task_list : List[TaskParams]
+    current_task_index : int
+
 class AppState(BaseModel): # Using this as a response for every state transition.
     indices : Optional[List[IndexSpec]]
+    worker_state : Optional[WorkerState]
     default_params : Optional[SessionParams]
     session : Optional[SessionState] #sometimes there is no active session
 
@@ -32,15 +46,12 @@ class SessionInfoReq(BaseModel):
 class SaveResp(BaseModel):
     path : str
 
-class TaskParams(BaseModel):
-    session_id : str
-    task_index : int
-    qkey : str
-    mode : str
-    qstr : str
-    dataset : str
 
 import time
+
+class WorkerState(BaseModel):
+    task_list : List[TaskParams]
+    current_task_index : int
 
 class Worker:
     session_id : str
@@ -58,6 +69,9 @@ class Worker:
         self.max_seen = max_seen
         self.max_accepted = max_accepted
         self.max_time_s = max_time_s
+
+    def get_state(self) ->WorkerState:
+        return WorkerState(task_list=self.task_list, current_task=self.current_task)
 
     def is_session_done(self, session : Session) -> bool:
         tot = session.get_totals()
