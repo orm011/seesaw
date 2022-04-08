@@ -28,13 +28,13 @@
       </button>
       <div class="navbar-nav col-lg-1 px-3" />
     </header>
-    <div v-show="show_config" 
+    <!-- <div v-show="show_config" 
       class="container"> 
       <m-config-vue-3
         ref="config"
         v-bind:client_data="client_data.default_params"
       />
-    </div>
+    </div> -->
     <div class="container-fluid">
       <nav
         id="sidebarMenu"
@@ -306,7 +306,7 @@ import Autocomplete from 'vue3-autocomplete'
 // Optional: Import default CSS
 import 'vue3-autocomplete/dist/vue3-autocomplete.css'
 
-import {image_accepted} from './util'
+import {image_accepted, getCookie, setCookie} from './util'
 
 export default defineComponent({
     components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete},
@@ -334,6 +334,7 @@ export default defineComponent({
                 show_config : false,
                 other_url : null,
                 autocomplete_items: [],
+                task_info : null,
                 front_end_type : 'textual', // by default textual so it works when using plain url
                 button_labels : {
                   "test" : {"add": "Add Button"},
@@ -347,27 +348,31 @@ export default defineComponent({
         window.VueApp = this;
         let params = new URLSearchParams(window.location.search)
 
-        if (window.location.pathname == '/session'){
+        if (window.location.pathname === '/session_info'){
             let session_path = params.get('path')
             this.load_session(session_path)
-        } else if (window.location.pathname == '/compare'){
+        } else if (window.location.pathname === '/compare'){
             let session_path = params.get('path')
-            this.other_url = `${window.location.origin}/session?path=${params.get('other')}`
+            this.other_url = `${window.location.origin}/session_info?path=${params.get('other')}`
             this.load_session(session_path)
-        } else if (window.location.pathname == '/user_session'){
+        } else if (window.location.pathname === '/user_session'){
             // set front-end mode here based on user session params
-            switch (params.get('mode')) {
-                case 'default':
-                  this.front_end_type = 'plain';
-                  break;
-                case 'pytorch':
-                case 'fine':
-                  this.front_end_type = 'pytorch';
-                  break
-                default:
-                  console.log(`unknown mode ${params.get('mode')}.`);
-            }
             fetch('/api/user_session?' + params, {method: 'POST'})
+            .then(response => response.json())
+            .then(this._update_client_data)
+        }  else if (window.location.pathname === '/session') {
+          // get task list metadata for loop
+            let params = new URLSearchParams();
+
+            let session_id = this.get_session_id()
+            if (session_id){
+              console.log('have session_id', session_id)
+              params.set('session_id', session_id);
+              // in that case we'll just get the current state
+            } else {
+              console.log('no session id available');
+            }
+            fetch('/api/session?' + params, {method:'POST'})
             .then(response => response.json())
             .then(this._update_client_data)
         } else{
@@ -394,7 +399,7 @@ export default defineComponent({
         if(input !== null){ //if the container is visible on the page
           input.focus(); 
         } 
-        setTimeout(this.checkContainer, 50); //wait 50 ms, then try again
+        setTimeout(this.checkContainer, 1000); //wait 50 ms, then try again
       },
       mark_image_accepted(){
           this.$refs.annotator.draw_full_frame_box(true); 
@@ -413,13 +418,6 @@ export default defineComponent({
       image_accepted(imdata){ // make it accessible from the <template>
           return image_accepted(imdata)
       },
-      get_session_id(){
-        if (this.client_data.session){
-          return this.client_data.session.params.session_id
-        } else {
-          return null
-        }
-      },
       updateRecommendations() {
         this.autocomplete_items = []; 
         if (this.client_data.session) {
@@ -437,7 +435,20 @@ export default defineComponent({
             }
           }
        }
-      }, 
+      },
+      set_frontend_type(mode){
+        switch (mode) {
+                case 'default':
+                  this.front_end_type = 'plain';
+                  break;
+                case 'pytorch':
+                case 'fine':
+                  this.front_end_type = 'pytorch';
+                  break
+                default:
+                  console.log(`unknown mode ${params.get('mode')}.`);
+            }
+      } ,
       changeInput(input){
         console.log("change Input" + input); 
         this.annotator_text = input; 
@@ -447,6 +458,18 @@ export default defineComponent({
           }
         })
       }, 
+      get_session_id() {
+        return getCookie('session_id');
+      },
+      set_session_id(session_id : string){
+        if (session_id){ // don't set it to undefined or null, bc it will become
+          console.log('setting session id', session_id);
+          setCookie('session_id', session_id, 1);
+        }
+      },
+      delete_session_id(){  // useful for undoing things
+        setCookie('session_id', '', 0);
+      },
       inputSelect(input){
         console.log("input Select: " + input); 
         this.annotator_text = input; 
@@ -698,14 +721,24 @@ export default defineComponent({
           this.updateRecommendations(); 
         },
         _update_client_data(data, reset = false){
+
           console.log('current data', this.$data);
           console.log('update client data', data, reset);
           this.client_data = data;
-          this.$refs.config.updateClientData(data.default_params); 
           this.updateRecommendations(); 
           if (this.client_data.session != null){
+            //this.$refs.config.updateClientData(data.session.params); 
+            this.set_session_id(data.session.params.session_id);
             this.selected_index = this.client_data.session.params.index_spec;
-            this.text_query = this.client_data.session.query_string;
+
+            this.text_query = this.client_data.session.query_string
+            this.set_frontend_type(this.client_data.session.params.other_params.mode);
+            if ('qstr' in this.client_data.session.params.other_params &&
+                  this.client_data.session.gdata.length == 0)
+            {
+              // set text query sent by server when it is sent by server and the session is new  
+              this.text_query = this.client_data.session.params.other_params.qstr
+            }
           } else {
             this.selected_index = null
           }

@@ -4,15 +4,18 @@ from typing import Optional, List, Dict
 from fastapi.applications import FastAPI
 from pydantic import BaseModel
 from fastapi import FastAPI
+from fastapi import HTTPException
 
 import os
 from .dataset_manager import GlobalDataManager, IndexSpec
 from .basic_types import Box, SessionState, SessionParams
 from .seesaw_session import Session, make_session
 
+import pandas as pd
+
 class AppState(BaseModel): # Using this as a response for every state transition.
-    indices : List[IndexSpec]
-    default_params : SessionParams
+    indices : Optional[List[IndexSpec]]
+    default_params : Optional[SessionParams]
     session : Optional[SessionState] #sometimes there is no active session
 
 class SessionReq(BaseModel):
@@ -29,6 +32,57 @@ class SessionInfoReq(BaseModel):
 class SaveResp(BaseModel):
     path : str
 
+class TaskParams(BaseModel):
+    session_id : str
+    task_index : int
+    qkey : str
+    mode : str
+    qstr : str
+    dataset : str
+
+import time
+
+class Worker:
+    session_id : str
+    task_list : List[TaskParams]
+    current_task : int
+    max_accepted : int 
+    max_seen : int 
+    max_time_s : float 
+
+    def __init__(self, session_id, task_list, max_seen = 100, max_accepted = 10, max_time_s = pd.Timedelta('4 minutes').total_seconds()):
+        self.session_id = session_id
+        self.task_list = task_list
+        self.current_task = -1
+
+        self.max_seen = max_seen
+        self.max_accepted = max_accepted
+        self.max_time_s = max_time_s
+
+    def is_session_done(self, session : Session) -> bool:
+        tot = session.get_totals()
+        start_time = session.action_log[0]['time']
+        time_now = time.time()
+        elapsed = time_now - start_time
+        return tot['seen'] >= self.max_seen  or tot['accepted'] >= self.max_accepted or elapsed >= self.max_time_s
+
+    def next_session_params(self):
+        self.current_task += 1
+        task = self.task_list[self.current_task]
+        new_params = session_params(**task.dict())
+        return new_params
+
+class TaskInfoResp(BaseModel):
+    session_id : str
+    app_state : AppState
+
+import random
+import string
+import traceback
+
+def generate_id():
+    return ''.join(random.choice(string.ascii_letters + '0123456789') for _ in range(32))
+
 def prep_db(gdm, index_spec):
     hdb = gdm.load_index(index_spec.d_name, index_spec.i_name)
     # TODO: add subsetting here
@@ -37,16 +91,42 @@ def prep_db(gdm, index_spec):
 from .util import reset_num_cpus
 from .configs import _session_modes, _dataset_map, std_linear_config,std_textual_config
 
-def session_params(session_mode, dataset_name, session_id, qkey, user):
-  assert session_mode in _session_modes.keys()
-  assert dataset_name in _dataset_map.keys()
+g_queries = {
+    'pc':('bdd', 'police cars'), 
+    'amb':('bdd', 'ambulances'),
+    'dg':('bdd', 'dogs'), 
+    'cd':('bdd', 'cars with open doors'), 
+    'wch':('bdd', 'wheelchairs'),
+    'mln':('coco', 'melons'),
+    'spn':('coco', 'spoons'),
+    'dst':('objectnet', 'dustpans'), 
+    'gg':('objectnet', 'egg cartons'),
+}
 
-  base = _session_modes[session_mode].copy(deep=True)
-  base.index_spec.d_name = _dataset_map[dataset_name]
+def session_params(mode, dataset, session_id, **kwargs):
+  assert mode in _session_modes.keys()
+  assert dataset in _dataset_map.keys()
+
+  base = _session_modes[mode].copy(deep=True)
+  base.index_spec.d_name = _dataset_map[dataset]
   ## base.index_spec.i_name set in template
   base.session_id = session_id
-  base.other_params = {'mode':session_mode, 'dataset':dataset_name, 'qkey':qkey, 'user':user}
+  base.other_params = {'mode':mode, 'dataset':dataset, **kwargs}
   return base
+
+import random
+
+def generate_task_list(session_id):
+    mode = random.choice(['default', 'pytorch'])
+    tasks = []
+    # qs = random.shuffle(g_queries.items())
+    # for q in :
+    for i,k in enumerate(g_queries.keys()):
+        (dataset, qstr) = g_queries[k]
+        task = TaskParams(session_id=session_id, mode=mode, qkey=k, qstr=qstr, dataset=dataset, task_index=i)
+        tasks.append(task)
+
+    return tasks
 
 def add_routes(app : FastAPI):
   class WebSeesaw:
@@ -64,9 +144,11 @@ def add_routes(app : FastAPI):
           self.indices = self.gdm.list_indices()
           print(self.indices)
           print('indices done')
+          self.workers = {} # maps worker_id to state
           self.default_params = _session_modes['textual']
           self.session = None
           self.sessions = {}
+
 
       def _reset_dataset(self,  s: SessionParams):
           hdb = prep_db(self.gdm, s.index_spec)
@@ -77,9 +159,19 @@ def add_routes(app : FastAPI):
           self.session = session
           print('new session ready')
 
+      def _create_new_worker(self):
+        session_id = generate_id()
+        self.workers[session_id] = Worker(session_id=session_id, task_list=generate_task_list(session_id))
+        return session_id
+    
+      def _reset_to_next_task(self, session_id):
+        w = self.workers[session_id]
+        new_params = w.next_session_params()
+        self._reset_dataset(new_params)
+
       def _getstate(self):
-          return AppState(indices=self.indices, 
-                          default_params=self.session.params if self.session is not None else self.default_params,
+          return AppState(#indices=self.indices, 
+                          #default_params=self.session.params if self.session is not None else self.default_params,
                           session=self.session.get_state() if self.session is not None else None)
 
       @app.get('/getstate', response_model=AppState)
@@ -123,12 +215,18 @@ def add_routes(app : FastAPI):
           self.session = self.sessions[body.session_id]
           self.session.update_state(body.client_data.session)
           self.session._log('save')
-          output_path = f'{self.save_path}/session_{body.session_id}/session_time_{time.strftime("%Y%m%d-%H%M%S")}'
+          
+          qkey = self.session.params.other_params['qkey']
+          if qkey not in g_queries:
+              qkey = 'other'
+
+          output_path = f'{self.save_path}/session_{body.session_id}/qkey_{qkey}/saved_{time.strftime("%Y%m%d-%H%M%S")}'
+          #os.path.realpath(output_path)
           os.makedirs(output_path, exist_ok=False)
           base = self._getstate().dict()
           json.dump(base, open(f'{output_path}/summary.json', 'w'))
           print(f'Saved session {output_path}')
-          return SaveResp(path=output_path)
+          return SaveResp(path='')
 
       @app.post('/session_info', response_model=AppState)
       def session_info(self, body : SessionInfoReq):
@@ -148,12 +246,31 @@ def add_routes(app : FastAPI):
         else:
             ## makes a new session using a config for the given mode
             print('start user_session request: ', mode, dataset, session_id)
-            new_params = session_params(mode, dataset, session_id, qkey, user)
+            new_params = session_params(mode, dataset, session_id, qkey=qkey, user=user)
             print('new user_session params used:', new_params)
             self._reset_dataset(new_params)
 
         st =  self._getstate()
         print('completed user_session request')
-
         return st
+        
+      @app.post('/session', response_model=AppState)
+      def session(self, session_id = None):
+        """ assigns a new session id
+        """
+        if session_id is None:
+            session_id = self._create_new_worker()
+            print('making new task for worker')
+            self._reset_to_next_task(session_id)
+            print('done making new task')
+        elif session_id not in self.sessions:
+            raise HTTPException(status_code=404, detail=f"unknown {session_id=}")
+        else:
+            pass
+
+        self.session = self.sessions[session_id]
+        st = self._getstate()
+        print(f'{st=}')
+        return st
+    
   return WebSeesaw
