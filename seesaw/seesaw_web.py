@@ -3,7 +3,7 @@ import time
 from typing import Optional, List, Dict
 from fastapi.applications import FastAPI
 from pydantic import BaseModel
-from fastapi import FastAPI
+from fastapi import FastAPI, Cookie
 from fastapi import HTTPException
 
 import os
@@ -116,8 +116,7 @@ def session_params(mode, dataset, session_id, **kwargs):
 
 import random
 
-def generate_task_list(session_id):
-    mode = random.choice(['default', 'pytorch'])
+def generate_task_list(mode, session_id):
     tasks = []
     # qs = random.shuffle(g_queries.items())
     # for q in :
@@ -159,9 +158,9 @@ def add_routes(app : FastAPI):
           self.session = session
           print('new session ready')
 
-      def _create_new_worker(self):
+      def _create_new_worker(self, mode):
         session_id = generate_id()
-        self.workers[session_id] = Worker(session_id=session_id, task_list=generate_task_list(session_id))
+        self.workers[session_id] = Worker(session_id=session_id, task_list=generate_task_list(mode, session_id))
         return session_id
     
       def _reset_to_next_task(self, session_id):
@@ -255,14 +254,12 @@ def add_routes(app : FastAPI):
         return st
         
       @app.post('/session', response_model=AppState)
-      def session(self, session_id = None):
+      def session(self, mode, session_id = Cookie(None)):
         """ assigns a new session id
         """
         if session_id is None:
-            session_id = self._create_new_worker()
-            print('making new task for worker')
+            session_id = self._create_new_worker(mode)
             self._reset_to_next_task(session_id)
-            print('done making new task')
         elif session_id not in self.sessions:
             raise HTTPException(status_code=404, detail=f"unknown {session_id=}")
         else:
@@ -270,7 +267,8 @@ def add_routes(app : FastAPI):
 
         self.session = self.sessions[session_id]
         st = self._getstate()
-        print(f'{st=}')
+        if st.session.params.other_params['mode'] != mode:
+            raise HTTPException(status_code=400, detail=f"session {session_id=} already exists with different mode")
         return st
     
   return WebSeesaw

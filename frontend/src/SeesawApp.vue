@@ -360,17 +360,7 @@ export default defineComponent({
             .then(response => response.json())
             .then(this._update_client_data)
         }  else if (window.location.pathname === '/session') {
-          // get task list metadata for loop
-            let params = new URLSearchParams();
-
-            let session_id = this.get_session_id()
-            if (session_id){
-              console.log('have session_id', session_id)
-              params.set('session_id', session_id);
-              // in that case we'll just get the current state
-            } else {
-              console.log('no session id available');
-            }
+          // get task list metadata for loop. cookie will be initialized on return if it doesn't exist
             fetch('/api/session?' + params, {method:'POST'})
             .then(response => response.json())
             .then(this._update_client_data)
