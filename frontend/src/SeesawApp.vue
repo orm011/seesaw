@@ -380,7 +380,7 @@ export default defineComponent({
       nextButtonClick(){
         if (this.image_index < this.total_images()){
           this.moveRight()
-        } else {
+        } else if (!this.loading_next){
           this.next(true)
         }
       },
@@ -569,8 +569,10 @@ export default defineComponent({
       return retval
     }, 
     moveLeft(){
-      let delta =  -1;
-      this.handle_arrow(delta);
+      if (!(this.image_index === 1 || this.image_index === null)){
+        let delta =  -1;
+        this.handle_arrow(delta);
+      }
       //var element = this.$refs.left_button
       //element.blur()
     }, 
@@ -580,17 +582,20 @@ export default defineComponent({
       //var element = this.$refs.right_button
       //element.blur()
     },
-    handleModalKeyUp(up_or_down, ev){
-      if (up_or_down === 'down'){
-        if (ev.code == 'KeyE'){
-            // TODO: show activation using key 'E' (for explain)x
-            if (this.front_end_type === 'pytorch'){
-              this.$refs.highlight_btn.blur(); this.$refs.annotator.activation_press();
-              // this.$refs.annotator.activation_press();
-            }
-          }
+    sButtonClick(){
+      if (this.front_end_type !== 'plain' && this.annotator_text_pointer !== null){
+        this.delete_annotation(); 
+      } else if (this.front_end_type === 'plain'){
+        this.toggle_plain_accepted(); 
       }
-
+    }, 
+    toggleActivation(){
+      if (this.front_end_type === 'pytorch'){
+        this.$refs.highlight_btn.blur(); 
+        this.$refs.annotator.activation_press();
+      }
+    }, 
+    handleModalKeyUp(up_or_down, ev){
       if (up_or_down === 'up') {
         console.log('within modalKeyUp handler', ev)
         //if (this.annotator_text_pointer == null){ // ie if text is being entered ignore this
@@ -598,13 +603,9 @@ export default defineComponent({
           console.log("EV CODE"); 
           console.log(ev.code); 
           if (ev.code === 'KeyD'){
-            if (!this.loading_next){
-              this.nextButtonClick()
-            }
+            this.nextButtonClick(); 
           } else if (ev.code === 'KeyA'){
-            if (!(this.image_index === 1 || this.image_index === null)){
-              this.moveLeft(); 
-            }
+            this.moveLeft(); 
           } else if (ev.code == 'Escape') {
             this.close_modal()
           } else if (ev.code == 'KeyW'){
@@ -614,17 +615,9 @@ export default defineComponent({
             } 
             //this.mark_image_accepted(); 
           }  else if (ev.code == 'KeyE'){
-            // TODO: show activation using key 'E' (for explain)x
-            if (this.front_end_type === 'pytorch'){
-              this.$refs.highlight_btn.click();
-              // this.$refs.annotator.activation_press();
-            } 
+            this.toggleActivation(); 
           } else if (ev.code == 'KeyS'){
-            if (this.front_end_type !== 'plain' && this.annotator_text_pointer !== null){
-              this.delete_annotation(); 
-            } else if (this.front_end_type === 'plain'){
-              this.toggle_plain_accepted(); 
-            }
+            this.sButtonClick(); 
           } else if (ev.code == 'Space'){
             //this.next(); 
           }
