@@ -1,11 +1,15 @@
 from xmlrpc.client import boolean
 import ray
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
+from fastapi import Body, FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 from seesaw import add_routes
 import os
 import argparse
 from ray import serve
 import time
+from typing import Callable, List
 """
 deploys session server and exits. if it has been run before, when re-run it will re-deploy the current version.
 """
@@ -24,7 +28,38 @@ assert os.path.isdir(args.seesaw_root)
 ray.init('auto', namespace="seesaw", log_to_driver=True)
 serve.start() # started in init_spc.sh
 
+from starlette.requests import Request
+from starlette.responses import Response
+import traceback
+import sys
+
+# https://fastapi.tiangolo.com/advanced/custom-request-and-route/#accessing-the-request-body-in-an-exception-handler
+class ErrorLoggingRoute(APIRoute):
+    def get_route_handler(self) -> Callable:
+        original_route_handler = super().get_route_handler()
+
+        async def custom_route_handler(request: Request) -> Response:
+            url = request.url._url
+            cookies = request.cookies
+            print(f'Received request: {url=} {cookies=}')
+            try:
+                ret = await original_route_handler(request)
+            except Exception:
+                (_,exc,_)=sys.exc_info()
+                body = await request.body()
+                req_body = body.decode()
+                print(f'Exception {exc=} for request: {url=} {cookies=}\n{req_body=}')
+                traceback.print_exc(file=sys.stdout)
+                raise
+            else:
+              print(f'Successfully processed {url=} {cookies=} {ret=}')
+
+            return ret
+
+        return custom_route_handler
+
 app = FastAPI()
+app.router.route_class = ErrorLoggingRoute
 WebSeesaw = add_routes(app)
 
 if ray.available_resources().get('GPU', 0) > .5:
