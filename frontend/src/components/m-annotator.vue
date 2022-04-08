@@ -72,7 +72,8 @@ export default defineComponent({
   },
   methods : {
     handle_error(ev){
-      console.log('error loading image', ev)
+      console.log('error loading image', ev); 
+      this.$refs.image.src = "/home/gridsan/groups/fastai/seesaw/data/error.jpg"; 
     },
     annotator_end : function(){
       console.log("Annotator End called");
