@@ -711,7 +711,6 @@ export default defineComponent({
           this.updateRecommendations(); 
           if (this.client_data.session != null){
             //this.$refs.config.updateClientData(data.session.params); 
-            this.set_session_id(data.session.params.session_id);
             this.selected_index = this.client_data.session.params.index_spec;
 
             this.text_query = this.client_data.session.query_string
@@ -722,6 +721,7 @@ export default defineComponent({
               // set text query sent by server when it is sent by server and the session is new  
               this.text_query = this.client_data.session.params.other_params.qstr
             }
+
           } else {
             this.selected_index = null
           }
