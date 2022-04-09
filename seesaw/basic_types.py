@@ -47,7 +47,6 @@ class SessionParams(BaseModel):
     shortlist_size : int = 30
     method_config : Optional[dict] # changes from method to method (interactive)
     image_vector_strategy : str = 'matched' # | 'computed'
-    session_id : str = ''
     other_params : dict = {}
 
 class LogEntry(BaseModel):

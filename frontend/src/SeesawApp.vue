@@ -729,7 +729,7 @@ export default defineComponent({
         },
         reset(index){
           let config = this.$refs.config.currentConfig();           
-          let reqdata = {config: null, session_id: this.get_session_id()};
+          let reqdata = {config: null};
           if (index != null){
             reqdata.config = {...config};
           }
@@ -745,7 +745,7 @@ export default defineComponent({
           .then(data => this._update_client_data(data, true))
         },
         text(text_query : string){
-            let params = new URLSearchParams({key:text_query, session_id:this.get_session_id()})
+            let params = new URLSearchParams({key:text_query})
             fetch(`/api/text?` + params,   
                 {method: 'POST', 
                 headers: {'Content-Type': 'application/json'}, 
@@ -776,7 +776,7 @@ export default defineComponent({
           if (!this.loading_next){
             this.log('next.start');
             this.loading_next = true; 
-            let body = { client_data : this.$data.client_data, session_id : this.get_session_id() };
+            let body = { client_data : this.$data.client_data };
 
               fetch(`/api/next`, {method:'POST',
                               headers: {'Content-Type': 'application/json'},
@@ -796,7 +796,7 @@ export default defineComponent({
 
         },
         save(){
-          let body = { client_data : this.$data.client_data, session_id : this.get_session_id() };
+          let body = { client_data : this.$data.client_data };
           fetch(`/api/save`, {method:'POST',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify(body) // body data type must match "Content-Type" header

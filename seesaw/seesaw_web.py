@@ -28,7 +28,6 @@ import traceback
 import pandas as pd
 
 class TaskParams(BaseModel):
-    session_id : str
     task_index : int
     qkey : str
     mode : str
@@ -46,11 +45,9 @@ class AppState(BaseModel): # Using this as a response for every state transition
     session : Optional[SessionState] #sometimes there is no active session
 
 class SessionReq(BaseModel):
-    session_id : str
     client_data : AppState
 
 class ResetReq(BaseModel):
-    session_id : str
     config : Optional[SessionParams]
 
 class SessionInfoReq(BaseModel):
@@ -96,25 +93,24 @@ g_queries = {
     'gg':('objectnet', 'egg cartons'),
 }
 
-def session_params(mode, dataset, session_id, **kwargs):
+def session_params(mode, dataset, **kwargs):
   assert mode in _session_modes.keys()
   assert dataset in _dataset_map.keys()
 
   base = _session_modes[mode].copy(deep=True)
   base.index_spec.d_name = _dataset_map[dataset]
   ## base.index_spec.i_name set in template
-  base.session_id = session_id
   base.other_params = {'mode':mode, 'dataset':dataset, **kwargs}
   return base
 
 
-def generate_task_list(mode, session_id):
+def generate_task_list(mode):
     tasks = []
     # qs = random.shuffle(g_queries.items())
     # for q in :
     for i,k in enumerate(g_queries.keys()):
         (dataset, qstr) = g_queries[k]
-        task = TaskParams(session_id=session_id, mode=mode, qkey=k, qstr=qstr, dataset=dataset, task_index=i)
+        task = TaskParams(mode=mode, qkey=k, qstr=qstr, dataset=dataset, task_index=i)
         tasks.append(task)
 
     return tasks
@@ -218,6 +214,12 @@ class SingleSeesaw:
         print(f'saved session {output_path}')
         return SaveResp(path='')
 
+    def sleep(self):
+        start = time.time()
+        time.sleep(10)
+        end = time.time()
+        return end - start
+
 class WebSeesaw:
     sessions : Dict[str,SingleSeesaw]
     def __init__(self, root_dir, save_path, num_cpus=None):
@@ -229,21 +231,23 @@ class WebSeesaw:
         self.num_cpus = num_cpus
         self.sessions = {} # maps session id to state...
 
+        self.bad_state = False
+
     def _create_new_worker(self, mode):
         session_id = generate_id()
-        worker = Worker(session_id=session_id, task_list=generate_task_list(mode, session_id))
+        worker = Worker(session_id=session_id, task_list=generate_task_list(mode))
         self.sessions[session_id] = SingleSeesaw(self.root_dir, self.save_path, session_id, worker, num_cpus=self.num_cpus)
         return session_id
 
     @app.post('/user_session', response_model=AppState)
-    def user_session(self, mode, dataset, session_id, qkey, user):
+    def user_session(self, mode, dataset, session_id, qkey, user, request : Request):
         """ API for the old-school user study where we generated URLs and handed them out.
         """ 
         # will make a new session if the id is new
         if session_id not in self.sessions:
             ## makes a new session using a config for the given mode
             print('start user_session request: ', mode, dataset, session_id)
-            new_params = session_params(mode, dataset, session_id, qkey=qkey, user=user)
+            new_params = session_params(mode, dataset, qkey=qkey, user=user)
             print('new user_session params used:', new_params)
             new_session = SingleSeesaw(self.root_dir, self.save_path, session_id=session_id, num_cpus=self.num_cpus)
             new_session._reset_dataset(new_params)
@@ -315,3 +319,14 @@ class WebSeesaw:
     @app.post('/save', response_model=SaveResp)
     def save(self, body : SessionReq, session_id = Cookie(None)):
         return self.sessions[session_id].save(body)
+
+    @app.post('/sleep')
+    def sleep(self, session_id = Cookie(None)):
+        assert session_id
+        assert not self.bad_state
+        start = time.time()
+        self.bad_state = True
+        sleep_time = time.sleep(5)
+        self.bad_state = False
+        end = time.time()
+        return {'waited_time':end-start, 'sleep_time':sleep_time}
