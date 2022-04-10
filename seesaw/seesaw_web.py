@@ -266,7 +266,7 @@ class WebSeesaw:
     
     I'm not sure what assumptions the serve framework / fastapi 
     make of this class so I'm avoiding shared state in this class (eg, no session dictionary here), Instead,
-    we use an actor for storing/creating sessions (the session dict),
+    we use a separate actor for mapping sessions / adding sessions
     and separately we also use one actor per session since each of them needs its own resources (eg cpu access etc).
     """
     session_manager : ActorHandle
