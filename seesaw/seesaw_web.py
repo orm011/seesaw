@@ -8,7 +8,7 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 
-from fastapi import FastAPI, Cookie
+from fastapi import FastAPI, Cookie, Depends
 from fastapi import HTTPException
 
 import os
@@ -148,7 +148,6 @@ class ErrorLoggingRoute(APIRoute):
 app = FastAPI()
 app.router.route_class = ErrorLoggingRoute
 
-
 class WebSession:
     """ holds the state for a single user state machine. All actions here are serially run.
         API mirrors the one in WebSeesaw for single user operations
@@ -261,6 +260,21 @@ class SessionManager:
     def get_session(self, session_id):
         return self.sessions.get(session_id)
 
+
+async def get_handle(session_id : str = Cookie(None)) -> ActorHandle:
+    """ common code to get the handle for a running session, shared across several calls
+    """
+    if session_id is None:
+        raise HTTPException(status_code=404, detail=f"this API requires a session_id")
+
+    session_manager = ray.get_actor('session_manager')
+    handle = await session_manager.get_session.remote(session_id)
+    
+    if handle is None:
+        raise HTTPException(status_code=404, detail=f"unknown {session_id=}")
+
+    return handle
+
 SessionManagerActor = ray.remote(SessionManager)
 
 @ray.serve.deployment(name="seesaw_deployment", num_replicas=1, route_prefix='/')
@@ -272,46 +286,44 @@ class WebSeesaw:
     be the case with a time.sleep() call, and will see partially modified state in the class). 
     
     I'm not sure what assumptions the serve framework / fastapi 
-    make of this class so I'm avoiding shared state in this class (eg, no session dictionary here), Instead,
+    make of this class, so I'm avoiding shared state in this class (eg, no session dictionary here), Instead,
     we use a separate actor for mapping sessions / adding sessions
     and separately we also use one actor per session since each of them needs its own resources (eg cpu access etc).
     """
     session_manager : ActorHandle
 
     def __init__(self, session_manager):
+        print('WebSeesaw init method called')
         self.session_manager = session_manager
 
     @app.post('/user_session', response_model=AppState)
-    def user_session(self, mode, dataset, qkey, user, response : Response, session_id = Cookie(None)):
+    async def user_session(self, mode, dataset, qkey, user, response : Response, session_id = Cookie(None)):
         """ API for the old-school user study where we generated URLs and handed them out.
         """ 
         new_session = False
         if session_id is None:
-            session_id = ray.get(self.session_manager.new_session.remote())
+            session_id = await self.session_manager.new_session.remote()
             response.set_cookie(key='session_id', value=session_id, max_age=pd.Timedelta('2 hours').total_seconds())
             new_session = True
             
-        handle = ray.get(self.session_manager.get_session.remote(session_id))
-
+        handle = await get_handle(session_id)
         if new_session:
             new_params = session_params(mode, dataset, qkey=qkey, user=user)
-            ray.get(handle._reset_dataset.remote(new_params))
+            await handle._reset_dataset.remote(new_params)
 
-        return ray.get(handle.getstate.remote())
+        return await handle.getstate.remote()
     
     @app.post('/session', response_model=AppState)
-    def session(self, mode : str, response : Response, session_id = Cookie(None)):
+    async def session(self, mode : str, response : Response, session_id = Cookie(None)):
         """ creates a new (multi-session) session_id  and sets a session id cookie when none exists.
         """
         if session_id is None:
-            session_id = ray.get(self.session_manager.new_worker.remote(mode))
+            session_id = await self.session_manager.new_worker.remote(mode)
             response.set_cookie(key='session_id', value=session_id, max_age=pd.Timedelta('2 hours').total_seconds())
 
-        session_handle = ray.get(self.session_manager.get_session.remote(session_id))
-        if session_handle is None:
-            raise HTTPException(status_code=404, detail=f"unknown {session_id=}")
+        handle = await get_handle(session_id)
                 
-        st = ray.get(session_handle.getstate.remote())
+        st = await handle.getstate.remote()
         if st.session:
             real_mode = st.session.params.other_params['mode']
             if real_mode != mode:
@@ -336,47 +348,37 @@ class WebSeesaw:
                             session=all_info['session'], 
                             default_params=all_info['session']['params'])
 
-    
     """
         Single-session forwarding functions (forward calls)
     """
     @app.get('/getstate', response_model=AppState)
-    def getstate(self, session_id = Cookie(None)):
-        handle = ray.get(self.session_manager.get_session.remote(session_id))
-        return ray.get(handle.getstate.remote())
+    async def getstate(self, handle=Depends(get_handle)):
+        return await handle.getstate.remote()
 
     @app.post('/reset', response_model=AppState)
-    def reset(self, r : ResetReq, session_id = Cookie(None)):
-        handle = ray.get(self.session_manager.get_session.remote(session_id))
-        return ray.get(handle.reset.remote(r))
+    async def reset(self, r : ResetReq, handle=Depends(get_handle)):
+        return await handle.reset.remote(r)
 
     @app.post('/next', response_model=AppState)
-    def next(self, body : SessionReq, session_id = Cookie(None)):
-        handle = ray.get(self.session_manager.get_session.remote(session_id))
-        return ray.get(handle.next.remote(body))
+    async def next(self, body : SessionReq, handle=Depends(get_handle)):
+        return await handle.next.remote(body)
 
     @app.post('/text', response_model=AppState)
-    def text(self, key : str, session_id = Cookie(None)):
-        handle = ray.get(self.session_manager.get_session.remote(session_id))
-        return ray.get(handle.text.remote(key))
+    async def text(self, key : str, handle=Depends(get_handle)):
+        return await handle.text.remote(key)
 
     @app.post('/save', response_model=SaveResp)
-    def save(self, body : SessionReq, session_id = Cookie(None)):
-        handle = ray.get(self.session_manager.get_session.remote(session_id))
-        return ray.get(handle.save.remote(body))
+    async def save(self, body : SessionReq, handle=Depends(get_handle)):
+        return await handle.save.remote(body)
 
     @app.post('/next_task', response_model=AppState)
-    def next_task(self, session_id = Cookie(None)):
-        handle = ray.get(self.session_manager.get_session.remote(session_id))
-        return ray.get(handle.next_task.remote())
+    async def next_task(self, handle=Depends(get_handle)):
+        return await handle.next_task.remote()
 
     @app.post('/sleep')
-    def sleep(self, session_id = Cookie(None)):
-        handle = ray.get(self.session_manager.get_session.remote(session_id))
-        sleep_time = ray.get(handle.sleep.remote())
-        return {'sleep_time':sleep_time}
+    async def sleep(self, handle=Depends(get_handle)):
+        return await handle.sleep.remote()
 
     @app.post('/test')
-    def test(self, session_id = Cookie(None)):
-        handle = ray.get(self.session_manager.get_session.remote(session_id))
-        return ray.get(handle.test.remote())
+    async def test(self, handle=Depends(get_handle)):
+        return await handle.test.remote()
