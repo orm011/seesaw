@@ -28,6 +28,7 @@ import traceback
 import pandas as pd
 
 import ray
+import ray.serve
 
 class TaskParams(BaseModel):
     task_index : int
@@ -262,6 +263,8 @@ class SessionManager:
 
 SessionManagerActor = ray.remote(SessionManager)
 
+@ray.serve.deployment(name="seesaw_deployment", num_replicas=1, route_prefix='/')
+@ray.serve.ingress(app)
 class WebSeesaw:
     """
     when exposed by ray serve/uvicorn, the code below
