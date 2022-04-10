@@ -27,6 +27,8 @@ import string
 import traceback
 import pandas as pd
 
+import ray
+
 class TaskParams(BaseModel):
     task_index : int
     qkey : str
@@ -145,6 +147,7 @@ class ErrorLoggingRoute(APIRoute):
 app = FastAPI()
 app.router.route_class = ErrorLoggingRoute
 
+
 class SingleSeesaw:
     """ holds the state for a single user state machine. All actions here are serially run.
         API mirrors the one in WebSeesaw for single user operations
@@ -220,58 +223,92 @@ class SingleSeesaw:
         end = time.time()
         return end - start
 
-class WebSeesaw:
-    sessions : Dict[str,SingleSeesaw]
-    def __init__(self, root_dir, save_path, num_cpus=None):
-        if num_cpus is not None:
-            reset_num_cpus(num_cpus)
+    def test(self):
+        return True
 
+from ray.actor import ActorHandle
+
+class SessionManager:
+    sessions : Dict[str, ActorHandle]
+
+    def __init__(self, root_dir, save_path, num_cpus):
         self.root_dir = root_dir
         self.save_path = save_path
         self.num_cpus = num_cpus
-        self.sessions = {} # maps session id to state...
+        self.sessions = {}
 
-        self.bad_state = False
 
-    def _create_new_worker(self, mode):
+    def _new_session(self, task_list):
         session_id = generate_id()
-        worker = Worker(session_id=session_id, task_list=generate_task_list(mode))
-        self.sessions[session_id] = SingleSeesaw(self.root_dir, self.save_path, session_id, worker, num_cpus=self.num_cpus)
+        worker = Worker(session_id=session_id, task_list=task_list)
+        self.sessions[session_id] = ray.remote(SingleSeesaw).options(name=f'session#{session_id}', 
+                                    num_cpus=self.num_cpus).remote(self.root_dir, self.save_path, 
+                                                session_id, worker, 
+                                                num_cpus=self.num_cpus)
         return session_id
+    
+    def new_worker(self, mode):
+        task_list = generate_task_list(mode)
+        return self._new_session(task_list)
+
+    def new_session(self):
+        return self._new_session([])
+
+    def get_session(self, session_id):
+        return self.sessions.get(session_id)
+
+
+class WebSeesaw:
+    """
+    when exposed by ray serve/uvicorn, the code below
+    (seems to) run as multi-threaded python (ie multiple requests will be served in simultaneously, at least that seemed to
+    be the case with a time.sleep() call, and will see partially modified state in the class). 
+    
+    I'm not sure what assumptions the serve framework / fastapi 
+    make of this class so I'm avoiding shared state in this class (eg, no session dictionary here), Instead,
+    we use an actor for storing/creating sessions (the session dict),
+    and separately we also use one actor per session since each of them needs its own resources (eg cpu access etc).
+    """
+    session_manager : ActorHandle
+
+    def __init__(self, session_manager):
+        self.session_manager = session_manager
 
     @app.post('/user_session', response_model=AppState)
-    def user_session(self, mode, dataset, session_id, qkey, user, request : Request):
+    def user_session(self, mode, dataset, qkey, user, response : Response, session_id = Cookie(None)):
         """ API for the old-school user study where we generated URLs and handed them out.
         """ 
-        # will make a new session if the id is new
-        if session_id not in self.sessions:
-            ## makes a new session using a config for the given mode
-            print('start user_session request: ', mode, dataset, session_id)
-            new_params = session_params(mode, dataset, qkey=qkey, user=user)
-            print('new user_session params used:', new_params)
-            new_session = SingleSeesaw(self.root_dir, self.save_path, session_id=session_id, num_cpus=self.num_cpus)
-            new_session._reset_dataset(new_params)
-            self.sessions[session_id] = new_session
+        new_session = False
+        if session_id is None:
+            session_id = ray.get(self.session_manager.new_session.remote())
+            response.set_cookie(key='session_id', value=session_id, max_age=pd.Timedelta('2 hours').total_seconds())
+            new_session = True
+            
+        handle = ray.get(self.session_manager.get_session.remote(session_id))
 
-        return self.sessions[session_id].getstate()
+        if new_session:
+            new_params = session_params(mode, dataset, qkey=qkey, user=user)
+            ray.get(handle._reset_dataset.remote(new_params))
+
+        return ray.get(handle.getstate.remote())
     
     @app.post('/session', response_model=AppState)
     def session(self, mode : str, response : Response, session_id = Cookie(None)):
         """ creates a new (multi-session) session_id  and sets a session id cookie when none exists.
         """
         if session_id is None:
-            session_id = self._create_new_worker(mode)
+            session_id = ray.get(self.session_manager.new_worker.remote(mode))
             response.set_cookie(key='session_id', value=session_id, max_age=pd.Timedelta('2 hours').total_seconds())
-        elif session_id not in self.sessions:
-            raise HTTPException(status_code=404, detail=f"unknown {session_id=}")
-        else:
-            pass
 
-        s = self.sessions[session_id]
-        st = s.getstate()
+        session_handle = ray.get(self.session_manager.get_session.remote(session_id))
+        if session_handle is None:
+            raise HTTPException(status_code=404, detail=f"unknown {session_id=}")
+                
+        st = ray.get(session_handle.getstate.remote())
         if st.session:
-            if st.session.params.other_params['mode'] != mode:
-                raise HTTPException(status_code=400, detail=f"session {session_id=} already exists with different mode")
+            real_mode = st.session.params.other_params['mode']
+            if real_mode != mode:
+                raise HTTPException(status_code=400, detail=f"{session_id=} already exists with {real_mode=}")
         
         return st
 
@@ -298,35 +335,41 @@ class WebSeesaw:
     """
     @app.get('/getstate', response_model=AppState)
     def getstate(self, session_id = Cookie(None)):
-        return self.sessions[session_id].getstate()
+        handle = ray.get(self.session_manager.get_session.remote(session_id))
+        return ray.get(handle.getstate.remote())
 
     @app.post('/reset', response_model=AppState)
     def reset(self, r : ResetReq, session_id = Cookie(None)):
-        return self.sessions[session_id].reset(r)
+        handle = ray.get(self.session_manager.get_session.remote(session_id))
+        return ray.get(handle.reset.remote(r))
 
     @app.post('/next', response_model=AppState)
     def next(self, body : SessionReq, session_id = Cookie(None)):
-        return self.sessions[session_id].next(body)
+        handle = ray.get(self.session_manager.get_session.remote(session_id))
+        return ray.get(handle.next.remote(body))
 
     @app.post('/text', response_model=AppState)
     def text(self, key : str, session_id = Cookie(None)):
-        return self.sessions[session_id].text(key)
-
-    @app.post('/next_task', response_model=AppState)
-    def next_task(self, session_id = Cookie(None)):
-        return self.sessions[session_id].next_task()
+        handle = ray.get(self.session_manager.get_session.remote(session_id))
+        return ray.get(handle.text.remote(key))
 
     @app.post('/save', response_model=SaveResp)
     def save(self, body : SessionReq, session_id = Cookie(None)):
-        return self.sessions[session_id].save(body)
+        handle = ray.get(self.session_manager.get_session.remote(session_id))
+        return ray.get(handle.save.remote(body))
+
+    @app.post('/next_task', response_model=AppState)
+    def next_task(self, session_id = Cookie(None)):
+        handle = ray.get(self.session_manager.get_session.remote(session_id))
+        return ray.get(handle.next_task.remote())
 
     @app.post('/sleep')
     def sleep(self, session_id = Cookie(None)):
-        assert session_id
-        assert not self.bad_state
-        start = time.time()
-        self.bad_state = True
-        sleep_time = time.sleep(5)
-        self.bad_state = False
-        end = time.time()
-        return {'waited_time':end-start, 'sleep_time':sleep_time}
+        handle = ray.get(self.session_manager.get_session.remote(session_id))
+        sleep_time = ray.get(handle.sleep.remote())
+        return {'sleep_time':sleep_time}
+
+    @app.post('/test')
+    def test(self, session_id = Cookie(None)):
+        handle = ray.get(self.session_manager.get_session.remote(session_id))
+        return ray.get(handle.test.remote())

@@ -1,5 +1,5 @@
 import ray
-from seesaw import WebSeesaw, app
+from seesaw import SessionManager, app, WebSeesaw
 import os
 import argparse
 from ray import serve
@@ -31,13 +31,16 @@ else:
 seesaw_root = os.path.abspath(os.path.expanduser(args.seesaw_root))
 save_path = os.path.abspath(os.path.expanduser(args.save_path))
 
+session_manager = ray.remote(SessionManager).options(name='session_manager').remote(root_dir=seesaw_root, save_path=save_path, num_cpus=args.num_cpus)
+# kept alive by blocking
+
 deploy_options = dict(name="seesaw_deployment", 
                     num_replicas=1,
                     ray_actor_options={'num_cpus': args.num_cpus, 'num_gpus':num_gpus}, 
                     route_prefix='/')
 
 WebSeesawServe = serve.deployment(**deploy_options)(serve.ingress(app)(WebSeesaw))
-WebSeesawServe.deploy(root_dir=seesaw_root, save_path=save_path, num_cpus=args.num_cpus)
+WebSeesawServe.deploy(session_manager)
 print('new session server deployment is ready, visit it through http://localhost:9000')
 if not args.no_block:
   while True:
