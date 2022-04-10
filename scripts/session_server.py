@@ -11,7 +11,7 @@ deploys session server and exits. if it has been run before, when re-run it will
 parser = argparse.ArgumentParser(description='start a seesaw session server')
 parser.add_argument('--seesaw_root', type=str, help='Seesaw root folder')
 parser.add_argument('--save_path', type=str, help='folder to save sessions in')
-parser.add_argument('--num_cpus', type=int, default=16, help='cpus assigned to worker')
+parser.add_argument('--num_cpus', type=int, default=2, help='cpus assigned to worker')
 parser.add_argument('--no_block',  action='store_true', help='start server without blocking')
 
 args = parser.parse_args()
