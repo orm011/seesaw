@@ -1,5 +1,5 @@
 import ray
-from seesaw import SessionManager, app, WebSeesaw
+from seesaw import SessionManagerActor, app, WebSeesaw
 import os
 import argparse
 from ray import serve
@@ -31,7 +31,7 @@ else:
 seesaw_root = os.path.abspath(os.path.expanduser(args.seesaw_root))
 save_path = os.path.abspath(os.path.expanduser(args.save_path))
 
-session_manager = ray.remote(SessionManager).options(name='session_manager').remote(root_dir=seesaw_root, save_path=save_path, num_cpus=args.num_cpus)
+session_manager = SessionManagerActor.options(name='session_manager').remote(root_dir=seesaw_root, save_path=save_path, num_cpus=args.num_cpus)
 # kept alive by blocking
 
 deploy_options = dict(name="seesaw_deployment", 

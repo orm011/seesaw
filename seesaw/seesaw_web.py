@@ -148,7 +148,7 @@ app = FastAPI()
 app.router.route_class = ErrorLoggingRoute
 
 
-class SingleSeesaw:
+class WebSession:
     """ holds the state for a single user state machine. All actions here are serially run.
         API mirrors the one in WebSeesaw for single user operations
     """
@@ -226,6 +226,9 @@ class SingleSeesaw:
     def test(self):
         return True
 
+
+WebSessionActor = ray.remote(WebSession)
+
 from ray.actor import ActorHandle
 
 class SessionManager:
@@ -241,7 +244,7 @@ class SessionManager:
     def _new_session(self, task_list):
         session_id = generate_id()
         worker = Worker(session_id=session_id, task_list=task_list)
-        self.sessions[session_id] = ray.remote(SingleSeesaw).options(name=f'session#{session_id}', 
+        self.sessions[session_id] = WebSessionActor.options(name=f'web_session#{session_id}', 
                                     num_cpus=self.num_cpus).remote(self.root_dir, self.save_path, 
                                                 session_id, worker, 
                                                 num_cpus=self.num_cpus)
@@ -257,6 +260,7 @@ class SessionManager:
     def get_session(self, session_id):
         return self.sessions.get(session_id)
 
+SessionManagerActor = ray.remote(SessionManager)
 
 class WebSeesaw:
     """
