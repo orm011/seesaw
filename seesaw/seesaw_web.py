@@ -234,10 +234,10 @@ from ray.actor import ActorHandle
 class SessionManager:
     sessions : Dict[str, ActorHandle]
 
-    def __init__(self, root_dir, save_path, num_cpus):
+    def __init__(self, root_dir, save_path, num_cpus_per_session):
         self.root_dir = root_dir
         self.save_path = save_path
-        self.num_cpus = num_cpus
+        self.num_cpus = num_cpus_per_session
         self.sessions = {}
 
 

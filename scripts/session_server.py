@@ -22,23 +22,13 @@ assert os.path.isdir(args.seesaw_root)
 ray.init('auto', namespace="seesaw", log_to_driver=True)
 serve.start() # started in init_spc.sh
 
-
-if ray.available_resources().get('GPU', 0) > .5:
-  num_gpus = .5
-else:
-  num_gpus = 0
-
 seesaw_root = os.path.abspath(os.path.expanduser(args.seesaw_root))
 save_path = os.path.abspath(os.path.expanduser(args.save_path))
 
-session_manager = SessionManagerActor.options(name='session_manager').remote(root_dir=seesaw_root, save_path=save_path, num_cpus=args.num_cpus)
+session_manager = SessionManagerActor.options(name='session_manager').remote(root_dir=seesaw_root, save_path=save_path, num_cpus_per_session=args.num_cpus)
+
 # kept alive by blocking
-
-deploy_options = dict(name="seesaw_deployment", 
-                    num_replicas=1,
-                    ray_actor_options={'num_cpus': args.num_cpus, 'num_gpus':num_gpus}, 
-                    route_prefix='/')
-
+deploy_options = dict(name="seesaw_deployment", num_replicas=1, route_prefix='/')
 WebSeesawServe = serve.deployment(**deploy_options)(serve.ingress(app)(WebSeesaw))
 WebSeesawServe.deploy(session_manager)
 print('new session server deployment is ready, visit it through http://localhost:9000')
