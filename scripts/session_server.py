@@ -25,8 +25,18 @@ serve.start() # started in init_spc.sh
 seesaw_root = os.path.abspath(os.path.expanduser(args.seesaw_root))
 save_path = os.path.abspath(os.path.expanduser(args.save_path))
 
+actor_name = 'session_manager'
+
+try:
+  oldh = ray.get_actor(actor_name)
+  print('found old session_manager actor, destroying it (old sessions will be lost)')
+  ray.kill(oldh)
+  print('ended previous cache actor')
+except:
+    pass
+
 session_manager = (SessionManagerActor
-                    .options(name='session_manager')
+                    .options(name='session_manager', lifetime='detached')
                     .remote(root_dir=seesaw_root, save_path=save_path, num_cpus_per_session=args.num_cpus))
 
 WebSeesaw.deploy(session_manager)
