@@ -175,7 +175,8 @@ class WebSession:
 
     def next_task(self):
         params = self.worker.next_session()
-        return self._reset_dataset(params)
+        self._reset_dataset(params)
+        return self.getstate()
 
     def getstate(self):
         return  AppState(indices=None,
@@ -201,7 +202,7 @@ class WebSession:
         self.session.next()
         return self.getstate()
 
-    def save(self, body : SessionReq):
+    def save(self, body : SessionReq = None):
         if body.client_data.session:
             self.session.update_state(body.client_data.session)
 
