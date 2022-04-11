@@ -35,7 +35,7 @@ except:
     pass
 
 session_manager = (SessionManagerActor
-                    .options(name='session_manager', lifetime='detached')
+                    .options(name=actor_name, lifetime='detached')
                     .remote(root_dir=seesaw_root, save_path=save_path, num_cpus_per_session=args.num_cpus))
 
 WebSeesaw.deploy(session_manager)
