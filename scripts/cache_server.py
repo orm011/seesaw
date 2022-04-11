@@ -14,7 +14,6 @@ if __name__ == '__main__':
       oldh = ray.get_actor(actor_name)
       print('found old cache actor, destroying it')
       ray.kill(oldh)
-      print('ended previous cache actor')
     except:
       pass
       # no actor to kill
