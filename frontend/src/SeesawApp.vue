@@ -150,6 +150,28 @@
       </main>
     </div> 
     <m-modal
+      v-if="end_query == true"
+      ref="notif-modal"
+      @modalKeyDown="handleModalKeyUp('down', $event)"
+      @modalKeyUp="handleModalKeyUp('up', $event)"
+    > 
+      <div>
+      <div class="keyword-text">
+        <span> Object We Are Looking For: {{this.notif_description}} </span>
+      </div> 
+      <m-example-image-gallery 
+        v-bind:urls="example_urls"/>
+      <button
+            class="btn btn-danger"
+            onfocus="blur()"
+            :disabled="loading_next_task"
+            @click="next_task()"
+          >
+            OK
+        </button>
+        </div>
+    </m-modal>
+    <m-modal
       v-if="selection != null"
       ref="modal"
       @modalKeyDown="handleModalKeyUp('down', $event)"
@@ -301,6 +323,8 @@ import MModal from './components/m-modal.vue';
 
 import MConfigVue3 from './components/m-config-vue3.vue';
 
+import MExampleImageGallery from './components/m-example-image-gallery.vue'; 
+
 import Autocomplete from 'vue3-autocomplete'
 // Optional: Import default CSS
 import 'vue3-autocomplete/dist/vue3-autocomplete.css'
@@ -308,7 +332,7 @@ import 'vue3-autocomplete/dist/vue3-autocomplete.css'
 import {image_accepted, getCookie, setCookie} from './util'
 
 export default defineComponent({
-    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete},
+    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete, MExampleImageGallery},
     props: {},
     data () { return { 
                 client_data : { session : null,
@@ -340,7 +364,11 @@ export default defineComponent({
                 }, 
                 image_index : null, 
                 loading_next : false,
-                allow_full_box : false,  
+                allow_full_box : false, 
+                end_query : false,  
+                example_urls : null, 
+                notif_description : '',
+                loading_next_task : false,  
               }
             },
     mounted (){
@@ -373,6 +401,10 @@ export default defineComponent({
     },
     methods : {
       nextButtonClick(){
+        if (this.image_index == 5){
+          this.close_modal(); 
+          this.get_end_description(); 
+        }
         if (this.image_index < this.total_images()){
           this.moveRight()
         } else if (!this.loading_next){
@@ -481,6 +513,31 @@ export default defineComponent({
             .then(response => response.json())
             .then(this._update_client_data)
         },
+        get_end_description(){
+          let index = this.client_data.worker_state.current_task_index; 
+          if (index == this.client_data.worker_state.task_list.length - 1){
+            console.log("last end description called"); 
+          } else {
+            fetch('/api/task_description?code='+this.client_data.worker_state.task_list[index + 1].qkey,   
+                  {method: 'GET'}
+              )
+              .then(response => response.json())
+              .then(this._update_notify_module)
+          }
+        }, 
+        next_task(){
+          this.loading_next_task = true; 
+          let index = this.client_data.worker_state.current_task_index; 
+          if (index == this.client_data.worker_state.task_list.length - 1){
+            console.log("last session"); 
+          } else {
+            fetch(`/api/next_task`,   
+                  {method: 'POST'}
+              )
+              .then(response => response.json())
+              .then(this._update_next_task)
+          }
+        }, 
         total_accepted() {
           let accepted_per_list = (l)=> l.map((elt) => image_accepted(elt) ? 1 : 0).reduce((a,b)=>a+b, 0)
           return this.client_data.session.gdata.map(accepted_per_list).reduce((a,b)=>a+b, 0)
@@ -703,6 +760,15 @@ export default defineComponent({
           this.incr_vue_key(imdata.dbidx)
           this.updateRecommendations(); 
         },
+        _update_next_task(data){
+          console.log("Update Next Task Data: ", data); 
+        },  
+        _update_notify_module(data){
+          console.log("Notify Module Data: ", data); 
+          this.notif_description = data.description; 
+          this.example_urls = data.urls; 
+          this.end_query = true; 
+        }, 
         _update_client_data(data, reset = false){
 
           console.log('current data', this.$data);
