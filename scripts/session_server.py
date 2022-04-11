@@ -31,7 +31,6 @@ try:
   oldh = ray.get_actor(actor_name)
   print('found old session_manager actor, destroying it (old sessions will be lost)')
   ray.kill(oldh)
-  print('ended previous cache actor')
 except:
     pass
 
