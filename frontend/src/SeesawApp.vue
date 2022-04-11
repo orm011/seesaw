@@ -150,27 +150,6 @@
       </main>
     </div> 
     <m-modal
-      v-if="end_query == true"
-      ref="notif-modal"
-      @modalKeyDown="handleModalKeyUp('down', $event)"
-      @modalKeyUp="handleModalKeyUp('up', $event)"
-    > 
-      <div>
-      <div class="keyword-text">
-        <span> Object We Are Looking For: {{this.notif_description}} </span>
-      </div> 
-      <m-example-image-gallery 
-        v-bind:urls="example_urls"/>
-      <button
-            class="btn btn-danger"
-            onfocus="blur()"
-            @click="load_next_task()"
-          >
-            OK
-        </button>
-        </div>
-    </m-modal>
-    <m-modal
       v-if="selection != null"
       ref="modal"
       @modalKeyDown="handleModalKeyUp('down', $event)"
@@ -309,6 +288,27 @@
         />
       </div>
 
+    </m-modal>
+    <m-modal
+      v-if="end_query == true"
+      ref="notif-modal"
+      @modalKeyDown="handleModalKeyUp('down', $event)"
+      @modalKeyUp="handleModalKeyUp('up', $event)"
+    > 
+      <div>
+      <div class="keyword-text">
+        <span> Object We Are Looking For: {{this.notif_description}} </span>
+      </div> 
+      <m-example-image-gallery 
+        v-bind:urls="example_urls"/>
+      <button
+            class="btn btn-danger"
+            onfocus="blur()"
+            @click="load_next_task()"
+          >
+            OK
+        </button>
+        </div>
     </m-modal>
   </div>  
 </template>
@@ -689,6 +689,8 @@ export default defineComponent({
             this.toggleActivation(); 
           } else if (ev.code == 'KeyS'){
             this.sButtonClick(); 
+          } else if (ev.code == 'KeyQ'){
+            this.end_query = true; 
           } else if (ev.code == 'Space'){
             //this.next(); 
           }
