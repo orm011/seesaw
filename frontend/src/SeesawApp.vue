@@ -874,7 +874,6 @@ export default defineComponent({
                             body: JSON.stringify(body) // body data type must match "Content-Type" header
                             })
             .then(response => response.json())
-            .then(p => window.alert('Saved session data'))
             .catch((error) => {
               console.log('error saving', error)
               window.alert('Error saving session data');
