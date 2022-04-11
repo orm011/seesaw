@@ -164,8 +164,7 @@
       <button
             class="btn btn-danger"
             onfocus="blur()"
-            :disabled="loading_next_task"
-            @click="next_task()"
+            @click="load_next_task()"
           >
             OK
         </button>
@@ -368,7 +367,6 @@ export default defineComponent({
                 end_query : false,  
                 example_urls : null, 
                 notif_description : '',
-                loading_next_task : false,  
               }
             },
     mounted (){
@@ -526,7 +524,6 @@ export default defineComponent({
           }
         }, 
         next_task(){
-          this.loading_next_task = true; 
           let index = this.client_data.worker_state.current_task_index; 
           if (index == this.client_data.worker_state.task_list.length - 1){
             console.log("last session"); 
@@ -535,8 +532,12 @@ export default defineComponent({
                   {method: 'POST'}
               )
               .then(response => response.json())
-              .then(this._update_next_task)
+              .then(this._update_client_data)
           }
+        }, 
+        load_next_task(){
+          //this._update_client_data(this.next_task);
+          this.end_query = false;  
         }, 
         total_accepted() {
           let accepted_per_list = (l)=> l.map((elt) => image_accepted(elt) ? 1 : 0).reduce((a,b)=>a+b, 0)
@@ -768,6 +769,7 @@ export default defineComponent({
           this.notif_description = data.description; 
           this.example_urls = data.urls; 
           this.end_query = true; 
+          this.next_task(); 
         }, 
         _update_client_data(data, reset = false){
 
@@ -790,6 +792,10 @@ export default defineComponent({
 
           } else {
             this.selected_index = null
+          }
+
+          if (this.client_data.worker_state.current_task_index == -1){
+            this.get_end_description(); 
           }
           //this.handle_selection_change(null);
         },
