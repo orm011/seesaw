@@ -47,6 +47,10 @@ class AppState(BaseModel): # Using this as a response for every state transition
     default_params : Optional[SessionParams]
     session : Optional[SessionState] #sometimes there is no active session
 
+class NotificationState(BaseModel): 
+    urls : List[str]
+    description : str
+
 class SessionReq(BaseModel):
     client_data : AppState
 
@@ -95,6 +99,8 @@ g_queries = {
     'dst':('objectnet', 'dustpans'), 
     'gg':('objectnet', 'egg cartons'),
 }
+
+start_url = '/home/gridsan/groups/fastai/seesaw/data/'
 
 def session_params(mode, dataset, **kwargs):
   assert mode in _session_modes.keys()
@@ -347,6 +353,20 @@ class WebSeesaw:
             return AppState(indices=None, worker_state=None,
                             session=all_info['session'], 
                             default_params=all_info['session']['params'])
+
+    @app.get('/task_description', response_model=NotificationState)
+    def test(self, code : str):
+        description = "Hello"
+        urls = []
+        for i in range(4): 
+            url = start_url + '/examples/' + code + '/' + code + '-' + str(i+1) + '.png'
+            urls.append(url)
+
+        return NotificationState(
+            description = description, 
+            urls = urls, 
+        )
+
 
     """
         Single-session forwarding functions (forward calls)
