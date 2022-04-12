@@ -13,7 +13,6 @@
         aria-label="Search" 
         v-model="text_query"
         ref="text_input"
-        @keydown.enter="text(text_query)"
       >
       <button
         class="navbar-toggler position-absolute d-md-none collapsed"
@@ -402,7 +401,7 @@ export default defineComponent({
     },
     methods : {
       nextButtonClick(){
-        if (this.image_index == 1){
+        if (this.image_index == 5){ // End Task
           this.close_modal(); 
           this.get_end_description(); 
         }
@@ -516,6 +515,7 @@ export default defineComponent({
         },
         get_end_description(){
           let index = this.client_data.worker_state.current_task_index; 
+          this.task_started = false; 
           if (index != -1){
             console.log("LOGGING THAT TASK ENDED", index); 
             this.log("task.ended"); 
@@ -560,6 +560,9 @@ export default defineComponent({
         load_next_task(){
           //this._update_client_data(this.next_task);
           this.end_query = false;
+          if (this.task_started == false){ // if we haven't started a task, do the auto enter
+            this.text(this.text_query); 
+          } 
           this.task_started = true;   
         }, 
         total_accepted() {
