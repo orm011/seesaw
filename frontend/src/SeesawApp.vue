@@ -194,7 +194,7 @@
             class="btn btn-danger"
             onfocus="blur()"
           >
-            Close (Esc)
+            See Examples (Q)
         </button>
         <div
         class="button-row" 
@@ -296,7 +296,7 @@
     > 
       <div>
       <div class="keyword-text">
-        <span> Object We Are Looking For: {{this.notif_description}} </span>
+        <span> {{this.notif_description}} </span>
       </div> 
       <m-example-image-gallery 
         v-bind:urls="example_urls"/>
@@ -703,8 +703,6 @@ export default defineComponent({
             this.nextButtonClick(); 
           } else if (ev.code === 'KeyA'){
             this.moveLeft(); 
-          } else if (ev.code == 'Escape') {
-            this.close_modal()
           } else if (ev.code == 'KeyW'){
             // TODO: make it toggle accept the image
             if (this.front_end_type === 'pytorch' && this.allow_full_box){

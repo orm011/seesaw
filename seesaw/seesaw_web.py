@@ -381,7 +381,11 @@ class WebSeesaw:
 
     @app.get('/task_description', response_model=NotificationState)
     def task_description(self, code : str):
-        description = "Hello"
+        title = g_queries[code][1]
+        if (code == 'mln'): 
+            title += " (NOT WATERMELONS)"
+        
+        description = "In this series, you'll be looking for " + title + ". Below are some examples of " + title + ". Click OK to proceed. (Note if OK is not clickable, the session might be loading."
         urls = []
         for i in range(4): 
             url = start_url + '/examples/' + code + '/' + code + '-' + str(i+1) + '.png'
