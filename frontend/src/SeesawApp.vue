@@ -305,6 +305,7 @@
             class="btn btn-danger"
             onfocus="blur()"
             @click="load_next_task()"
+            :disabled="!next_task_ready"
           >
             OK
         </button>
@@ -367,6 +368,7 @@ export default defineComponent({
                 end_query : false,  
                 example_urls : null, 
                 notif_description : '',
+                next_task_ready : false, 
               }
             },
     mounted (){
@@ -525,6 +527,7 @@ export default defineComponent({
         }, 
         next_task(){
           let index = this.client_data.worker_state.current_task_index; 
+          this.next_task_ready = false; 
           if (index == this.client_data.worker_state.task_list.length - 1){
             console.log("last session"); 
           } else {
@@ -799,6 +802,7 @@ export default defineComponent({
           if (this.client_data.worker_state.current_task_index == -1){
             this.get_end_description(); 
           }
+          this.next_task_ready = true; 
           //this.handle_selection_change(null);
         },
         reset(index){
