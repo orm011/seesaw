@@ -95,7 +95,7 @@ from .configs import _session_modes, _dataset_map, std_linear_config,std_textual
 
 g_queries = {
     'pc':('bdd', 'police cars'), 
-    'amb':('bdd', 'ambulances'),
+    # 'amb':('bdd', 'ambulances'),
     'dg':('bdd', 'dogs'), 
     'cd':('bdd', 'cars with open doors'), 
     'wch':('bdd', 'wheelchairs'),
@@ -185,8 +185,10 @@ class WebSession:
         self.session = res['session']
 
     def next_task(self, body : SessionReq):
-        self.session._log('next_task')
-        self.save(body)
+        if self.session is not None: # null the first time
+            self.session._log('next_task')
+            self.save(body)
+
         params = self.worker.next_session()
         self._reset_dataset(params)
         return self.getstate()
