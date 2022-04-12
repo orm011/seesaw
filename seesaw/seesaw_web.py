@@ -30,6 +30,8 @@ import pandas as pd
 import ray
 import ray.serve
 
+
+
 class TaskParams(BaseModel):
     task_index : int
     qkey : str
@@ -62,6 +64,9 @@ class SessionInfoReq(BaseModel):
 
 class SaveResp(BaseModel):
     path : str
+
+class EndSession(BaseModel):
+    token : str
 
 class Worker:
     session_id : str
@@ -179,7 +184,9 @@ class WebSession:
         res = make_session(self.gdm, s)
         self.session = res['session']
 
-    def next_task(self):
+    def next_task(self, body : SessionReq):
+        self.session._log('next_task')
+        self.save(body)
         params = self.worker.next_session()
         self._reset_dataset(params)
         return self.getstate()
@@ -196,6 +203,7 @@ class WebSession:
         return self.getstate()
 
     def next(self, body : SessionReq):
+        self.save(body)
         state = body.client_data.session
         if state is not None: ## refinement code
             self.session.update_state(state)
@@ -209,20 +217,27 @@ class WebSession:
         return self.getstate()
 
     def save(self, body : SessionReq = None):
-        if body.client_data.session:
-            self.session.update_state(body.client_data.session)
+        if self.session is not None:
+            if body.client_data.session:
+                self.session.update_state(body.client_data.session)
 
-        self.session._log('save')        
-        qkey = self.session.params.other_params['qkey']
-        if qkey not in g_queries:
-            qkey = 'other'
-        
-        output_path = f'{self.save_path}/session_{self.session_id}/qkey_{qkey}/saved_{time.strftime("%Y%m%d-%H%M%S")}'
-        os.makedirs(output_path, exist_ok=False)
-        base = self.getstate().dict()
-        json.dump(base, open(f'{output_path}/summary.json', 'w'))
-        print(f'saved session {output_path}')
-        return SaveResp(path='')
+            self.session._log('save')        
+            qkey = self.session.params.other_params['qkey']
+
+            # ensure session id is set correctly in json for easier access at read time
+            self.session.params.other_params['session_id'] = self.session_id
+            save_time = time.strftime("%Y%m%d-%H%M%S")
+            self.session.params.other_params['save_time'] = save_time
+
+            if qkey not in g_queries:
+                qkey = 'other'
+            
+            output_path = f'{self.save_path}/session_{self.session_id}/qkey_{qkey}/saved_{save_time}'
+            os.makedirs(output_path, exist_ok=False)
+            base = self.getstate().dict()
+            json.dump(base, open(f'{output_path}/summary.json', 'w'))
+            print(f'saved session {output_path}')
+            return SaveResp(path='')
 
     def sleep(self):
         start = time.time()
@@ -263,6 +278,13 @@ class SessionManager:
 
     def new_session(self):
         return self._new_session([])
+
+    def end_session(self, session_id):
+        ## session should die after reference 
+        sess = self.sessions[session_id]
+        del self.sessions[session_id]
+        print(f'ending session {session_id}')
+        ray.kill(sess)
 
     def get_session(self, session_id):
         return self.sessions.get(session_id)
@@ -356,7 +378,7 @@ class WebSeesaw:
                             default_params=all_info['session']['params'])
 
     @app.get('/task_description', response_model=NotificationState)
-    def test(self, code : str):
+    def task_description(self, code : str):
         description = "Hello"
         urls = []
         for i in range(4): 
@@ -367,6 +389,14 @@ class WebSeesaw:
             description = description, 
             urls = urls, 
         )
+
+    @app.post('/session_end', response_model=EndSession)
+    async def session_end(self, response : Response, session_id = Cookie(None), 
+                handle=Depends(get_handle), body : SessionReq = None):
+        await handle.save.remote(body)
+        await self.session_manager.end_session.remote(session_id)
+        response.set_cookie('session_id', max_age=0)
+        return EndSession(token=session_id)
 
 
     """
@@ -393,8 +423,8 @@ class WebSeesaw:
         return await handle.save.remote(body)
 
     @app.post('/next_task', response_model=AppState)
-    async def next_task(self, handle=Depends(get_handle)):
-        return await handle.next_task.remote()
+    async def next_task(self, body : SessionReq, handle=Depends(get_handle)):
+        return await handle.next_task.remote(body)
 
     @app.post('/sleep')
     async def sleep(self, handle=Depends(get_handle)):
