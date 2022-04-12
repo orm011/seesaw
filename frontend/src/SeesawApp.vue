@@ -402,7 +402,7 @@ export default defineComponent({
     },
     methods : {
       nextButtonClick(){
-        if (this.image_index == 5){
+        if (this.image_index == 1){
           this.close_modal(); 
           this.get_end_description(); 
         }
@@ -535,6 +535,7 @@ export default defineComponent({
           let body = { client_data : this.$data.client_data };
           fetch(`/api/session_end`,   
                   {method: 'POST', 
+                  headers: {'Content-Type': 'application/json'}, 
                   body: JSON.stringify(body)}
               )
               .then(response => response.json())
@@ -549,6 +550,7 @@ export default defineComponent({
             let body = { client_data : this.$data.client_data };
             fetch(`/api/next_task`,   
                   {method: 'POST', 
+                  headers: {'Content-Type': 'application/json'},
                   body: JSON.stringify(body)}
               )
               .then(response => response.json())
@@ -797,6 +799,7 @@ export default defineComponent({
         _finish_session_data(data){
           this.notif_description = "Completed Survey. Survey Code: " + data.token; 
           this.end_query = true; 
+          this.example_urls = null; 
           this.next_task_ready = false; 
         },
         _update_client_data(data, reset = false){
@@ -899,21 +902,8 @@ export default defineComponent({
           }
 
         },
-        save(){
-          let body = { client_data : this.$data.client_data };
-          fetch(`/api/save`, {method:'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(body) // body data type must match "Content-Type" header
-                            })
-            .then(response => response.json())
-            .catch((error) => {
-              console.log('error saving', error)
-              window.alert('Error saving session data');
-            })
-        },
         close_modal(){
           this.handle_selection_change(null)
-          this.save()
         }
     }
 })
