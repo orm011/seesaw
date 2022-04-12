@@ -185,7 +185,7 @@ class WebSession:
         self.session = res['session']
 
     def next_task(self, body : SessionReq):
-        if self.session is not None: # null the first time
+        if self.session: # null the first time
             self.session._log('next_task')
             self.save(body)
 

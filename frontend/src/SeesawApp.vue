@@ -150,27 +150,6 @@
       </main>
     </div> 
     <m-modal
-      v-if="end_query == true"
-      ref="notif-modal"
-      @modalKeyDown="handleModalKeyUp('down', $event)"
-      @modalKeyUp="handleModalKeyUp('up', $event)"
-    > 
-      <div>
-      <div class="keyword-text">
-        <span> Object We Are Looking For: {{this.notif_description}} </span>
-      </div> 
-      <m-example-image-gallery 
-        v-bind:urls="example_urls"/>
-      <button
-            class="btn btn-danger"
-            onfocus="blur()"
-            @click="load_next_task()"
-          >
-            OK
-        </button>
-        </div>
-    </m-modal>
-    <m-modal
       v-if="selection != null"
       ref="modal"
       @modalKeyDown="handleModalKeyUp('down', $event)"
@@ -310,6 +289,28 @@
       </div>
 
     </m-modal>
+    <m-modal
+      v-if="end_query == true"
+      ref="notif-modal"
+      @modalKeyDown="handleModalKeyUp('down', $event)"
+      @modalKeyUp="handleModalKeyUp('up', $event)"
+    > 
+      <div>
+      <div class="keyword-text">
+        <span> Object We Are Looking For: {{this.notif_description}} </span>
+      </div> 
+      <m-example-image-gallery 
+        v-bind:urls="example_urls"/>
+      <button
+            class="btn btn-danger"
+            onfocus="blur()"
+            @click="load_next_task()"
+            :disabled="!next_task_ready"
+          >
+            OK
+        </button>
+        </div>
+    </m-modal>
   </div>  
 </template>
 <script lang="ts">
@@ -367,6 +368,8 @@ export default defineComponent({
                 end_query : false,  
                 example_urls : null, 
                 notif_description : '',
+                next_task_ready : false, 
+                task_started : false, 
               }
             },
     mounted (){
@@ -399,7 +402,7 @@ export default defineComponent({
     },
     methods : {
       nextButtonClick(){
-        if (this.image_index == 5){
+        if (this.image_index == 1){
           this.close_modal(); 
           this.get_end_description(); 
         }
@@ -513,8 +516,13 @@ export default defineComponent({
         },
         get_end_description(){
           let index = this.client_data.worker_state.current_task_index; 
+          if (index != -1){
+            console.log("LOGGING THAT TASK ENDED", index); 
+            this.log("task.ended"); 
+          }
           if (index == this.client_data.worker_state.task_list.length - 1){
             console.log("last end description called"); 
+            this.finish_session(); 
           } else {
             fetch('/api/task_description?code='+this.client_data.worker_state.task_list[index + 1].qkey,   
                   {method: 'GET'}
@@ -523,13 +531,27 @@ export default defineComponent({
               .then(this._update_notify_module)
           }
         }, 
+        finish_session(){
+          let body = { client_data : this.$data.client_data };
+          fetch(`/api/session_end`,   
+                  {method: 'POST', 
+                  headers: {'Content-Type': 'application/json'}, 
+                  body: JSON.stringify(body)}
+              )
+              .then(response => response.json())
+              .then(this._finish_session_data)
+        }, 
         next_task(){
           let index = this.client_data.worker_state.current_task_index; 
+          this.next_task_ready = false; 
           if (index == this.client_data.worker_state.task_list.length - 1){
             console.log("last session"); 
           } else {
+            let body = { client_data : this.$data.client_data };
             fetch(`/api/next_task`,   
-                  {method: 'POST'}
+                  {method: 'POST', 
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify(body)}
               )
               .then(response => response.json())
               .then(this._update_client_data)
@@ -537,7 +559,8 @@ export default defineComponent({
         }, 
         load_next_task(){
           //this._update_client_data(this.next_task);
-          this.end_query = false;  
+          this.end_query = false;
+          this.task_started = true;   
         }, 
         total_accepted() {
           let accepted_per_list = (l)=> l.map((elt) => image_accepted(elt) ? 1 : 0).reduce((a,b)=>a+b, 0)
@@ -689,6 +712,8 @@ export default defineComponent({
             this.toggleActivation(); 
           } else if (ev.code == 'KeyS'){
             this.sButtonClick(); 
+          } else if (ev.code == 'KeyQ'){
+            this.end_query = true; 
           } else if (ev.code == 'Space'){
             //this.next(); 
           }
@@ -771,6 +796,12 @@ export default defineComponent({
           this.end_query = true; 
           this.next_task(); 
         }, 
+        _finish_session_data(data){
+          this.notif_description = "Completed Survey. Survey Code: " + data.token; 
+          this.end_query = true; 
+          this.example_urls = null; 
+          this.next_task_ready = false; 
+        },
         _update_client_data(data, reset = false){
 
           console.log('current data', this.$data);
@@ -797,6 +828,7 @@ export default defineComponent({
           if (this.client_data.worker_state.current_task_index == -1){
             this.get_end_description(); 
           }
+          this.next_task_ready = true; 
           //this.handle_selection_change(null);
         },
         reset(index){
@@ -828,6 +860,8 @@ export default defineComponent({
             .then(() => {
               if (this.selection === undefined || this.selection === null){
                 this.$refs.text_input.blur();
+                console.log("LOGGING THAT TASK STARTED", this.client_data.worker_state.current_task_index); 
+                this.log("task.started"); 
                 this.handle_selection_change({gdata_idx:0, local_idx:0})
               }
             })
@@ -835,6 +869,7 @@ export default defineComponent({
         next(move_right: boolean = false){
           let handle_ret = (new_data) => {
             this.log('next.end');
+            console.log("NEW DATA: ", new_data); 
             this._update_client_data(new_data);
             this.loading_next = false;
             if (move_right){ 
@@ -867,21 +902,8 @@ export default defineComponent({
           }
 
         },
-        save(){
-          let body = { client_data : this.$data.client_data };
-          fetch(`/api/save`, {method:'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(body) // body data type must match "Content-Type" header
-                            })
-            .then(response => response.json())
-            .catch((error) => {
-              console.log('error saving', error)
-              window.alert('Error saving session data');
-            })
-        },
         close_modal(){
           this.handle_selection_change(null)
-          this.save()
         }
     }
 })
