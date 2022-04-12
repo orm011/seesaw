@@ -296,7 +296,7 @@
     > 
       <div>
       <div class="keyword-text">
-        <span> Object We Are Looking For: {{this.notif_description}} </span>
+        <span> {{this.notif_description}} </span>
       </div> 
       <m-example-image-gallery 
         v-bind:urls="example_urls"/>
