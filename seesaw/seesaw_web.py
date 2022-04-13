@@ -239,11 +239,11 @@ class WebSession:
 
     def save(self, body : SessionReq = None):
         if self.session is not None:
-            if body.client_data.session:
+            if body and body.client_data and body.client_data.session:
                 self.session.update_state(body.client_data.session)
 
             self.session._log('save')        
-            qkey = self.session.params.other_params['qkey']
+            qkey = self.session.params.other_params.get('qkey', None)
 
             # ensure session id is set correctly in json for easier access at read time
             self.session.params.other_params['session_id'] = self.session_id
@@ -254,7 +254,7 @@ class WebSession:
                 qkey = 'other'
             
             output_path = f'{self.save_path}/session_{self.session_id}/qkey_{qkey}/saved_{save_time}'
-            os.makedirs(output_path, exist_ok=False)
+            os.makedirs(output_path, exist_ok=True)
             base = self.getstate().dict()
             json.dump(base, open(f'{output_path}/summary.json', 'w'))
             print(f'saved session {output_path}')
@@ -299,6 +299,9 @@ class SessionManager:
 
     def new_session(self):
         return self._new_session([])
+
+    def session_exists(self, session_id):
+        return session_id in self.sessions
 
     def end_session(self, session_id):
         ## session should die after reference 
@@ -369,7 +372,7 @@ class WebSeesaw:
         """
         if session_id is None:
             session_id = await self.session_manager.new_worker.remote(mode)
-            response.set_cookie(key='session_id', value=session_id, max_age=pd.Timedelta('2 hours').total_seconds())
+            response.set_cookie(key='session_id', value=session_id, max_age=pd.Timedelta('2 hours').total_seconds())                
 
         handle = await get_handle(session_id)
                 
@@ -416,11 +419,18 @@ class WebSeesaw:
         )
 
     @app.post('/session_end', response_model=EndSession)
-    async def session_end(self, response : Response, session_id = Cookie(None), 
-                handle=Depends(get_handle), body : SessionReq = None):
+    async def session_end(self, response : Response, session_id = Cookie(None),  body : SessionReq = None):
+
+        # no matter what, expire cookie from requester
+        response.set_cookie('session_id', max_age=0)
+
+        sess_exists = await self.session_manager.session_exists.remote(session_id)        
+        if not sess_exists: # after restarting server there are old ids out there that don't exist
+            return EndSession(token=session_id)
+        
+        handle = await get_handle(session_id)
         await handle.save.remote(body)
         await self.session_manager.end_session.remote(session_id)
-        response.set_cookie('session_id', max_age=0)
         return EndSession(token=session_id)
 
     """
