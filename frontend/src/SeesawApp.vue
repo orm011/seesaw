@@ -274,7 +274,7 @@
         </button>
       </div>
       <div class="keyword-text">
-        <span> Image {{this.image_index}} of {{this.total_images()}} ({{this.total_accepted()}} accepted)</span>
+        <span> Image {{this.image_index}} of {{this.total_images()}} </span>
       </div>
       <div class="row">
         <m-annotator
@@ -369,6 +369,7 @@ export default defineComponent({
                 notif_description : '',
                 next_task_ready : false, 
                 task_started : false, 
+                task_start_time : Date.now(),
               }
             },
     mounted (){
@@ -400,8 +401,15 @@ export default defineComponent({
         this.checkContainer(); 
     },
     methods : {
+      finish_task(){
+        //var value = this.image_index == 5; 
+        var value = ((this.total_accepted() == 10) || (Math.floor((Date.now() - this.task_start_time)/1000) > 60 * 4)); 
+        console.log("Accepted Images: ", this.total_accepted()); 
+        console.log("Change time: ", Math.floor((Date.now() - this.task_start_time)/1000)); 
+        return value; 
+      }, 
       nextButtonClick(){
-        if (this.image_index == 5){ // End Task
+        if (this.finish_task()){ // End Task
           this.close_modal(); 
           this.get_end_description(); 
         }
@@ -863,6 +871,8 @@ export default defineComponent({
                 this.$refs.text_input.blur();
                 console.log("LOGGING THAT TASK STARTED", this.client_data.worker_state.current_task_index); 
                 this.log("task.started"); 
+                console.log(Date.now()); 
+                this.task_start_time = Date.now(); 
                 this.handle_selection_change({gdata_idx:0, local_idx:0})
               }
             })
