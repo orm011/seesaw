@@ -55,7 +55,7 @@ class SearchDesc(BaseModel):
 
 class NotificationState(BaseModel): 
     urls : List[str]
-    description : str
+    description : SearchDesc
 
 class SessionReq(BaseModel):
     client_data : AppState
@@ -403,18 +403,17 @@ class WebSeesaw:
 
     @app.get('/task_description', response_model=NotificationState)
     def task_description(self, code : str):
-        sdesc = g_queries[code] 
-
-        description = f"""In the following task, you'll be looking for {sdesc.qstr}. 
-                            {sdesc.description}.
-                            Below are some examples of {sdesc.qstr}. When you are ready and the OK button is enabled, press it to proceed."""
+        sdesc = g_queries[code]
+        # description = f"""In the following task, you'll be looking for {sdesc.qstr}. 
+        #                     {sdesc.description}.
+        #                     Below are some examples of {sdesc.qstr}. When you are ready and the OK button is enabled, press it to proceed."""
         urls = []
         for i in range(4): 
             url = start_url + '/examples/' + code + '/' + code + '-' + str(i+1) + '.png'
             urls.append(url)
 
         return NotificationState(
-            description = description, 
+            description = sdesc, 
             urls = urls, 
         )
 
