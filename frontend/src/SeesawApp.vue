@@ -148,8 +148,8 @@
         </div> -->
       </main>
     </div> 
-    <m-modal>
-      
+    <m-modal v-if="!path_mode">
+
     </m-modal>
     <m-modal
       v-if="selection != null"
@@ -376,6 +376,7 @@ export default defineComponent({
                 next_task_ready : false, 
                 task_started : false, 
                 task_start_time : Date.now(),
+                path_mode : false, 
               }
             },
     mounted (){
@@ -385,6 +386,7 @@ export default defineComponent({
         if (window.location.pathname === '/session_info'){
             let session_path = params.get('path')
             this.load_session(session_path)
+            this.path_mode = true; 
         } else if (window.location.pathname === '/compare'){
             let session_path = params.get('path')
             this.other_url = `${window.location.origin}/session_info?path=${params.get('other')}`
@@ -411,17 +413,20 @@ export default defineComponent({
         this.checkContainer(); 
     },
     methods : {
-      finish_task(){
+      is_task_finished(){
         //var value = this.image_index == 5; 
-        var value = ((this.total_accepted() == 10) || (Math.floor((Date.now() - this.task_start_time)/1000) > 60 * 4)); 
-        console.log("Accepted Images: ", this.total_accepted()); 
+        let accepted = this.total_accepted(); 
+        let seconds = Math.floor((Date.now() - this.task_start_time)/1000); 
+        var value = ((accepted == 10) || (seconds > 60 * 4)); 
+        console.log("Accepted Images: ", accepted); 
         console.log("Change time: ", Math.floor((Date.now() - this.task_start_time)/1000)); 
-        return value; 
+        return {'value': value, 'accepted': accepted, 'seconds_lasted': seconds}; 
       }, 
       nextButtonClick(){
-        if (this.finish_task()){ // End Task
+        let finish = this.is_task_finished(); 
+        if (finish.value){ // End Task
           this.close_modal(); 
-          this.get_end_description(); 
+          this.get_end_description(finish); 
         }
         if (this.image_index < this.total_images()){
           this.moveRight()
@@ -430,8 +435,10 @@ export default defineComponent({
         }
       },
       log(message : string, other_fields : Object) {
-        this.client_data.session.action_log.push({logger:'client', time:Date.now()/1000, seen:this.total_images(), accepted:this.total_accepted(),
-         message:message, other_fields : other_fields});
+        if (!this.path_mode){
+          this.client_data.session.action_log.push({logger:'client', time:Date.now()/1000, seen:this.total_images(), accepted:this.total_accepted(),
+          message:message, other_fields : other_fields});
+        }
       },
       checkContainer () {
         let input = document.querySelector('.vue3-input');
@@ -531,11 +538,11 @@ export default defineComponent({
             .then(response => response.json())
             .then(this._update_client_data)
         },
-        get_end_description(){
+        get_end_description(finish){
           let index = this.client_data.worker_state.current_task_index; 
           this.task_started = false; 
           if (index != -1){
-            this.log("task.end"); 
+            this.log("task.end", finish); 
           }
           if (index == this.client_data.worker_state.task_list.length - 1){
             this.finish_session(); 
@@ -549,13 +556,15 @@ export default defineComponent({
         }, 
         finish_session(){
           let body = { client_data : this.$data.client_data };
-          fetch(`/api/session_end`,   
-                  {method: 'POST', 
-                  headers: {'Content-Type': 'application/json'}, 
-                  body: JSON.stringify(body)}
-              )
-              .then(response => response.json())
-              .then(this._finish_session_data)
+          if (!this.path_mode){
+            fetch(`/api/session_end`,   
+                    {method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify(body)}
+                )
+                .then(response => response.json())
+                .then(this._finish_session_data)
+          }
         }, 
         next_task(){
           let index = this.client_data.worker_state.current_task_index; 
@@ -564,13 +573,15 @@ export default defineComponent({
             console.log("last session"); 
           } else {
             let body = { client_data : this.$data.client_data };
-            fetch(`/api/next_task`,   
-                  {method: 'POST', 
-                  headers: {'Content-Type': 'application/json'},
-                  body: JSON.stringify(body)}
-              )
-              .then(response => response.json())
-              .then(this._update_client_data)
+            if (!this.path_mode){
+              fetch(`/api/next_task`,   
+                    {method: 'POST', 
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)}
+                )
+                .then(response => response.json())
+                .then(this._update_client_data)
+            }
           }
         }, 
         load_next_task(){
@@ -727,6 +738,10 @@ export default defineComponent({
           console.log(ev.code); 
           if (ev.code === 'KeyD'){
             this.nextButtonClick(); 
+          } else if (ev.code === 'Escape'){
+            if (this.path_mode){
+              this.close_modal(); 
+            }  
           } else if (ev.code === 'KeyA'){
             this.moveLeft(); 
           } else if (ev.code == 'KeyW'){
@@ -854,7 +869,7 @@ export default defineComponent({
           }
 
           if (this.client_data.worker_state.current_task_index == -1){
-            this.get_end_description(); 
+            this.get_end_description({}); 
           }
           this.next_task_ready = true; 
           //this.handle_selection_change(null);
@@ -868,34 +883,38 @@ export default defineComponent({
           // this.$data = this.data()
           this.client_data.session = null; // clear current screen
           console.log('reset request', reqdata)
-          fetch(`/api/reset`,   
-              {method: 'POST', 
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify(reqdata)
-          })
-          .then(response => response.json())
-          .then(data => this._update_client_data(data, true))
+          if (!this.path_mode){
+            fetch(`/api/reset`,   
+                {method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(reqdata)
+            })
+            .then(response => response.json())
+            .then(data => this._update_client_data(data, true))
+          }
         },
         text(text_query : string){
             // TODO: refactor this after user study
             let params = new URLSearchParams({key:text_query})
-            fetch(`/api/text?` + params,   
-                {method: 'POST', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({})}
-            )
-            .then(response => response.json())
-            .then(data => {
-              console.log('text cb')
-              this._update_client_data(data);
-              if (this.selection === undefined || this.selection === null){
-                    this.$refs.text_input.blur();
-                    this.log("task.started"); 
-                    this.task_start_time = Date.now(); 
-                    this.handle_selection_change({gdata_idx:0, local_idx:0})
-                  }
-            })
-            .catch(e => console.log(e))
+            if (!this.path_mode){
+              fetch(`/api/text?` + params,   
+                  {method: 'POST', 
+                  headers: {'Content-Type': 'application/json'}, 
+                  body: JSON.stringify({})}
+              )
+              .then(response => response.json())
+              .then(data => {
+                console.log('text cb')
+                this._update_client_data(data);
+                if (this.selection === undefined || this.selection === null){
+                      this.$refs.text_input.blur();
+                      this.log("task.started"); 
+                      this.task_start_time = Date.now(); 
+                      this.handle_selection_change({gdata_idx:0, local_idx:0})
+                    }
+              })
+              .catch(e => console.log(e))
+            }
         },
         next(move_right: boolean = false){
 
@@ -904,27 +923,29 @@ export default defineComponent({
             this.loading_next = true; 
             let body = { client_data : this.$data.client_data };
 
-            fetch(`/api/next`, {method:'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(body) // body data type must match "Content-Type" header
-                            })
-            .then(data => data.json())
-            .then(data => {
-              let new_data = data;
-              this.log('next_req.end');
-              this._update_client_data(new_data);
-              this.loading_next = false;
-              if (move_right){ 
-                  console.log('hanlding ret', move_right, 'this', this); 
-                  this.moveRight() 
-              }   else {
-                console.log('no move right');
-              }
-            })
-            .catch((error) => {
-              console.log("Error in next: ", error); 
-              this.loading_next = false; 
-            })
+            if (!this.path_mode){
+              fetch(`/api/next`, {method:'POST',
+                              headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify(body) // body data type must match "Content-Type" header
+                              })
+              .then(data => data.json())
+              .then(data => {
+                let new_data = data;
+                this.log('next_req.end');
+                this._update_client_data(new_data);
+                this.loading_next = false;
+                if (move_right){ 
+                    console.log('hanlding ret', move_right, 'this', this); 
+                    this.moveRight() 
+                }   else {
+                  console.log('no move right');
+                }
+              })
+              .catch((error) => {
+                console.log("Error in next: ", error); 
+                this.loading_next = false; 
+              })
+            }
           } else { 
             console.log("PREVENTED NEXT DUE TO WAITING");
           }
