@@ -31,7 +31,6 @@ import ray
 import ray.serve
 
 
-
 class TaskParams(BaseModel):
     task_index : int
     qkey : str
@@ -48,6 +47,11 @@ class AppState(BaseModel): # Using this as a response for every state transition
     worker_state : Optional[WorkerState]
     default_params : Optional[SessionParams]
     session : Optional[SessionState] #sometimes there is no active session
+
+class SearchDesc(BaseModel):
+    dataset : str
+    qstr : str
+    description : str = ''
 
 class NotificationState(BaseModel): 
     urls : List[str]
@@ -93,16 +97,31 @@ def generate_id():
 from .util import reset_num_cpus
 from .configs import _session_modes, _dataset_map, std_linear_config,std_textual_config
 
+
 g_queries = {
-    'pc':('bdd', 'police cars'), 
-    # 'amb':('bdd', 'ambulances'),
-    'dg':('bdd', 'dogs'), 
-    'cd':('bdd', 'cars with open doors'), 
-    'wch':('bdd', 'wheelchairs'),
-    'mln':('coco', 'melons'),
-    'spn':('coco', 'spoons'),
-    'dst':('objectnet', 'dustpans'), 
-    'gg':('objectnet', 'egg cartons'),
+    'pc':SearchDesc(dataset='bdd', qstr='police cars', 
+                description='''Police vehicles that have lights and some marking related to police. 
+                    Sometimes private security vehicles or ambulances look like police cars but should not be included'''),
+    'dg':SearchDesc(dataset='bdd', qstr='dogs'),
+    'cd':SearchDesc(dataset='bdd', qstr='car with open doors', 
+                description='''Any vehicles with any open doors, including open trunks in cars, and rolled-up doors in trucks and trailers.
+                         When there are too many vehicles in a congested street, only focus on the foreground. 
+                         These can be rare, so you need to be very careful not to miss them'''),
+    'wch':SearchDesc(dataset='bdd', qstr='wheelchairs',
+                description='''We include wheelchair alternatives such as electric scooters for the mobility impaired. 
+                                We do not include the wheelchair icon (♿), or baby strollers'''),
+    'mln':SearchDesc(dataset='coco', qstr='cantaloupe or honeydew melon', 
+                description='''We inclulde both cantaloupe (orange melon) and honeydew (green melon), whole melons and melon pieces. 
+                                We dont include any other types of melon, including watermelons, papaya or pumpkins, which can look similar. 
+                                If you cannot tell whether a fruit piece is really from melon just leave it out.'''),
+    'spn':SearchDesc(dataset='coco', qstr='spoons or teaspoons', 
+                description='''We include spoons or teaspons of any material for eating. 
+                    We dont include the large cooking or serving spoons, ladles for soup, or measuring spoons.'''),
+    'dst':SearchDesc(dataset='objectnet', qstr='dustpans',
+                description='''We include dustpans on their own or together with other tools, like brooms, from any angle.'''),
+    'gg':SearchDesc(dataset='objectnet', qstr='egg cartons',
+                description='''These are often made of cardboard or styrofoam. We include them viewed from any angle. 
+                            We dont include the permanent egg containers that come in the fridge''')
 }
 
 start_url = '/home/gridsan/groups/fastai/seesaw/data/'
@@ -123,8 +142,8 @@ def generate_task_list(mode):
     # qs = random.shuffle(g_queries.items())
     # for q in :
     for i,k in enumerate(g_queries.keys()):
-        (dataset, qstr) = g_queries[k]
-        task = TaskParams(mode=mode, qkey=k, qstr=qstr, dataset=dataset, task_index=i)
+        sdesc = g_queries[k]
+        task = TaskParams(mode=mode, qkey=k, qstr=sdesc.qstr, dataset=sdesc.dataset, task_index=i)
         tasks.append(task)
 
     return tasks
@@ -381,11 +400,11 @@ class WebSeesaw:
 
     @app.get('/task_description', response_model=NotificationState)
     def task_description(self, code : str):
-        title = g_queries[code][1]
-        if (code == 'mln'): 
-            title += " (NOT WATERMELONS)"
-        
-        description = "In this series, you'll be looking for " + title + ". Below are some examples of " + title + ". Click OK to proceed. (Note if OK is not clickable, the session might be loading."
+        sdesc = g_queries[code] 
+
+        description = f"""In the following task, you'll be looking for {sdesc.qstr}. 
+                            {sdesc.description}.
+                            Below are some examples of {sdesc.qstr}. When you are ready and the OK button is enabled, press it to proceed."""
         urls = []
         for i in range(4): 
             url = start_url + '/examples/' + code + '/' + code + '-' + str(i+1) + '.png'
@@ -403,7 +422,6 @@ class WebSeesaw:
         await self.session_manager.end_session.remote(session_id)
         response.set_cookie('session_id', max_age=0)
         return EndSession(token=session_id)
-
 
     """
         Single-session forwarding functions (forward calls)
