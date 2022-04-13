@@ -297,7 +297,9 @@
     > 
       <div>
       <div class="keyword-text">
-        <span> {{this.notif_description}} </span>
+        <span v-if="this.notif_description.qstr"> In the following task, you'll be looking for <b>{{this.notif_description.qstr}}.</b> </span>
+        <span> {{this.notif_description.description}} </span>
+        <span v-if="this.notif_description.qstr"> Below are some examples of <b>{{this.notif_description.qstr}}</b>. When you are ready and the OK button is enabled, press it to proceed. </span>
       </div> 
       <m-example-image-gallery 
         v-bind:urls="example_urls"/>
@@ -367,7 +369,7 @@ export default defineComponent({
                 allow_full_box : false, 
                 end_query : false,  
                 example_urls : null, 
-                notif_description : '',
+                notif_description : null,
                 next_task_ready : false, 
                 task_started : false, 
                 task_start_time : Date.now(),
@@ -819,7 +821,9 @@ export default defineComponent({
           this.next_task(); 
         }, 
         _finish_session_data(data){
-          this.notif_description = "Completed Survey. Survey Code: " + data.token; 
+          this.notif_description.description = "Completed Survey. Survey Code: " + data.token; 
+          this.notif_description.qstr = null; 
+          this.notif_description.dataset = null; 
           this.end_query = true; 
           this.example_urls = null; 
           this.next_task_ready = false; 
