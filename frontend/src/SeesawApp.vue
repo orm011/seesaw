@@ -525,11 +525,9 @@ export default defineComponent({
           let index = this.client_data.worker_state.current_task_index; 
           this.task_started = false; 
           if (index != -1){
-            console.log("LOGGING THAT TASK ENDED", index); 
-            this.log("task.ended"); 
+            this.log("task.end"); 
           }
           if (index == this.client_data.worker_state.task_list.length - 1){
-            console.log("last end description called"); 
             this.finish_session(); 
           } else {
             fetch('/api/task_description?code='+this.client_data.worker_state.task_list[index + 1].qkey,   
@@ -812,7 +810,6 @@ export default defineComponent({
           this.next_task_ready = false; 
         },
         _update_client_data(data, reset = false){
-
           console.log('current data', this.$data);
           console.log('update client data', data, reset);
           this.client_data = data;
@@ -858,6 +855,7 @@ export default defineComponent({
           .then(data => this._update_client_data(data, true))
         },
         text(text_query : string){
+            // TODO: refactor this after user study
             let params = new URLSearchParams({key:text_query})
             fetch(`/api/text?` + params,   
                 {method: 'POST', 
@@ -865,21 +863,21 @@ export default defineComponent({
                 body: JSON.stringify({})}
             )
             .then(response => response.json())
-            .then(this._update_client_data)
-            .then(() => {
+            .then(data => {
+              console.log('text cb')
+              this._update_client_data(data);
               if (this.selection === undefined || this.selection === null){
-                this.$refs.text_input.blur();
-                console.log("LOGGING THAT TASK STARTED", this.client_data.worker_state.current_task_index); 
-                this.log("task.started"); 
-                console.log(Date.now()); 
-                this.task_start_time = Date.now(); 
-                this.handle_selection_change({gdata_idx:0, local_idx:0})
-              }
+                    this.$refs.text_input.blur();
+                    this.log("task.started"); 
+                    this.task_start_time = Date.now(); 
+                    this.handle_selection_change({gdata_idx:0, local_idx:0})
+                  }
             })
+            .catch(e => console.log(e))
         },
         next(move_right: boolean = false){
           let handle_ret = (new_data) => {
-            this.log('next.end');
+            this.log('next_req.end');
             console.log("NEW DATA: ", new_data); 
             this._update_client_data(new_data);
             this.loading_next = false;
@@ -892,7 +890,7 @@ export default defineComponent({
           }
 
           if (!this.loading_next){
-            this.log('next.start');
+            this.log('next_req.start');
             this.loading_next = true; 
             let body = { client_data : this.$data.client_data };
 
