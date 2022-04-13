@@ -891,36 +891,33 @@ export default defineComponent({
             .catch(e => console.log(e))
         },
         next(move_right: boolean = false){
-          let handle_ret = (new_data) => {
-            this.log('next_req.end');
-            console.log("NEW DATA: ", new_data); 
-            this._update_client_data(new_data);
-            this.loading_next = false;
-            if (move_right){ 
-                console.log('hanlding ret', move_right, 'this', this); 
-                this.moveRight() 
-            }   else {
-              console.log('no move right');
-            }
-          }
 
           if (!this.loading_next){
             this.log('next_req.start');
             this.loading_next = true; 
             let body = { client_data : this.$data.client_data };
 
-              fetch(`/api/next`, {method:'POST',
-                              headers: {'Content-Type': 'application/json'},
-                              body: JSON.stringify(body) // body data type must match "Content-Type" header
-                              })
-              .then((response) => {
-                return response.json(); 
-                })
-              .then(handle_ret)
-              .catch((error) => {
-                console.log("Error in next: ", error); 
-                this.loading_next = false; 
-              })
+            fetch(`/api/next`, {method:'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(body) // body data type must match "Content-Type" header
+                            })
+            .then(data => data.json())
+            .then(data => {
+              let new_data = data;
+              this.log('next_req.end');
+              this._update_client_data(new_data);
+              this.loading_next = false;
+              if (move_right){ 
+                  console.log('hanlding ret', move_right, 'this', this); 
+                  this.moveRight() 
+              }   else {
+                console.log('no move right');
+              }
+            })
+            .catch((error) => {
+              console.log("Error in next: ", error); 
+              this.loading_next = false; 
+            })
           } else { 
             console.log("PREVENTED NEXT DUE TO WAITING");
           }
