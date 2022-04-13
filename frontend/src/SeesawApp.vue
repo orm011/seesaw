@@ -148,8 +148,15 @@
         </div> -->
       </main>
     </div> 
-    <m-modal v-if="!path_mode">
-
+    <m-modal class='xmodal' v-if="path_error">
+      <span class='background-span'>
+        Error: Unknown application path
+      </span>
+    </m-modal>
+    <m-modal class='xmodal' v-else-if="!path_mode">
+      <span class='background-span'>
+        Loading...
+      </span>
     </m-modal>
     <m-modal
       v-if="selection != null"
@@ -158,7 +165,7 @@
       @modalKeyUp="handleModalKeyUp('up', $event)"
     >      
       <div class="keyword-text">
-        <span> Object We Are Looking For: {{this.client_data.session.query_string}} </span>
+        <span> Looking for <b>{{this.client_data.session.query_string}}</b> </span>
       </div> 
       <div
         v-if="annotator_text_pointer != null"
@@ -350,6 +357,7 @@ export default defineComponent({
                                 indices : [],
                                 default_params : {}
                               },
+                path_error : false,
                 selected_index : null,
                 session_path : null,
                 selection: null, 
@@ -401,14 +409,13 @@ export default defineComponent({
             fetch('/api/session?' + params, {method:'POST'})
             .then(response => response.json())
             .then(this._update_client_data)
-        } else if (window.location.pathname == '/session_end'){
+        } else if (window.location.pathname === '/session_end'){
             fetch('/api/session_end', {method:'POST'})
               .then(response => response.json())
               .then(data => console.log('session ended', data))
         } else {
-          fetch('/api/getstate', {cache: "reload"})
-              .then(response => response.json())
-              .then(this._update_client_data)
+            this.path_error = true;
+            console.log('unknown path', window.location.pathname)
         }
         this.checkContainer(); 
     },
@@ -969,6 +976,15 @@ export default defineComponent({
 /* https://raw.githubusercontent.com/twbs/bootstrap/main/site/content/docs/5.0/examples/dashboard/dashboard.css */
 body {
   font-size: .875rem;
+}
+
+.xmodal{
+  z-index: 1021;
+}
+
+.background-span {
+  color: #a0a0a0;
+  font-size: 30px;
 }
 
 img {

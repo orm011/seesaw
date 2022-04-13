@@ -70,7 +70,7 @@ class SaveResp(BaseModel):
     path : str
 
 class EndSession(BaseModel):
-    token : str
+    token : Optional[str]
 
 class Worker:
     session_id : str
@@ -96,7 +96,6 @@ def generate_id():
 
 from .util import reset_num_cpus
 from .configs import _session_modes, _dataset_map, std_linear_config,std_textual_config
-
 
 g_queries = {
     'pc':SearchDesc(dataset='bdd', qstr='police cars', 
