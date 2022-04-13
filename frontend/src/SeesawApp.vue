@@ -704,7 +704,17 @@ export default defineComponent({
       }
     }, 
     handleModalKeyUp(up_or_down, ev){
+
+
       if (up_or_down === 'up') {
+        if (this.end_query){
+        // don't use the other keybindings in the task description view,
+        // as they cause api calls
+        if (this.selection && ev.code == 'KeyQ'){
+            this.end_query = false;
+        } 
+        return
+      }
         console.log('within modalKeyUp handler', ev)
         //if (this.annotator_text_pointer == null){ // ie if text is being entered ignore this
         if (this.annotator_text_pointer == null || this.front_end_type !== 'textual'){ // ie if text is being entered ignore this
