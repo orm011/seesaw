@@ -8,7 +8,7 @@
       :src="imdata.url"
       ref="image" 
       @error="handle_error"
-      @load="draw_initial_contents"
+      @load="load_handler"
     >
     <canvas
       class="annotator_canvas"
@@ -45,7 +45,7 @@ interface PaperObject {
 
 export default defineComponent({ 
   name: "MAnnotator", // used by ipyvue?
-  props: ['initial_imdata', 'read_only', 'front_end_type'],
+  props: ['initial_imdata', 'read_only', 'front_end_type', 'app_handle'],
   emits: ['cclick', 'selection'],
   data : function() {
         return {height_ratio:null, width_ratio:null, 
@@ -270,7 +270,13 @@ export default defineComponent({
         console.log('canvas click!', e);
         this.$emit('cclick', e)
     },
-
+    load_handler(){
+      console.log('image loaded')
+      if (this.app_handle && ~ this.read_only){
+        this.app_handle.log('image_loaded')
+      }
+      this.draw_initial_contents()
+    },
     draw_initial_contents : function() {
         console.log('(draw)setting up', this)
         let img = this.$refs.image as HTMLImageElement;         

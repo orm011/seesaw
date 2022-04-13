@@ -284,6 +284,7 @@
           :front_end_type="this.front_end_type"
           @selection="handleAnnotatorSelectionChange($event)"
           :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
+          :app_handle="this"
         />
       </div>
 
