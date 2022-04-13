@@ -394,7 +394,11 @@ export default defineComponent({
             fetch('/api/session?' + params, {method:'POST'})
             .then(response => response.json())
             .then(this._update_client_data)
-        } else{
+        } else if (window.location.pathname == '/session_end'){
+            fetch('/api/session_end', {method:'POST'})
+              .then(response => response.json())
+              .then(data => console.log('session ended', data))
+        } else {
           fetch('/api/getstate', {cache: "reload"})
               .then(response => response.json())
               .then(this._update_client_data)
