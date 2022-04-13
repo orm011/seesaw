@@ -57,7 +57,7 @@ export default defineComponent({
                 activation_layer : null,
                 text_offset : null, 
                 text_dict: {}, 
-                show_float: true, 
+                show_float: false, 
                 start_time: Date.now(), 
                 drawing_rect: false, }
   },
