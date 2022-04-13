@@ -149,7 +149,9 @@
       </main>
     </div> 
     <m-modal>
-      
+      <span class='background-span'>
+        Loading...
+      </span>
     </m-modal>
     <m-modal
       v-if="selection != null"
@@ -158,7 +160,7 @@
       @modalKeyUp="handleModalKeyUp('up', $event)"
     >      
       <div class="keyword-text">
-        <span> Object We Are Looking For: {{this.client_data.session.query_string}} </span>
+        <span> Looking for <b>{{this.client_data.session.query_string}}</b> </span>
       </div> 
       <div
         v-if="annotator_text_pointer != null"
@@ -948,6 +950,11 @@ export default defineComponent({
 /* https://raw.githubusercontent.com/twbs/bootstrap/main/site/content/docs/5.0/examples/dashboard/dashboard.css */
 body {
   font-size: .875rem;
+}
+
+.background-span {
+  color: #a0a0a0;
+  font-size: 30px;
 }
 
 img {
