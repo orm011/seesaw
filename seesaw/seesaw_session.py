@@ -49,6 +49,13 @@ class SeesawLoop:
           param_dict = gdm.global_cache.read_state_dict('/home/gridsan/groups/fastai/omoll/seesaw_root/models/clip/ViT-B-32.pt', jit=True)
           self.state.model = OnlineModel(param_dict, self.params.method_config)
 
+        lp = {'n_images':None, 'n_posvecs':None, 'n_negvecs':None,
+                                    'lookup':None, 'label':None, 'refine':None, }    
+
+        s = self.state
+        ## ensure non-empty
+        s.latency_profile.append(lp)
+
     def next_batch(self):
         """
         gets next batch of image indices based on current vector
@@ -96,7 +103,6 @@ class SeesawLoop:
         p = self.params
         s = self.state
         lp = s.latency_profile[-1]
-        
         lp['label'] = start_refine - lp['lookup']
         
         if p.interactive == 'plain':
