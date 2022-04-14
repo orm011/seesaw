@@ -221,9 +221,9 @@ class WebSession:
         if r.config is not None:
             self._reset_dataset(r.config)
         return self.getstate()
-
+        
     def next(self, body : SessionReq):
-        self.save(body)
+        # self.save(body)
         state = body.client_data.session
         if state is not None: ## refinement code
             self.session.update_state(state)
