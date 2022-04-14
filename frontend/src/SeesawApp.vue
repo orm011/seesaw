@@ -424,7 +424,7 @@ export default defineComponent({
         //var value = this.image_index == 5; 
         let accepted = this.total_accepted(); 
         let seconds = Math.floor((Date.now() - this.task_start_time)/1000); 
-        var value = ((accepted == 10) || (seconds > 60 * 4)); 
+        var value = ((accepted >= 10) || (seconds >= 60 * 6)); 
         console.log("Accepted Images: ", accepted); 
         console.log("Change time: ", Math.floor((Date.now() - this.task_start_time)/1000)); 
         return {'value': value, 'accepted': accepted, 'seconds_lasted': seconds}; 
@@ -438,6 +438,7 @@ export default defineComponent({
         if (this.image_index < this.total_images()){
           this.moveRight()
         } else if (!this.loading_next){
+          // this.handle_selection_change(null)
           this.next(true)
         }
       },
@@ -734,6 +735,7 @@ export default defineComponent({
         // don't use the other keybindings in the task description view,
         // as they cause api calls
         if (this.selection && ev.code == 'KeyQ'){
+            this.log('query_info.end')
             this.end_query = false;
         } 
         return
@@ -762,6 +764,7 @@ export default defineComponent({
           } else if (ev.code == 'KeyS'){
             this.sButtonClick(); 
           } else if (ev.code == 'KeyQ'){
+            this.log('query_info.start')
             this.end_query = true; 
           } else if (ev.code == 'Space'){
             //this.next(); 
@@ -924,7 +927,6 @@ export default defineComponent({
             }
         },
         next(move_right: boolean = false){
-
           if (!this.loading_next){
             this.log('next_req.start');
             this.loading_next = true; 
