@@ -204,7 +204,7 @@
             class="btn btn-danger"
             onfocus="blur()"
           >
-            See Examples (Q)
+            Key Q: Show Examples
         </button>
         <div
         class="button-row" 
@@ -232,7 +232,7 @@
             ref="highlight_btn"
             @click="() => {this.$refs.highlight_btn.blur()}"
           >
-            Toggle Highlight (E)
+            Key E : Toggle Highlight
           </button>
       </div>
       <div> 
@@ -242,7 +242,7 @@
             :disabled="this.image_index === 1 || this.image_index === null"
             onfocus="blur()"
           >
-            Previous (A)
+            Key A : Previous
         </button>
         <div 
         class="button-row"
@@ -252,7 +252,7 @@
             ref="accept_button"
             onfocus="blur()"
           >
-            Toggle Accept (S)
+             Key S : Toggle Accept
           </button>
         </div>
         <div
@@ -272,7 +272,7 @@
             :disabled="annotator_text_pointer == null"
             onfocus="blur()"
           >
-            Delete Box (S)
+            Key S : Delete Box
           </button>
         <button
             class="btn btn-danger"
@@ -280,7 +280,7 @@
             onfocus="blur()"
             :disabled="loading_next"
           >
-            Next (D)
+            Key D : Next
         </button>
       </div>
       <div class="keyword-text">
