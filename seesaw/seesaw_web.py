@@ -103,25 +103,25 @@ from .configs import _session_modes, _dataset_map, std_linear_config,std_textual
 
 g_queries = {
     'pc':SearchDesc(dataset='bdd', qstr='police cars', 
-                description='''Police vehicles that have lights and some marking related to police. 
-                    Sometimes private security vehicles or ambulances look like police cars but should not be included'''),
+                description='''Police vehicles that have lights and some marking related to police. ''',
+                negative_description='''Sometimes private security vehicles or ambulances look like police cars but should not be included'''),
     'dg':SearchDesc(dataset='bdd', qstr='dogs'),
     'cd':SearchDesc(dataset='bdd', qstr='car with open doors', 
-                description='''Any vehicles with any open doors, including open trunks in cars, and rolled-up doors in trucks and trailers.
-                         When there are too many vehicles in a congested street, only focus on the foreground. 
-                         These can be rare, so you need to be very careful not to miss them'''),
+                description='''Any vehicles with any open doors, including open trunks in cars, and rolled-up doors in trucks and trailers.''',
+                negative_description='''We dont count rolled down windows as open doors'''),
     'wch':SearchDesc(dataset='bdd', qstr='wheelchairs',
-                description='''We include wheelchair alternatives such as electric scooters for the mobility impaired. 
-                                We do not include the wheelchair icon (♿), or baby strollers'''),
+                description='''We include wheelchair alternatives such as electric scooters for the mobility impaired. ''',
+                negative_description='''We do not include wheelchair signs or baby strollers'''),
     'mln':SearchDesc(dataset='coco', qstr='cantaloupe or honeydew melon', 
-                description='''We inclulde both cantaloupe (orange melon) and honeydew (green melon), whole melons and melon pieces. 
-                                If you cannot tell whether a fruit piece is really from melon just leave it out.''',
-                negative_description='''We dont include any other types of melon, including watermelons, papaya or pumpkins, which can look similar. '''),
+                description='''We inclulde both cantaloupe (orange melon) and honeydew (green melon), whole melons and melon pieces. ''',
+                negative_description='''We dont include any other types of melon, including watermelons, papaya or pumpkins, which can look similar. 
+                If you cannot tell whether a fruit piece is really from melon don't sweat it and leave it out.'''),
     'spn':SearchDesc(dataset='coco', qstr='spoons or teaspoons', 
                 description='''We include spoons or teaspons of any material for eating. ''', 
                 negative_description='''We dont include the large cooking or serving spoons, ladles for soup, or measuring spoons.'''),
     'dst':SearchDesc(dataset='objectnet', qstr='dustpans',
-                description='''We include dustpans on their own or together with other tools, like brooms, from any angle.'''),
+                description='''We include dustpans on their own or together with other tools, like brooms, from any angle.''',
+                negative_description='''We dont include brooms alone'''),
     'gg':SearchDesc(dataset='objectnet', qstr='egg cartons',
                 description='''These are often made of cardboard or styrofoam. We include them viewed from any angle.''', 
                 negative_description='''We dont include the permanent egg containers that come in the fridge''')
