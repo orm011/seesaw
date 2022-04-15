@@ -31,7 +31,7 @@ if [ $# -gt 0 ]; then
 
     ## NB assumes we are building in the same machine. disable if not
     #(cd $DIR/../frontend && yarn run vite build) & # ensure we use latest frontend code
-    (cd $DIR/../frontend && yarn run vite  --port 8500) # start dev server
+    # (cd $DIR/../frontend && yarn run vite  --port 8500) # start dev server
 fi
 
 sleep infinity
