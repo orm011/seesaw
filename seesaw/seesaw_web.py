@@ -30,6 +30,8 @@ import pandas as pd
 import ray
 import ray.serve
 
+import glob
+
 
 class TaskParams(BaseModel):
     task_index : int
@@ -52,9 +54,11 @@ class SearchDesc(BaseModel):
     dataset : str
     qstr : str
     description : str = ''
+    negative_description : Optional[str]
 
 class NotificationState(BaseModel): 
     urls : List[str]
+    neg_urls : List[str]
     description : SearchDesc
 
 class SessionReq(BaseModel):
@@ -111,19 +115,17 @@ g_queries = {
                                 We do not include the wheelchair icon (♿), or baby strollers'''),
     'mln':SearchDesc(dataset='coco', qstr='cantaloupe or honeydew melon', 
                 description='''We inclulde both cantaloupe (orange melon) and honeydew (green melon), whole melons and melon pieces. 
-                                We dont include any other types of melon, including watermelons, papaya or pumpkins, which can look similar. 
-                                If you cannot tell whether a fruit piece is really from melon just leave it out.'''),
+                                If you cannot tell whether a fruit piece is really from melon just leave it out.''',
+                negative_description='''We dont include any other types of melon, including watermelons, papaya or pumpkins, which can look similar. '''),
     'spn':SearchDesc(dataset='coco', qstr='spoons or teaspoons', 
-                description='''We include spoons or teaspons of any material for eating. 
-                    We dont include the large cooking or serving spoons, ladles for soup, or measuring spoons.'''),
+                description='''We include spoons or teaspons of any material for eating. ''', 
+                negative_description='''We dont include the large cooking or serving spoons, ladles for soup, or measuring spoons.'''),
     'dst':SearchDesc(dataset='objectnet', qstr='dustpans',
                 description='''We include dustpans on their own or together with other tools, like brooms, from any angle.'''),
     'gg':SearchDesc(dataset='objectnet', qstr='egg cartons',
-                description='''These are often made of cardboard or styrofoam. We include them viewed from any angle. 
-                            We dont include the permanent egg containers that come in the fridge''')
+                description='''These are often made of cardboard or styrofoam. We include them viewed from any angle.''', 
+                negative_description='''We dont include the permanent egg containers that come in the fridge''')
 }
-
-start_url = '/home/gridsan/groups/fastai/seesaw/data/'
 
 def session_params(mode, dataset, **kwargs):
   assert mode in _session_modes.keys()
@@ -329,6 +331,9 @@ async def get_handle(session_id : str = Cookie(None)) -> ActorHandle:
 
 SessionManagerActor = ray.remote(SessionManager)
 
+
+start_url = '/home/gridsan/groups/fastai/seesaw/data/examples2/'
+
 @ray.serve.deployment(name="seesaw_deployment", num_replicas=1, route_prefix='/')
 @ray.serve.ingress(app)
 class WebSeesaw:
@@ -347,6 +352,25 @@ class WebSeesaw:
     def __init__(self, session_manager):
         print('WebSeesaw init method called')
         self.session_manager = session_manager
+
+        self.urls = {}
+        self.neg_urls = {}
+        for key in g_queries.keys(): 
+            self.urls[key] = []
+            self.neg_urls[key] = []
+            root = start_url + key + '/'
+            #glob.glob(‘path/**jpg’) + glob.glob(‘path/**webp’) + glob.glob(’path/**png)
+            paths = glob.glob(root + '**jpg') + glob.glob(root + '**webp') + glob.glob(root + '**png') + glob.glob(root + '/neg/' + '**jpg') + glob.glob(root + '/neg/' + '**webp') + glob.glob(root + '/neg/' + '**png')
+            print(paths)
+            for path in paths: 
+                if path.find("/neg") != -1: # Negative
+                    self.neg_urls[key].append(path)
+                else: 
+                    self.urls[key].append(path)
+
+        print("URL Paths Made")
+        print(self.urls)
+        print(self.neg_urls)
 
     @app.post('/user_session', response_model=AppState)
     async def user_session(self, mode, dataset, qkey, user, response : Response, session_id = Cookie(None)):
@@ -406,14 +430,11 @@ class WebSeesaw:
         # description = f"""In the following task, you'll be looking for {sdesc.qstr}. 
         #                     {sdesc.description}.
         #                     Below are some examples of {sdesc.qstr}. When you are ready and the OK button is enabled, press it to proceed."""
-        urls = []
-        for i in range(4): 
-            url = start_url + '/examples/' + code + '/' + code + '-' + str(i+1) + '.png'
-            urls.append(url)
 
         return NotificationState(
             description = sdesc, 
-            urls = urls, 
+            urls = self.urls[code],
+            neg_urls = self.neg_urls[code], 
         )
 
     @app.post('/session_end', response_model=EndSession)
