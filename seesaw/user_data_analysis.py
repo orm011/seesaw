@@ -4,6 +4,44 @@ import pytz
 import math
 import pytz
 import numpy as np
+import json
+
+from .basic_types import *
+from tqdm.auto import tqdm
+
+def parse_batch(batch):
+    acc = []
+    for (path,b) in batch:
+        try:
+            obj = json.loads(b)
+        except json.decoder.JSONDecodeError:
+            obj = {}
+            
+        obj['session_path'] = path[:-len('summary.json')]
+        acc.append(obj)
+        
+    return acc
+
+def load_session_data(base_dir, use_ray=True):
+    summary_paths = glob.glob(base_dir + '/**/summary.json', recursive=True)
+    if use_ray:
+        import ray
+        r = ray.data.read_binary_files(summary_paths, include_paths=True)
+        res = r.map_batches(parse_batch)
+        return res.take_all()
+
+    acc = []
+    for path in tqdm(summary_paths):
+        try:
+            with open(path, 'r') as f:
+                obj = json.load(f)
+        except json.decoder.JSONDecodeError:
+            obj = {}
+        
+        obj['session_path'] = path[:-len('summary.json')]
+        acc.append(obj)
+
+    return acc
 
 def load_mturk_batches():
     mturk_batches = glob.glob('./Batch*csv')
@@ -90,6 +128,41 @@ def process_action_log(log):
            'seen_timeline':seen_timeline, 'per_image_times':entry_dict, 
                'start_entry':start_entry, 'end_entry':end_entry}
 
+
+def get_first_time(action_log, message):
+    time = None
+    for ent in action_log:
+        if ent['message'] == message:
+            time = ent['time']
+            break
+    return time
+
+def linear_gdata(sess):
+    """ used for sessions without fine-grained image timing
+    """
+    summary = get_session_summary(sess)
+    session = sess['session']
+    action_log = session['action_log']
+    gdata = session['gdata']
+        
+    task_started = summary['task_started']
+    ret = []
+    ret.append([-1,-1, 0, 0, False])
+    for i,l in enumerate(gdata):
+        for j,r in enumerate(l):
+            is_accepted = is_image_accepted(Imdata(**r))
+            for time_rec in r['timing']:
+                ret.append([i,j,time_rec['start_ms']/1000. - task_started, 
+                            time_rec['end_ms']/1000. - task_started, is_accepted])
+                break # only do the first
+            
+    df = pd.DataFrame(ret, columns=['i', 'j', 'start_s', 'end_s', 'accepted'])
+    assert df.start_s.is_monotonic 
+    df = df.sort_values(['start_s']).reset_index(drop=True)
+    df = df.assign(total_accepted=df.accepted.cumsum())
+    df = df.assign(**summary)
+    return df
+
 def get_session_summary(sess):
     session = sess['session']
     action_log = session['action_log']
@@ -97,19 +170,28 @@ def get_session_summary(sess):
     other_params = params['other_params']
     session_path = sess['session_path']
 
-    init_time = process_ts(action_log[0]['time'])
-    last_time = process_ts(action_log[-1]['time'])
-    
+    init_time = get_first_time(action_log, 'init')
+    preferred_start = ['task.started', 'set_text']
+    task_started = None
+    for msg in preferred_start:
+        task_started = get_first_time(action_log, msg)
+        if task_started:
+            break
+
+    last_time = process_ts(action_log[-1]['time'])            
+
     ans = { 'session_path':session_path,
             'init_time':init_time,
+            'task_started':task_started,
             'last_time':last_time,
             **other_params,
            }
-
     
-    if 'session_id' in session and 'session_id' not in ans:
+    if 'session_id' in session['params'] and 'session_id' not in ans:
+        ans['session_id'] = session['params']['session_id']
+    elif 'session_id' in session and 'session_id' not in ans:
         ans['session_id'] = session['session_id']
-        
+    
     return ans
 
 def get_session_summaries(sessions, latest_only=True):
@@ -164,12 +246,13 @@ def compute_session_tables(sessions, filter_paths):
             ent['duration'] = duration
             accept_timelines.append(ent)
                 
-        total_accepted = ent['accepted']
-        for i in range(total_accepted+1, max_accepted+1):
-            temp_ent = ent.copy()
-            temp_ent['accepted'] = i
-            temp_ent['elapsed_time'] = duration
-            accept_timelines.append(temp_ent)
+        if duration >= 60*6:
+            total_accepted = ent['accepted']
+            for i in range(total_accepted+1, max_accepted+1):
+                temp_ent = ent.copy()
+                temp_ent['accepted'] = i
+                temp_ent['elapsed_time'] = 60*6
+                accept_timelines.append(temp_ent)
             
         for ent in seen_timelines:
             ent['session_id'] = s['session_id']
@@ -186,7 +269,7 @@ def compute_session_tables(sessions, filter_paths):
 def bootstrap_stat(ser, confidence_level=.95, n_resamples=10000):
     samp = ser.sample(n=ser.shape[0]*n_resamples, replace=True)
     samp = samp.values.reshape((ser.shape[0],-1))
-    means = np.mean(samp, axis=0)
+    means = np.median(samp, axis=0)
     assert means.shape[0] == n_resamples
     q0 = (1 - confidence_level)/2.
     q1 = 1. - q0
