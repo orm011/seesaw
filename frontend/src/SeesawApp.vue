@@ -100,6 +100,9 @@
               @click="toggle_config()"> 
               Show Config
             </button>
+            <!-- <m-test></m-test>
+            <m-test></m-test> -->
+            <m-test-cont></m-test-cont>
           </div>
         </div>
       </nav>
@@ -112,7 +115,6 @@
         <div v-if="other_url !== null" class="row">
           <a :href="other_url">{{other_url}}</a>
         </div>
-
         <div
           class="row"
           v-for="(imdata,idx) in client_data.session.gdata"
@@ -340,7 +342,8 @@ import {FrontendT, frontends} from './frontend_types'
 import MImageGallery from './components/m-image-gallery.vue';
 import MAnnotator from './components/m-annotator.vue';
 import MModal from './components/m-modal.vue';
-
+import MTest from './components/m-test.vue';
+import MTestCont from './components/m-test-cont.vue';
 import MConfigVue3 from './components/m-config-vue3.vue';
 
 import MExampleImageGallery from './components/m-example-image-gallery.vue'; 
@@ -352,7 +355,9 @@ import 'vue3-autocomplete/dist/vue3-autocomplete.css'
 import {image_accepted, getCookie, setCookie} from './util'
 
 export default defineComponent({
-    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete, MExampleImageGallery},
+    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 
+      'm-test':MTest, 'm-test-cont':MTestCont,
+    'm-annotator':MAnnotator, MConfigVue3, Autocomplete, MExampleImageGallery},
     props: {},
     data () { return { 
                 client_data : { session : null,
@@ -422,7 +427,9 @@ export default defineComponent({
             fetch('/api/session_end', {method:'POST'})
               .then(response => response.json())
               .then(data => console.log('session ended', data))
-        } else {
+        }  else if (window.location.pathname == '/plain') {
+            this.path_mode = true; // hides the loading modal..
+        }  else {
             this.path_error = true;
             console.log('unknown path', window.location.pathname)
         }
