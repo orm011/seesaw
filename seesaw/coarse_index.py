@@ -12,53 +12,56 @@ from .embeddings import XEmbedding
 from .query_interface import *
 from .dataset_manager import GlobalDataManager
 
+
 class CoarseIndex(AccessMethod):
     """Structure holding a dataset,
-     together with precomputed embeddings
-     and (optionally) data structure
+    together with precomputed embeddings
+    and (optionally) data structure
     """
-    def __init__(self, 
-                 embedding : XEmbedding,
-                 vectors : np.ndarray, 
-                 vector_meta : pd.DataFrame):
+
+    def __init__(
+        self, embedding: XEmbedding, vectors: np.ndarray, vector_meta: pd.DataFrame
+    ):
         self.embedding = embedding
         self.vectors = vectors
         self.vector_meta = vector_meta
         self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
-        #assert len(self.images) >= self.vectors.shape[0]
-    
-    def string2vec(self, string : str) -> np.ndarray:
+        # assert len(self.images) >= self.vectors.shape[0]
+
+    def string2vec(self, string: str) -> np.ndarray:
         init_vec = self.embedding.from_string(string=string)
-        init_vec = init_vec/np.linalg.norm(init_vec)
+        init_vec = init_vec / np.linalg.norm(init_vec)
         return init_vec
 
     @staticmethod
-    def from_path(gdm : GlobalDataManager, index_subpath : str, model_name :str):
+    def from_path(gdm: GlobalDataManager, index_subpath: str, model_name: str):
         embedding = gdm.get_model_actor(model_name)
-        coarse_meta_path= f'{gdm.root}/{index_subpath}/vectors.coarse.cached'
+        coarse_meta_path = f"{gdm.root}/{index_subpath}/vectors.coarse.cached"
 
         assert os.path.exists(coarse_meta_path)
         coarse_df = pd.read_parquet(coarse_meta_path)
-        assert coarse_df.dbidx.is_monotonic_increasing, 'sanity check'
-        embedded_dataset = coarse_df['vectors'].values.to_numpy()
-        vector_meta = coarse_df.drop('vectors', axis=1)
-        return CoarseIndex(embedding=embedding, vectors=embedded_dataset, vector_meta=vector_meta)
-    
+        assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
+        embedded_dataset = coarse_df["vectors"].values.to_numpy()
+        vector_meta = coarse_df.drop("vectors", axis=1)
+        return CoarseIndex(
+            embedding=embedding, vectors=embedded_dataset, vector_meta=vector_meta
+        )
+
     def query(self, *, topk, mode, vector=None, exclude=None, startk=None, **kwargs):
         if exclude is None:
-            exclude = pr.BitMap([])        
+            exclude = pr.BitMap([])
         included = pr.BitMap(self.all_indices).difference(exclude)
         if len(included) == 0:
-            return np.array([]),np.array([])
+            return np.array([]), np.array([])
 
         if len(included) <= topk:
             topk = len(included)
 
-        assert mode == 'dot'
+        assert mode == "dot"
 
         metas = self.vector_meta.dbidx.isin(included)
         vecs = self.vectors[metas]
-                
+
         if vector is None:
             scores = np.random.randn(vecs.shape[0])
         else:
@@ -66,7 +69,7 @@ class CoarseIndex(AccessMethod):
 
         maxpos = np.argsort(-scores)[:topk]
         dbidxs = np.array(included)[maxpos]
-        #metas = metas.iloc[maxpos][['x1', 'y1', ]]
+        # metas = metas.iloc[maxpos][['x1', 'y1', ]]
         scores = scores[maxpos]
 
         ret = dbidxs
@@ -76,28 +79,42 @@ class CoarseIndex(AccessMethod):
         assert ret.shape[0] == topk  # return quantity asked, in theory could be less
         assert sret.intersection_cardinality(exclude) == 0  # honor exclude request
 
-
         def make_acc(sc, dbidx):
-          return pd.DataFrame.from_records([dict(x1=0, y1=0, x2=224, y2=224, dbidx=dbidx, score=sc)])
+            return pd.DataFrame.from_records(
+                [dict(x1=0, y1=0, x2=224, y2=224, dbidx=dbidx, score=sc)]
+            )
 
-        return {'dbidxs':ret, 
-                'nextstartk':len(exclude) + ret.shape[0], 
-                'activations':[make_acc(sc,dbidx) for (sc,dbidx) in zip(scores, ret)]
-               }
+        return {
+            "dbidxs": ret,
+            "nextstartk": len(exclude) + ret.shape[0],
+            "activations": [make_acc(sc, dbidx) for (sc, dbidx) in zip(scores, ret)],
+        }
 
     def new_query(self):
         return CoarseQuery(self)
 
-    def subset(self, indices : pr.BitMap):
+    def subset(self, indices: pr.BitMap):
         mask = self.vector_meta.dbidx.isin(indices)
-        return CoarseIndex(embedding=self.embedding, vectors=self.vectors[mask], vector_meta = self.vector_meta[mask].reset_index(drop=True))
+        return CoarseIndex(
+            embedding=self.embedding,
+            vectors=self.vectors[mask],
+            vector_meta=self.vector_meta[mask].reset_index(drop=True),
+        )
+
 
 class CoarseQuery(InteractiveQuery):
-    def __init__(self, db : CoarseIndex):
+    def __init__(self, db: CoarseIndex):
         super().__init__(db)
 
     def getXy(self):
-        positions = np.array([self.index.all_indices.rank(idx) - 1 for idx in self.label_db.get_seen()])
+        positions = np.array(
+            [self.index.all_indices.rank(idx) - 1 for idx in self.label_db.get_seen()]
+        )
         Xt = self.index.vectors[positions]
-        yt = np.array([len(self.label_db.get(idx, format='box')) > 0 for idx in self.label_db.get_seen()])
-        return Xt,yt
+        yt = np.array(
+            [
+                len(self.label_db.get(idx, format="box")) > 0
+                for idx in self.label_db.get_seen()
+            ]
+        )
+        return Xt, yt

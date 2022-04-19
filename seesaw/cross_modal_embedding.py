@@ -17,10 +17,17 @@ from torch.utils.data import TensorDataset
 
 class MatchedEmbeddingDataset(object):
     """Dataset for training a translation model as done in Recipe1M,
-        generates positive and "negative" examples from a captioned dataset
+    generates positive and "negative" examples from a captioned dataset
     """
 
-    def __init__(self, caption_embeddings, caption_ids, image_embeddings, fraction_positive, coco_cap=None):
+    def __init__(
+        self,
+        caption_embeddings,
+        caption_ids,
+        image_embeddings,
+        fraction_positive,
+        coco_cap=None,
+    ):
 
         assert caption_embeddings.shape[0] == caption_ids.shape[0]
         self.caption_embeddings = caption_embeddings
@@ -41,28 +48,38 @@ class MatchedEmbeddingDataset(object):
         ## with prob 1 - p pick a 'wrong' caption
         image_idx = idx
         if np.random.rand() < self.fraction_positive:
-            caps = self.caption_ids[self.caption_ids['image_idx'] == idx]
+            caps = self.caption_ids[self.caption_ids["image_idx"] == idx]
             cap = caps.sample(n=1)
             caption_idx = cap.pos.iloc[0]
-            target_sim = 1.
+            target_sim = 1.0
         else:
-            caps = self.caption_ids[self.caption_ids['image_idx'] != idx]
+            caps = self.caption_ids[self.caption_ids["image_idx"] != idx]
             cap = caps.sample(n=1)
             caption_idx = cap.pos.iloc[0]
-            target_sim = 0.
+            target_sim = 0.0
 
         if self.coco_cap is None:
-            return (self.caption_embeddings[caption_idx], self.image_embeddings[image_idx], target_sim)
+            return (
+                self.caption_embeddings[caption_idx],
+                self.image_embeddings[image_idx],
+                target_sim,
+            )
         else:  # debug mode see actual image and caption
-            return (self.caption_ids['captions'].iloc[caption_idx], self.coco_cap[image_idx][0], target_sim)
+            return (
+                self.caption_ids["captions"].iloc[caption_idx],
+                self.coco_cap[image_idx][0],
+                target_sim,
+            )
 
 
 class MatchedEmbeddingDataset1to1(object):
     """Dataset for training a translation model as done in Recipe1M,
-        generates positive and "negative" examples from a captioned dataset
+    generates positive and "negative" examples from a captioned dataset
     """
 
-    def __init__(self, caption_embeddings, image_embeddings, fraction_positive, coco_cap=None):
+    def __init__(
+        self, caption_embeddings, image_embeddings, fraction_positive, coco_cap=None
+    ):
         assert caption_embeddings.shape[0] == image_embeddings.shape[0]
         self.caption_embeddings = caption_embeddings
         self.image_embeddings = image_embeddings
@@ -81,7 +98,7 @@ class MatchedEmbeddingDataset1to1(object):
 
         if np.random.rand() < self.fraction_positive:
             caption_idx = image_idx
-            target_sim = 1.
+            target_sim = 1.0
         else:
             caption_idx = image_idx
             while caption_idx == image_idx:
@@ -89,11 +106,17 @@ class MatchedEmbeddingDataset1to1(object):
 
             orig_embed = self.caption_embeddings[image_idx]
             rand_embed = self.caption_embeddings[caption_idx]
-            target_sim = (orig_embed @ rand_embed) / (np.linalg.norm(orig_embed) * np.linalg.norm(rand_embed))
+            target_sim = (orig_embed @ rand_embed) / (
+                np.linalg.norm(orig_embed) * np.linalg.norm(rand_embed)
+            )
             target_sim = 0
 
         # if self.coco_cap is None:
-        return (self.caption_embeddings[caption_idx], self.image_embeddings[image_idx], target_sim)
+        return (
+            self.caption_embeddings[caption_idx],
+            self.image_embeddings[image_idx],
+            target_sim,
+        )
         # else: # debug mode see actual image and caption
         # return (self.caption_ids['captions'].iloc[caption_idx], self.coco_cap[image_idx][0], target_sim)
 
@@ -102,6 +125,7 @@ class MatchedEmbeddingDataset1to1(object):
 ## using n_keys (k,v) pairs
 # w = softmax( q @ K ) (dot vs 'keys' for similarity, focus on most similar items)
 # w @ V (return weighted sum of values)
+
 
 class KVMapping(nn.Module):
     def __init__(self, k_size, n_keys, v_size):
@@ -120,13 +144,10 @@ class KVMapping(nn.Module):
         return self.Vmap(weights)  # size B,v_size
 
 
-
-
-
 class TextImageCrossModal(pl.LightningModule):
     def __init__(self, caption_vec_size, image_vec_size, n_keys, cm_val):
         super().__init__()
-        self.save_hyperparameters('caption_vec_size', 'image_vec_size', 'n_keys')
+        self.save_hyperparameters("caption_vec_size", "image_vec_size", "n_keys")
         self.cm_val = cm_val
 
         #         cap_hsize = 2*caption_vec_size
@@ -141,9 +162,11 @@ class TextImageCrossModal(pl.LightningModule):
         self.cap_translator = lambda x: x
 
         # self.img_translator =  #nn.Sequential(#nn.LayerNorm(torch.Size([image_vec_size])),
-        self.img_translator = KVMapping(k_size=image_vec_size,
-                                        n_keys=n_keys,  # similar to kd tree values
-                                        v_size=caption_vec_size)
+        self.img_translator = KVMapping(
+            k_size=image_vec_size,
+            n_keys=n_keys,  # similar to kd tree values
+            v_size=caption_vec_size,
+        )
         # )
 
         #  self.img_translator = lambda x : x# worked better than training both at the same time
@@ -156,7 +179,7 @@ class TextImageCrossModal(pl.LightningModule):
 
         caption_emb = caption_emb.to(self.device)
         ret = self.cap_translator(caption_emb)
-        return ret.detach().to('cpu').numpy()
+        return ret.detach().to("cpu").numpy()
 
     def from_image_vec(self, image_emb):
         if isinstance(image_emb, np.ndarray):
@@ -164,7 +187,7 @@ class TextImageCrossModal(pl.LightningModule):
 
         image_emb = image_emb.to(self.device)
         ret = self.img_translator(image_emb)
-        return ret.detach().to('cpu').numpy()
+        return ret.detach().to("cpu").numpy()
 
     def forward(self, caption_emb, image_emb):
         return (self.cap_translator(caption_emb), self.img_translator(image_emb))
@@ -180,7 +203,7 @@ class TextImageCrossModal(pl.LightningModule):
         # cosine embedding loss expects 1,-1 format
         target = sims * 2 - 1
         train_loss = self.loss(xcap, xim, target)
-        self.log('train_loss', train_loss)
+        self.log("train_loss", train_loss)
 
         return train_loss
 
@@ -191,35 +214,39 @@ class TextImageCrossModal(pl.LightningModule):
 
             target = sims * 2 - 1
             loss = self.loss(xcap, xim, target)
-            return {'val_loss': loss}
+            return {"val_loss": loss}
         elif dataset_idx == 1:
             image_emb = val_batch[0]
-            return {'val_emb': self.from_image_vec(image_emb)}
+            return {"val_emb": self.from_image_vec(image_emb)}
 
     def validation_epoch_end(self, validation_step_outputs):
         # capt vecs, img vecs, model (new)
         # for pred in validation_step_outputs:
 
-        vloss = torch.stack([v['val_loss'] for v in validation_step_outputs[0]]).mean()
-        self.log('val_loss', vloss)
+        vloss = torch.stack([v["val_loss"] for v in validation_step_outputs[0]]).mean()
+        self.log("val_loss", vloss)
 
-        embedded_img_db = np.concatenate([v['val_emb'] for v in validation_step_outputs[1]])
-        cm = CosineMetric(ref_vectors=self.cm_val.ref_vectors[:embedded_img_db.shape[0]],
-                          test_vectors=embedded_img_db, max_top_n=100)
+        embedded_img_db = np.concatenate(
+            [v["val_emb"] for v in validation_step_outputs[1]]
+        )
+        cm = CosineMetric(
+            ref_vectors=self.cm_val.ref_vectors[: embedded_img_db.shape[0]],
+            test_vectors=embedded_img_db,
+            max_top_n=100,
+        )
 
         ratios = []
         color_ratios = []
         for qstr, q_enc in zip(val_query_names, val_query_ref_vecs):
-            _, _, ratio = cm.eval_testvec(q_enc,
-                                          self.from_string_vec(q_enc),
-                                          topn=100,
-                                          weighted=True)
+            _, _, ratio = cm.eval_testvec(
+                q_enc, self.from_string_vec(q_enc), topn=100, weighted=True
+            )
             ratios.append(ratio)
             if qstr in example_colors:
                 color_ratios.append(ratio)
 
-        self.log('val_retrieval', torch.tensor(ratios).mean())
-        self.log('val_retrieval_color', torch.tensor(color_ratios).mean())
+        self.log("val_retrieval", torch.tensor(ratios).mean())
+        self.log("val_retrieval_color", torch.tensor(color_ratios).mean())
 
 
 class CosineMetric(object):
@@ -227,12 +254,14 @@ class CosineMetric(object):
         assert ref_vectors.shape[0] == test_vectors.shape[0]
 
         self.max_top_n = max_top_n
-        self.ref_vectors = ref_vectors / np.linalg.norm(ref_vectors, axis=1)[:, np.newaxis]
-        self.ref_vec_index = NearestNeighbors(metric='cosine', n_neighbors=max_top_n)
+        self.ref_vectors = (
+            ref_vectors / np.linalg.norm(ref_vectors, axis=1)[:, np.newaxis]
+        )
+        self.ref_vec_index = NearestNeighbors(metric="cosine", n_neighbors=max_top_n)
         self.ref_vec_index.fit(self.ref_vectors)
 
         self.test_vectors = test_vectors
-        self.test_vec_index = NearestNeighbors(metric='cosine', n_neighbors=max_top_n)
+        self.test_vec_index = NearestNeighbors(metric="cosine", n_neighbors=max_top_n)
         self.test_vec_index.fit(test_vectors)
 
     def compute_similarity(self, query_vec, positions):
@@ -253,17 +282,19 @@ class CosineMetric(object):
         topn = test_ranking.shape[0]
 
         if weighted:
-            wt = np.sqrt(1. / (np.arange(topn) + 1))
+            wt = np.sqrt(1.0 / (np.arange(topn) + 1))
             wt = wt / wt.sum()
         else:
             wt = np.ones(topn) / topn
 
         assert wt.shape[0] == topn
-        assert np.isclose(wt.sum(), 1.)
+        assert np.isclose(wt.sum(), 1.0)
         assert wt.max() == wt[0]
         assert topn <= test_ranking.shape[0]
 
-        optimal_cos_dist, rnk_ref = self.ref_vec_index.kneighbors(ref_vec.reshape(1, -1))
+        optimal_cos_dist, rnk_ref = self.ref_vec_index.kneighbors(
+            ref_vec.reshape(1, -1)
+        )
         optimal_sims = 1 - optimal_cos_dist.reshape(-1)[:topn]  # sims[optimal_pos]
         optimal_total = optimal_sims @ wt  # .sum()
 
