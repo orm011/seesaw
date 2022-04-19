@@ -11,7 +11,6 @@ import numpy as np
 import random
 import io
 from ray import tune
-from zmq import PROTOCOL_ERROR_ZMTP_MECHANISM_MISMATCH
 
 
 class MappedDataset(torch.utils.data.Dataset):
