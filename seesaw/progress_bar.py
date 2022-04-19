@@ -10,13 +10,13 @@ from ray.actor import ActorHandle
 from tqdm.auto import tqdm
 import copy
 
-## Actor pool interface is different. 
+## Actor pool interface is different.
 # no need for the progress bar actor there...
-## create a new pool every time because 
+## create a new pool every time because
 # in case of interruption, actor pool state seems
 def tqdm_map(actors, actor_tup_function, tups, res=None):
-    assert res is not None, 'provide way to save partial results'
-    
+    assert res is not None, "provide way to save partial results"
+
     initial_len = len(res)
     actor_pool = ActorPool(actors)
     for tup in tups:
@@ -29,11 +29,12 @@ def tqdm_map(actors, actor_tup_function, tups, res=None):
         res.append(copy.deepcopy(nxt))
         pbar.update(1)
         if (len(res) - initial_len) == len(tups):
-            print('done with new tups')
+            print("done with new tups")
             break
-            
+
     pbar.close()
     return res
+
 
 # taken from https://docs.ray.io/en/master/auto_examples/progress_bar.html
 # use with pool:
@@ -41,7 +42,8 @@ def tqdm_map(actors, actor_tup_function, tups, res=None):
 # pexps = pool.map_async(pbar.wrap(mapfun), tups)
 # pbar.print_until_done()
 
-@ray.remote(num_cpus=.01)
+
+@ray.remote(num_cpus=0.01)
 class ProgressBarActor:
     counter: int
     delta: int
@@ -78,6 +80,7 @@ class ProgressBarActor:
         Returns the total number of complete items.
         """
         return self.counter
+
 
 class ProgressBar:
     progress_actor: ActorHandle
@@ -118,11 +121,12 @@ class ProgressBar:
 
     def wrap(self, fun):
         pbar_actor = self.actor
+
         def wrapped(*args, **kwargs):
             try:
                 res = fun(*args, **kwargs)
                 return res
             finally:
                 pbar_actor.update.remote(1)
-            
+
         return wrapped

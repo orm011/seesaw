@@ -1,6 +1,7 @@
 import torch.utils.data
 import PIL
 
+
 class HCatDataset(object):
     def __init__(self, datasets, xforms=lambda x: x):
         self.datasets = tuple(datasets)
@@ -13,6 +14,7 @@ class HCatDataset(object):
     def __getitem__(self, idx):
         ans = [ds[idx] for ds in self.datasets]
         return self.xforms(ans)
+
 
 class DataFrameDataset(object):
     def __init__(self, df, index_var, max_idx=None, xforms=None):
@@ -41,11 +43,12 @@ class TxDataset(object):
     def __getitem__(self, idx):
         return self.tx(self.ds[idx])
 
+
 class ExplicitPathDataset(object):
     def __init__(self, root_dir, relative_path_list):
-        '''
+        """
         Reads images in a directory according to an explicit list.
-        '''
+        """
         self.root = root_dir
         self.paths = relative_path_list
 
@@ -53,6 +56,6 @@ class ExplicitPathDataset(object):
         return self.paths.shape[0]
 
     def __getitem__(self, idx):
-        relpath = self.paths[idx].lstrip('./')
-        image = PIL.Image.open('{}/{}'.format(self.root, relpath))
-        return {'file_path':relpath, 'dbidx':idx, 'image':image}
+        relpath = self.paths[idx].lstrip("./")
+        image = PIL.Image.open("{}/{}".format(self.root, relpath))
+        return {"file_path": relpath, "dbidx": idx, "image": image}

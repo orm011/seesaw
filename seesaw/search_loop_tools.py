@@ -6,6 +6,7 @@ import functools
 import json, os, copy
 import torch, torchvision
 import pyroaring as pr
+
 # from .dataset_tools import DataFrameDataset
 from .dataset_tools import TxDataset
 import torchvision.models
@@ -15,7 +16,8 @@ import numpy as np
 import sklearn
 from sklearn.linear_model import LogisticRegression
 
-def random_resize(im, abs_min=60, abs_max=1000, rel_min=1. / 3, rel_max=3.):
+
+def random_resize(im, abs_min=60, abs_max=1000, rel_min=1.0 / 3, rel_max=3.0):
     (w, h) = im.size
     abs_min = min([w, h, abs_min])
     abs_max = max([w, h, abs_max])
@@ -35,6 +37,7 @@ def random_resize(im, abs_min=60, abs_max=1000, rel_min=1. / 3, rel_max=3.):
     new_im = im.resize((nw, nh))
     return new_im
 
+
 # def extract_rois()
 def clip_boxes(img_size, boxes):
     (w, h) = img_size
@@ -46,24 +49,32 @@ def clip_boxes(img_size, boxes):
 
 
 def pad_boxes(box_data, pad_factor):
-    bd = box_data[['x1', 'y1', 'x2', 'y2']]
-    bd = bd.assign(midx=(bd.x1 + bd.x2) / 2,
-                   midy=(bd.y1 + bd.y2) / 2,
-                   width=(bd.x2 - bd.x1),
-                   height=(bd.y2 - bd.y1))
+    bd = box_data[["x1", "y1", "x2", "y2"]]
+    bd = bd.assign(
+        midx=(bd.x1 + bd.x2) / 2,
+        midy=(bd.y1 + bd.y2) / 2,
+        width=(bd.x2 - bd.x1),
+        height=(bd.y2 - bd.y1),
+    )
     bd = bd.assign(width=bd.width * pad_factor, height=bd.height * pad_factor)
-    bd2 = bd.assign(x1=(bd.midx - bd.width / 2), x2=(bd.midx + bd.width / 2),
-                    y1=(bd.midy - bd.height / 2), y2=(bd.midy + bd.height / 2))
+    bd2 = bd.assign(
+        x1=(bd.midx - bd.width / 2),
+        x2=(bd.midx + bd.width / 2),
+        y1=(bd.midy - bd.height / 2),
+        y2=(bd.midy + bd.height / 2),
+    )
     return bd2
 
 
 def extract_rois(db, ldata, pad_factor):
     rois = []
     for r in ldata:
-        im = db.raw[r['dbidx']]
-        if len(r['boxes']) > 0:
-            bx = pd.DataFrame(r['boxes'])
-            bx = bx.rename(mapper={'xmin': 'x1', 'xmax': 'x2', 'ymin': 'y1', 'ymax': 'y2'}, axis=1)
+        im = db.raw[r["dbidx"]]
+        if len(r["boxes"]) > 0:
+            bx = pd.DataFrame(r["boxes"])
+            bx = bx.rename(
+                mapper={"xmin": "x1", "xmax": "x2", "ymin": "y1", "ymax": "y2"}, axis=1
+            )
             bx2 = pad_boxes(bx, pad_factor)
             bx3 = clip_boxes(im.size, bx2)
             for b in bx3.itertuples():
@@ -78,7 +89,9 @@ def embed_rois(db, rois):
         roi_vec = db.embedding.from_raw(roi)
         roi_vecs.append(roi_vec)
 
-    roivecs = np.concatenate([np.zeros((0, db.embedded.shape[1]))] + roi_vecs)  # in case empty
+    roivecs = np.concatenate(
+        [np.zeros((0, db.embedded.shape[1]))] + roi_vecs
+    )  # in case empty
     return roivecs
 
 
@@ -87,49 +100,58 @@ def augment(rois, n=5):
     for roi in rois:
         (a, b) = roi.size
         # (int(b/1.5),int(a/1.5)), scale=[.8, 1.]
-        t = T.Compose([  # T.RandomCrop(int(a*.9), int(b*.9)),
-            random_resize,
-            T.RandomHorizontalFlip()])
+        t = T.Compose(
+            [  # T.RandomCrop(int(a*.9), int(b*.9)),
+                random_resize,
+                T.RandomHorizontalFlip(),
+            ]
+        )
         xroi = [t(roi) for _ in range(n)]
         augmented_rois.extend(xroi)
     return augmented_rois
 
+
 import pyroaring as pr
-
-
 
 
 def get_panel_data(q, label_db, next_idxs):
     reslabs = []
-    for (i,dbidx) in enumerate(next_idxs):
+    for (i, dbidx) in enumerate(next_idxs):
         boxes = copy.deepcopy(label_db.get(dbidx, None))
-        reslabs.append({'value': -1 if boxes is None else 1 if len(boxes) > 0 else 0, 
-                        'id': i, 'dbidx': int(dbidx), 'boxes': boxes})
+        reslabs.append(
+            {
+                "value": -1 if boxes is None else 1 if len(boxes) > 0 else 0,
+                "id": i,
+                "dbidx": int(dbidx),
+                "boxes": boxes,
+            }
+        )
 
-    urls = [q.db.urls[int(dbidx)].replace('thumbnails/', '') for dbidx in next_idxs]
+    urls = [q.db.urls[int(dbidx)].replace("thumbnails/", "") for dbidx in next_idxs]
     pdata = {
-        'image_urls': urls,
-        'ldata': reslabs,
+        "image_urls": urls,
+        "ldata": reslabs,
     }
     return pdata
 
 
 def auto_fill_boxes(ground_truth_df, ldata):
-    '''simulates human feedback by generating ldata from ground truth data frame'''
+    """simulates human feedback by generating ldata from ground truth data frame"""
     new_ldata = copy.deepcopy(ldata)
     for rec in new_ldata:
-        rows = ground_truth_df[ground_truth_df.dbidx == rec['dbidx']]
-        rows = rows.rename(mapper={'x1': 'xmin', 'x2': 'xmax', 'y1': 'ymin', 'y2': 'ymax'}, axis=1)
-        rows = rows[['xmin', 'xmax', 'ymin', 'ymax']]
-        rec['boxes'] = rows.to_dict(orient='records')
+        rows = ground_truth_df[ground_truth_df.dbidx == rec["dbidx"]]
+        rows = rows.rename(
+            mapper={"x1": "xmin", "x2": "xmax", "y1": "ymin", "y2": "ymax"}, axis=1
+        )
+        rows = rows[["xmin", "xmax", "ymin", "ymax"]]
+        rec["boxes"] = rows.to_dict(orient="records")
     return new_ldata
 
 
-def update_db(label_db, ldata): 
+def update_db(label_db, ldata):
     for rec in ldata:
-        r = rec['boxes']
-        label_db[rec['dbidx']] = r
-
+        r = rec["boxes"]
+        label_db[rec["dbidx"]] = r
 
 
 # def make_image_panel(bfq, idxbatch):
@@ -178,6 +200,6 @@ from tqdm.auto import tqdm
 
 
 def binary_panel_data(ldata):
-    dbidx = np.array([d['dbidx'] for d in ldata])
-    pred = np.array([len(d['boxes']) > 0 for d in ldata])
+    dbidx = np.array([d["dbidx"] for d in ldata])
+    pred = np.array([len(d["boxes"]) > 0 for d in ldata])
     return dbidx, pred
