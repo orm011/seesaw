@@ -1,7 +1,7 @@
 import argparse
 import ray    
 
-from seesaw import GlobalDataManager
+from seesaw.dataset_manager import GlobalDataManager
 
 if __name__ == '__main__':
     print('running script...')

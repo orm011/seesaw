@@ -1,5 +1,5 @@
 import ray
-from seesaw import SessionManagerActor, WebSeesaw
+from seesaw.seesaw_web import SessionManagerActor, WebSeesaw
 import os
 import argparse
 from ray import serve
