@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from seesaw.seesaw_web import add_routes, SessionReq, ResetReq
+from seesaw.seesaw_web import WebSeesaw, SessionReq, ResetReq
 import random, string, os
 import ray
 from tqdm.auto import tqdm
@@ -12,7 +12,6 @@ TEST_SAVE = f'{os.environ["TMPDIR"]}/test_save/{tmp_name}'
 ray.init("auto", namespace="seesaw", ignore_reinit_error=True)
 
 app = FastAPI()
-WebSeesaw = add_routes(app)
 webseesaw = WebSeesaw(TEST_ROOT, TEST_SAVE)
 
 search_str = "a dog"
