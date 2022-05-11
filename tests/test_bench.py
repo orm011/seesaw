@@ -1,13 +1,17 @@
-from seesaw.seesaw_bench import *
+from seesaw.seesaw_bench import (
+    get_all_session_summaries,
+    BenchRunner,
+    BenchSummary,
+    get_metric_summary,
+)
+
 import ray
-from seesaw import (
-    GlobalDataManager,
+from seesaw.basic_types import (
     SessionParams,
     BenchParams,
-    BenchRunner,
     IndexSpec,
-    get_all_session_summaries,
 )
+from seesaw.dataset_manager import GlobalDataManager
 import random, string, os
 from seesaw.configs import std_linear_config, std_textual_config
 

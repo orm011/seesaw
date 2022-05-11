@@ -1,30 +1,18 @@
 from seesaw.memory_cache import CacheStub
 from seesaw.query_interface import AccessMethod
 from seesaw.definitions import DATA_CACHE_DIR, parallel_copy
-import pytorch_lightning as pl
 import os
-import multiprocessing as mp
-
-import torch
-import PIL
+import numpy as np
 from operator import itemgetter
+from .preprocess.preprocessor import Preprocessor
 
-import transformers
-
-from .embeddings import *
 from .vloop_dataset_loaders import EvDataset
 
 import glob
 import pandas as pd
-from tqdm.auto import tqdm
 
-import torch
-import torch.nn as nn
-import pyroaring as pr
-from torch.utils.data import Subset
 import ray
 import shutil
-import math
 
 import pandas as pd
 from pyarrow import parquet as pq
@@ -33,9 +21,8 @@ import io
 from .basic_types import IndexSpec
 
 from ray.data.extensions import TensorArray
-
-
 from .dataset_tools import ExplicitPathDataset
+from .models.embeddings import ModelStub, HGWrapper
 
 
 def list_image_paths(basedir, prefixes=[""], extensions=["jpg", "jpeg", "png"]):
@@ -51,305 +38,6 @@ def list_image_paths(basedir, prefixes=[""], extensions=["jpg", "jpeg", "png"]):
     return list(set(relative_paths))
 
 
-def preprocess(tup, factor):
-    """meant to preprocess dict with {path, dbidx,image}"""
-    ptx = PyramidTx(tx=non_resized_transform(224), factor=factor, min_size=224)
-    ims, sfs = ptx(tup["image"])
-    acc = []
-    for zoom_level, (im, sf) in enumerate(zip(ims, sfs), start=1):
-        acc.append(
-            {
-                "file_path": tup["file_path"],
-                "dbidx": tup["dbidx"],
-                "image": im,
-                "scale_factor": sf,
-                "zoom_level": zoom_level,
-            }
-        )
-
-    return acc
-
-
-class NormalizedEmbedding(nn.Module):
-    def __init__(self, emb_mod):
-        super().__init__()
-        self.mod = emb_mod
-
-    def forward(self, X):
-        tmp = self.mod(X)
-        with torch.cuda.amp.autocast():
-            return F.normalize(tmp, dim=1).type(tmp.dtype)
-
-
-def trace_emb_jit(output_path):
-    device = torch.device("cuda:0")
-    model, _ = clip.load("ViT-B/32", device=device, jit=False)
-    ker = NormalizedEmbedding(model.visual)
-    ker = ker.eval()
-
-    example = torch.randn(
-        (10, 3, 224, 224), dtype=torch.half, device=torch.device("cuda:0")
-    )
-    with torch.no_grad():
-        jitmod = torch.jit.trace(ker, example)
-
-    out = ker(example)
-    print(out.dtype)
-    jitmod.save(output_path)
-
-
-def clip_loader(variant="ViT-B/32"):
-    def fun(device, jit_path=None):
-        if jit_path == None:
-            model, _ = clip.load(variant, device=device, jit=False)
-            ker = NormalizedEmbedding(model.visual)
-        else:
-            ker = torch.jit.load(jit_path, map_location=device)
-
-        return ker
-
-    return fun
-
-
-class HGFaceWrapper(nn.Module):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, images):
-        return self.model.get_image_features(images)
-
-
-def huggingface_loader(variant="./models/clip-vit-base-patch32"):
-    ## output must be extracted and then normalized
-    def fun(device, jit_path=None):
-        model = transformers.CLIPModel.from_pretrained(variant)
-        return HGFaceWrapper(model)
-
-    return fun
-
-
-class ImageEmbedding(nn.Module):
-    def __init__(self, device, jit_path=None):
-        super().__init__()
-        self.device = device
-
-        # if loader_function is None:
-        #     loader_function = clip_loader()
-        ker = huggingface_loader(variant=jit_path)(device)
-
-        kernel_size = 224  # changes with variant
-        self.model = SlidingWindow(
-            ker, kernel_size=kernel_size, stride=kernel_size // 2, center=True
-        ).to(self.device)
-
-    def forward(self, *, preprocessed_image):
-        return self.model(preprocessed_image)
-
-
-def postprocess_results(acc):
-    flat_acc = {
-        "iis": [],
-        "jjs": [],
-        "dbidx": [],
-        "vecs": [],
-        "zoom_factor": [],
-        "zoom_level": [],
-        "file_path": [],
-    }
-    flat_vecs = []
-
-    # {'accs':accs, 'sf':sf, 'dbidx':dbidx, 'zoom_level':zoom_level}
-    for item in acc:
-        acc0, sf, dbidx, zl, fp = itemgetter(
-            "accs", "scale_factor", "dbidx", "zoom_level", "file_path"
-        )(item)
-        acc0 = acc0.squeeze(0)
-        acc0 = acc0.transpose((1, 2, 0))
-
-        iis, jjs = np.meshgrid(
-            np.arange(acc0.shape[0], dtype=np.int16),
-            np.arange(acc0.shape[1], dtype=np.int16),
-            indexing="ij",
-        )
-        # iis = iis.reshape(-1, acc0)
-        iis = iis.reshape(-1)
-        jjs = jjs.reshape(-1)
-        acc0 = acc0.reshape(-1, acc0.shape[-1])
-        imids = np.ones_like(iis) * dbidx
-        zf = np.ones_like(iis) * (1.0 / sf)
-        zl = np.ones_like(iis) * zl
-
-        flat_acc["iis"].append(iis)
-        flat_acc["jjs"].append(jjs)
-        flat_acc["dbidx"].append(imids)
-        flat_acc["vecs"].append(acc0)
-        flat_acc["zoom_factor"].append(zf.astype("float32"))
-        flat_acc["zoom_level"].append(zl.astype("int16"))
-        flat_acc["file_path"].append([fp] * iis.shape[0])
-
-    flat = {}
-    for k, v in flat_acc.items():
-        flat[k] = np.concatenate(v)
-
-    vecs = flat["vecs"]
-    del flat["vecs"]
-
-    vec_meta = pd.DataFrame(flat)
-    # vecs = vecs.astype('float32')
-    # vecs = vecs/(np.linalg.norm(vecs, axis=-1, keepdims=True) + 1e-6)
-    vec_meta = vec_meta.assign(**get_boxes(vec_meta), vectors=TensorArray(vecs))
-    return vec_meta.drop(["iis", "jjs"], axis=1)
-
-
-class BatchInferModel:
-    def __init__(self, model, device):
-        self.device = device
-        self.model = model
-
-    def __call__(self, batch):
-        with torch.no_grad():
-            res = []
-            for tup in batch:
-                im = tup["image"]
-                del tup["image"]
-                vectors = (
-                    self.model(preprocessed_image=im.unsqueeze(0).to(self.device))
-                    .to("cpu")
-                    .numpy()
-                )
-                tup["accs"] = vectors
-                res.append(tup)
-
-        if len(res) == 0:
-            return []
-        else:
-            return [postprocess_results(res)]
-
-
-# mcc = mini_coco(None)
-def worker_function(
-    wid, dataset, slice_size, indices, cpus_per_proc, vector_root, jit_path
-):
-    wslice = indices[wid * slice_size : (wid + 1) * slice_size]
-    dataset = Subset(dataset, indices=wslice)
-    device = f"cuda:{wid}"
-    extract_seesaw_meta(
-        dataset,
-        output_dir=vector_root,
-        output_name=f"part_{wid:03d}",
-        num_workers=cpus_per_proc,
-        batch_size=3,
-        device=device,
-        jit_path=jit_path,
-    )
-    print(f"Worker {wid} finished.")
-
-
-def iden(x):
-    return x
-
-
-class Preprocessor:
-    def __init__(self, jit_path, output_dir, meta_dict):
-        print(
-            f"Init preproc. Avail gpus: {ray.get_gpu_ids()}. cuda avail: {torch.cuda.is_available()}"
-        )
-        emb = ImageEmbedding(device="cuda:0", jit_path=jit_path)
-        self.bim = BatchInferModel(emb, "cuda:0")
-        self.output_dir = output_dir
-        self.num_cpus = int(os.environ.get("OMP_NUM_THREADS"))
-        self.meta_dict = meta_dict
-
-    # def extract_meta(self, dataset, indices):
-    def extract_meta(self, ray_dataset, pyramid_factor, part_id):
-        # dataset = Subset(dataset, indices=indices)
-        # txds = TxDataset(dataset, tx=preprocess)
-
-        meta_dict = self.meta_dict
-
-        def fix_meta(ray_tup):
-            fullpath, binary = ray_tup
-            p = os.path.realpath(fullpath)
-            file_path, dbidx = meta_dict[p]
-            return {"file_path": file_path, "dbidx": dbidx, "binary": binary}
-
-        def full_preproc(tup):
-            ray_tup = fix_meta(tup)
-            try:
-                image = PIL.Image.open(io.BytesIO(ray_tup["binary"]))
-            except PIL.UnidentifiedImageError:
-                print(f'error parsing binary {ray_tup["file_path"]}')
-                ## some images are corrupted / not copied properly
-                ## it is easier to handle that softly
-                image = None
-
-            del ray_tup["binary"]
-            if image is None:
-                return []  # empty list ok?
-            else:
-                ray_tup["image"] = image
-                return preprocess(ray_tup, factor=pyramid_factor)
-
-        def preproc_batch(b):
-            return [full_preproc(tup) for tup in b]
-
-        dl = ray_dataset.window(blocks_per_window=20).map_batches(
-            preproc_batch, batch_size=20
-        )
-        res = []
-        for batch in dl.iter_rows():
-            batch_res = self.bim(batch)
-            res.extend(batch_res)
-        # dl = DataLoader(txds, num_workers=1, shuffle=False,
-        #                 batch_size=1, collate_fn=iden)
-        # res = []
-        # for batch in dl:
-        #     flat_batch = sum(batch,[])
-        #     batch_res = self.bim(flat_batch)
-        #     res.append(batch_res)
-
-        merged_res = pd.concat(res, ignore_index=True)
-        ofile = f"{self.output_dir}/part_{part_id:04d}.parquet"
-
-        ### TMP: parquet does not allow half prec.
-        x = merged_res
-        x = x.assign(vectors=TensorArray(x["vectors"].to_numpy().astype("single")))
-        x.to_parquet(ofile)
-        return ofile
-
-
-def extract_seesaw_meta(
-    dataset, output_dir, output_name, num_workers, batch_size, device, jit_path
-):
-    emb = ImageEmbedding(device=device, jit_path=jit_path)
-    bim = BatchInferModel(emb, device)
-    assert os.path.isdir(output_dir)
-
-    txds = TxDataset(dataset, tx=preprocess)
-    dl = DataLoader(
-        txds,
-        num_workers=num_workers,
-        shuffle=False,
-        batch_size=batch_size,
-        collate_fn=iden,
-    )
-    res = []
-    for batch in tqdm(dl):
-        flat_batch = sum(batch, [])
-        batch_res = bim(flat_batch)
-        res.append(batch_res)
-
-    merged_res = pd.concat(res, ignore_index=True)
-    merged_res.to_parquet(f"{output_dir}/{output_name}.parquet")
-
-
-# def preprocess_dataset(*, image_src, seesaw_root, dataset_name):
-#     mp.set_start_method('spawn')
-#     gdm = GlobalDataManager(seesaw_root)
-#     gdm.create_dataset(image_src=image_src, dataset_name=dataset_name)
-#     mc = gdm.get_dataset(dataset_name)
-#     mc.preprocess()
 import json
 
 

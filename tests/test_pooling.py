@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
-from seesaw.embeddings import ManualPooling, SlidingWindow
+from seesaw.models.embeddings import ManualPooling, SlidingWindow
+import pytest
 
 
-def check_pooling(pm):
+@pytest.mark.parametrize("pm", [ManualPooling, SlidingWindow])
+def test_pooling(pm):
     tsizes = [7, 8, 9, 11, 12, 13, 16]
     veclist = []
     for i in tsizes:
@@ -31,7 +33,3 @@ def check_pooling(pm):
             assert test.shape == center.shape, f"{test.shape} {center.shape}"
             assert test.shape == target.shape, f"{test.shape} {target.shape}"
             assert torch.isclose(test, target, atol=1e-6).all()
-
-
-check_pooling(ManualPooling)
-check_pooling(SlidingWindow)
