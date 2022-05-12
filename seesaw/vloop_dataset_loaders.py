@@ -1,4 +1,4 @@
-from .embeddings import *
+from .models.embeddings import *
 import json
 import pandas as pd
 import os

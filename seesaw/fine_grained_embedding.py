@@ -4,7 +4,7 @@ import os
 import math
 
 from .search_loop_models import *
-from .embeddings import *
+from .models.embeddings import *
 
 ## want function that selects by dbidx and then rewrites them to be sequential.
 

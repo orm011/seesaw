@@ -4,9 +4,13 @@ import filelock
 
 PROJECT_ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.realpath(PROJECT_ROOT_DIR + "/../scripts/")
-DATA_CACHE_DIR = f'{os.environ["TMPDIR"]}/seesaw_data_cache/'
+TMPDIR = os.environ.get("TMPDIR", "/tmp/")
+DATA_CACHE_DIR = f"{TMPDIR}/seesaw_data_cache/"
+FILE_LOCK = filelock.FileLock(f"{TMPDIR}/seesaw.lock")
 
-FILE_LOCK = filelock.FileLock(f'{os.environ["TMPDIR"]}/seesaw.lock')
+
+def resolve_path(path):
+    return os.path.normpath(os.path.realpath(os.path.expanduser(path)))
 
 
 def parallel_copy(base_dir, cache_dir, rel_path):

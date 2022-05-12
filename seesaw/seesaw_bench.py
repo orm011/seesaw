@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import random
 import copy
 
@@ -7,8 +6,7 @@ from .search_loop_tools import *
 
 from .dataset_tools import *
 from .fine_grained_embedding import *
-from .multiscale_index import *
-from .coarse_index import CoarseIndex
+from .multiscale.multiscale_index import *
 from .search_loop_models import adjust_vec, adjust_vec2
 import numpy as np
 import math
@@ -17,6 +15,7 @@ import pyroaring as pr
 from .seesaw_session import SessionParams, Session, Imdata, Box, make_session
 from .basic_types import *
 from .metrics import compute_metrics
+from .dataset_manager import GlobalDataManager
 
 # ignore this comment
 def vls_init_logger():

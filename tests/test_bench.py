@@ -15,18 +15,13 @@ from seesaw.dataset_manager import GlobalDataManager
 import random, string, os
 from seesaw.configs import std_linear_config, std_textual_config
 
-ray.init("auto", namespace="seesaw", ignore_reinit_error=True)
 
 # TEST_ROOT = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root/'
 TEST_ROOT = "/home/gridsan/omoll/seesaw_root/"
 tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 TEST_SAVE = f"~/tmp/seesaw_tests/test_save_{tmp_name}/"
 TEST_SAVE = os.path.expanduser(TEST_SAVE)
-os.makedirs(TEST_SAVE, exist_ok=False)
 
-gdm = GlobalDataManager(TEST_ROOT)
-os.chdir(gdm.root)
-br = BenchRunner(gdm.root, results_dir=TEST_SAVE, redirect_output=False)
 
 cat = "soya milk"
 qstr = "a soya milk"
@@ -128,32 +123,41 @@ configs = [
 
 import json
 
-for (i, (b, p)) in enumerate(configs):
-    print("test case", i)
-    path = br.run_loop(b, p)
-    print("done with loop")
-    bs = json.load(open(path + "/summary.json"))
-    bs = BenchSummary(**bs)
-    summ = get_metric_summary(bs.result)
-    # check termination makes sense
 
-    reached_batch_max = len(bs.result.session.gdata) == bs.bench_params.n_batches
-    reached_max_results = bs.bench_params.max_results <= len(
-        summ["hit_indices"]
-    )  # could excced due to batching
-    reached_all_results = bs.result.ntotal == len(summ["hit_indices"])
-    reached_all_images = summ["nseen"] == bs.result.nimages
+def test_bench():
+    ray.init("auto", namespace="seesaw", ignore_reinit_error=True)
+    os.makedirs(TEST_SAVE, exist_ok=False)
 
-    satisfied_batch_max = len(bs.result.session.gdata) <= bs.bench_params.n_batches
-    assert satisfied_batch_max
-    assert (
-        reached_batch_max
-        or reached_max_results
-        or reached_all_results
-        or reached_all_images
-    )
+    gdm = GlobalDataManager(TEST_ROOT)
+    os.chdir(gdm.root)
+    br = BenchRunner(gdm.root, results_dir=TEST_SAVE, redirect_output=False)
 
-print("testing the rest")
-a = get_all_session_summaries(TEST_SAVE)
-assert a.shape[0] == len(configs)
-assert os.path.isdir(a["session_path"].values[0])  # session path is correct
+    for (i, (b, p)) in enumerate(configs):
+        print("test case", i)
+        path = br.run_loop(b, p)
+        print("done with loop")
+        bs = json.load(open(path + "/summary.json"))
+        bs = BenchSummary(**bs)
+        summ = get_metric_summary(bs.result)
+        # check termination makes sense
+
+        reached_batch_max = len(bs.result.session.gdata) == bs.bench_params.n_batches
+        reached_max_results = bs.bench_params.max_results <= len(
+            summ["hit_indices"]
+        )  # could excced due to batching
+        reached_all_results = bs.result.ntotal == len(summ["hit_indices"])
+        reached_all_images = summ["nseen"] == bs.result.nimages
+
+        satisfied_batch_max = len(bs.result.session.gdata) <= bs.bench_params.n_batches
+        assert satisfied_batch_max
+        assert (
+            reached_batch_max
+            or reached_max_results
+            or reached_all_results
+            or reached_all_images
+        )
+
+    print("testing the rest")
+    a = get_all_session_summaries(TEST_SAVE)
+    assert a.shape[0] == len(configs)
+    assert os.path.isdir(a["session_path"].values[0])  # session path is correct

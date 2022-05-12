@@ -1,17 +1,20 @@
 import string
-from seesaw.multiscale_index import MultiscaleIndex
+from .multiscale.multiscale_index import MultiscaleIndex, add_iou_score
 import torch.nn as nn
 import torch.nn.functional as F
 import clip
 import numpy as np
 import pandas as pd
 from clip.model import build_model
-from .clip_module import CLIPFineTunedModel, CLIPTx, MappedDataset
+from .models.clip_module import (
+    CLIPFineTunedModel,
+    CLIPTx,
+    MappedDataset,
+    configure_optimizer,
+)
 import torch
-from .multiscale_index import add_iou_score
 from ray.data.extensions import TensorArray
 import torch.optim
-from .clip_module import configure_optimizer
 
 
 def join_vecs2annotations(db: MultiscaleIndex, dbidx, annotations):
