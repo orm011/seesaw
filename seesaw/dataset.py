@@ -69,9 +69,8 @@ class SeesawDatasetManager:
     def preprocess2(
         self,
         model_path,
+        output_path,
         cpu=False,
-        archive_path=None,
-        archive_prefix="",
         pyramid_factor=0.5,
     ):
         import ray

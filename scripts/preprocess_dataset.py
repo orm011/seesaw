@@ -1,52 +1,31 @@
 import argparse
 import ray
 
-from seesaw.dataset_manager import GlobalDataManager
+from seesaw.dataset import SeesawDatasetManager
 
 if __name__ == "__main__":
-    print("running script...")
-    parser = argparse.ArgumentParser(
-        description="create and preprocess dataset for use by Seesaw"
-    )
+    parser = argparse.ArgumentParser(description="preprocess dataset for use by Seesaw")
     parser.add_argument(
-        "--image_src",
+        "--dataset_path",
         type=str,
-        default=None,
-        help="If creating a new dataset, folder where to find images",
+        required=True,
+        help="which dataset (list of files) to run on",
     )
     parser.add_argument(
-        "--dataset_src",
+        "--output_path",
         type=str,
-        default=None,
-        help="If cloning a dataset before preprocessing, name for source dataset",
+        required=True,
+        help="where to store the needed output",
     )
-    parser.add_argument(
-        "--seesaw_root", type=str, help="Seesaw root folder where dataset will live"
-    )
-    parser.add_argument(
-        "--dataset_name",
-        type=str,
-        help="String identifier for newly created dataset (will also be used as folder name)",
-    )
-    parser.add_argument("--model_path", type=str, help="path for model")
-    # parser.add_argument('--image_archive', type=str, default=None, help='alternative path to images using an archive file')
-    # parser.add_argument('--image_archive_prefix', type=str, default='', help='common prefix to use within archive')
+
+    parser.add_argument("--cpu", action="store_true", help="use cpu rather than GPU")
+    parser.add_argument("--model_path", type=str, required=True, help="path for model")
 
     args = parser.parse_args()
 
-    gdm = GlobalDataManager(args.seesaw_root)
-    print("existing datasets: ", gdm.list_datasets())
+    ray.init("auto", namespace="seesaw")
 
-    if args.image_src is not None:
-        ds = gdm.create_dataset(
-            image_src=args.image_src, dataset_name=args.dataset_name
-        )
-    elif args.dataset_src is not None:
-        ds = gdm.clone(ds_name=args.dataset_src, clone_name=args.dataset_name)
-    else:
-        ds = gdm.get_dataset(args.dataset_name)
-
-    print("connecting to ray...")
-    ray.init("auto")
-    print(ray.available_resources())
-    ds.preprocess2(model_path=args.model_path)
+    ds = SeesawDatasetManager(args.dataset_path)
+    ds.preprocess2(
+        model_path=args.model_path, cpu=args.cpu, output_path=args.output_path
+    )
