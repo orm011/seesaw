@@ -1,8 +1,5 @@
-from seesaw.web.common import SessionReq, ResetReq
 from seesaw.web.seesaw_app import app
 from fastapi.testclient import TestClient
-from fastapi import Response
-import random, string, os
 import ray
 import pytest
 
@@ -11,6 +8,7 @@ ray.init("auto", namespace="seesaw")
 
 @pytest.mark.parametrize("mode", ["default", "pytorch"])
 def test_server(mode):
+    # assumes there is a SessionManager running
     # TEST_ROOT = "/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/"
     # tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
     # TEST_SAVE = f'{os.environ["TMPDIR"]}/test_save/{tmp_name}'
