@@ -15,13 +15,6 @@ if __name__ == "__main__":
         help="where to store the needed output",
     )
 
-    parser.add_argument(
-        "--build_index",
-        type=str,
-        required=True,
-        help="where to store the needed output",
-    )
-
     parser.add_argument("--cpu", action="store_true", help="use cpu rather than GPU")
     parser.add_argument("--model_path", type=str, required=True, help="path for model")
 
@@ -37,7 +30,3 @@ if __name__ == "__main__":
     preprocess_dataset(
         ds, model_path=args.model_path, cpu=args.cpu, output_path=args.output_path
     )
-
-    # from seesaw.vector_index import build_annoy_idx
-    # if args.build_index:
-    #     build_annoy_idx()
