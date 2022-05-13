@@ -22,6 +22,7 @@ import math
 import annoy
 from ..definitions import resolve_path
 import os
+from ..services import get_parquet, get_model_actor
 
 
 def _postprocess_results(acc):
@@ -446,14 +447,12 @@ class MultiscaleIndex(AccessMethod):
         )
 
     @staticmethod
-    def from_dir(gdm, index_path: str):
+    def from_dir(index_path: str):
         index_path = resolve_path(index_path)
         model_path = os.readlink(f"{index_path}/model")
-        model_name = os.path.basename(model_path)
-        embedding = gdm.get_model_actor(f"models/{model_name}")
+        embedding = get_model_actor(model_path)
         cached_meta_path = f"{index_path}/vectors.sorted.cached"
         fullpath = f"{index_path}/vectors.annoy"
-        relpath = fullpath[len(gdm.root) :].lstrip("/")
 
         print(f"looking for vector index in {fullpath}")
         if os.path.exists(fullpath):
@@ -464,8 +463,9 @@ class MultiscaleIndex(AccessMethod):
             vec_index = None
 
         assert os.path.exists(cached_meta_path)
-        df = gdm.global_cache.read_parquet(cached_meta_path)
-        assert df.order_col.is_monotonic_increasing, "sanity check"
+        df: pd.DataFrame = get_parquet(cached_meta_path)
+        assert df["order_col"].is_monotonic_increasing, "sanity check"
+
         fine_grained_meta = df[
             ["dbidx", "order_col", "zoom_level", "x1", "y1", "x2", "y2"]
         ]
