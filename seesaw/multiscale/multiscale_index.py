@@ -425,9 +425,7 @@ class MultiscaleIndex(AccessMethod):
         print(f"looking for vector index in {fullpath}")
         if os.path.exists(fullpath):
             print("using optimized index...")
-            vec_index = VectorIndex(
-                base_dir=gdm.root, load_path=relpath, copy_to_tmpdir=True, prefault=True
-            )
+            vec_index = VectorIndex(load_path=fullpath, prefault=True)
         else:
             print("index file not found... using vectors")
             vec_index = None
@@ -460,9 +458,7 @@ class MultiscaleIndex(AccessMethod):
         print(f"looking for vector index in {fullpath}")
         if os.path.exists(fullpath):
             print("using optimized index...")
-            vec_index = VectorIndex(
-                base_dir=gdm.root, load_path=relpath, copy_to_tmpdir=True, prefault=True
-            )
+            vec_index = VectorIndex(load_path=fullpath, prefault=True)
         else:
             print("index file not found... using vectors")
             vec_index = None

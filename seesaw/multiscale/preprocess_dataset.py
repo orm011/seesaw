@@ -1,4 +1,6 @@
 import argparse
+from seesaw.definitions import resolve_path
+from seesaw.vector_index import build_annoy_idx
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="preprocess dataset for use by Seesaw")
@@ -22,11 +24,19 @@ if __name__ == "__main__":
 
     import ray
     from seesaw.dataset import SeesawDatasetManager
-    from seesaw.multiscale.preprocessor import preprocess_dataset
+    from seesaw.multiscale.preprocessor import preprocess_dataset, load_vecs
 
     ray.init("auto", namespace="seesaw")
 
-    ds = SeesawDatasetManager(args.dataset_path)
-    preprocess_dataset(
-        ds, model_path=args.model_path, cpu=args.cpu, output_path=args.output_path
+    # ds = SeesawDatasetManager(args.dataset_path)
+    # preprocess_dataset(
+    #     ds, model_path=args.model_path, cpu=args.cpu, output_path=args.output_path
+    # )
+
+    df = load_vecs(args.output_path)
+    output_path = resolve_path(args.output_path)
+    build_annoy_idx(
+        vecs=df["vectors"].to_numpy(),
+        output_path=f"{output_path}/vectors.annoy",
+        n_trees=100,
     )

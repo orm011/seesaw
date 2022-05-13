@@ -1,8 +1,9 @@
-import shutil
 import ray
 import annoy
 import numpy as np
-from .definitions import DATA_CACHE_DIR, parallel_copy
+from .definitions import FS_CACHE
+import pickle
+import time
 
 
 def build_annoy_idx(*, vecs, output_path, n_trees):
@@ -41,19 +42,11 @@ def build_nndescent_idx(vecs, output_path, n_trees):
 
 
 class VectorIndex:
-    def __init__(self, *, base_dir, load_path, copy_to_tmpdir: bool, prefault=False):
+    def __init__(self, *, load_path, prefault=False):
         t = annoy.AnnoyIndex(512, "dot")
         self.vec_index = t
-        if copy_to_tmpdir:
-            print("cacheing first", base_dir, DATA_CACHE_DIR, load_path)
-            actual_load_path = parallel_copy(
-                base_dir=base_dir, cache_dir=DATA_CACHE_DIR, rel_path=load_path
-            )
-        else:
-            print("loading directly")
-            actual_load_path = f"{base_dir}/{load_path}"
-
-        t.load(actual_load_path, prefault=prefault)
+        load_path = FS_CACHE.get(load_path)
+        t.load(load_path, prefault=prefault)
         print("done loading")
 
     def ready(self):
@@ -65,15 +58,3 @@ class VectorIndex:
             vector.reshape(-1), n=top_k, include_distances=True
         )
         return np.array(idxs), np.array(scores)
-
-
-RemoteVectorIndex = ray.remote(VectorIndex)
-
-
-class IndexWrapper:
-    def __init__(self, index_actor: RemoteVectorIndex):
-        self.index_actor = index_actor
-
-    def query(self, vector, top_k):
-        h = self.index_actor.query.remote(vector, top_k)
-        return ray.get(h)

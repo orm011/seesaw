@@ -225,7 +225,7 @@ def preprocess_dataset(
     os.symlink(model_path, model_link)
 
     dataset_link = f"{output_path}/dataset"
-    os.symlink(dataset.root, dataset_link)
+    os.symlink(sds.dataset_root, dataset_link)
 
     real_prefix = f"{os.path.realpath(sds.image_root)}/"
     read_paths = ((real_prefix + sds.paths)).tolist()
@@ -261,3 +261,118 @@ def preprocess_dataset(
         print("shutting down actors...")
         for a in actors:
             ray.kill(a)
+
+
+def split_df(df, n_splits):
+    lendf = df.shape[0]
+    base_lens = [lendf // n_splits] * n_splits
+    for i in range(lendf % n_splits):
+        base_lens[i] += 1
+
+    assert sum(base_lens) == lendf
+    assert len(base_lens) == n_splits
+
+    indices = np.cumsum([0] + base_lens)
+
+    start_index = indices[:-1]
+    end_index = indices[1:]
+    cutoffs = zip(start_index, end_index)
+    splits = []
+    for (a, b) in cutoffs:
+        splits.append(df.iloc[a:b])
+
+    tot = sum(map(lambda df: df.shape[0], splits))
+    assert df.shape[0] == tot
+    return splits
+
+
+def load_vecs(index_path, invalidate=False):
+    index_path = resolve_path(index_path)
+    ds = SeesawDatasetManager(f"{index_path}/dataset")
+    vec_path = f"{index_path}/vectors"
+    cached_meta_path = f"{index_path}/vectors.sorted.cached"
+
+    if not os.path.exists(cached_meta_path) or invalidate:
+        if os.path.exists(cached_meta_path):
+            shutil.rmtree(cached_meta_path)
+
+        tmp_path = f"{index_path}/.tmp.vectors.sorted.cached"
+        if os.path.exists(tmp_path):
+            shutil.rmtree(tmp_path)
+
+        idmap = dict(zip(ds.paths, range(len(ds.paths))))
+
+        def assign_ids(df):
+            return df.assign(dbidx=df.file_path.map(lambda path: idmap[path]))
+
+        ds = ray.data.read_parquet(
+            vec_path,
+            columns=["file_path", "zoom_level", "x1", "y1", "x2", "y2", "vectors"],
+        )
+        df = pd.concat(ray.get(ds.to_pandas_refs()), axis=0, ignore_index=True)
+        df = assign_ids(df)
+        df = df.sort_values(
+            ["dbidx", "zoom_level", "x1", "y1", "x2", "y2"]
+        ).reset_index(drop=True)
+        df = df.assign(order_col=df.index.values)
+        max_zoom_out = df.groupby("dbidx").zoom_level.max().rename("max_zoom_level")
+        df = pd.merge(df, max_zoom_out, left_on="dbidx", right_index=True)
+        splits = split_df(df, n_splits=32)
+        ray.data.from_pandas(splits).write_parquet(tmp_path)
+        os.rename(tmp_path, cached_meta_path)
+    else:
+        print("vecs already exists, reading instead")
+
+    print("reading")
+    assert os.path.exists(cached_meta_path)
+    ds = ray.data.read_parquet(
+        cached_meta_path,
+        columns=[
+            "dbidx",
+            "zoom_level",
+            "max_zoom_level",
+            "order_col",
+            "x1",
+            "y1",
+            "x2",
+            "y2",
+            "vectors",
+        ],
+    )
+    df = pd.concat(ray.get(ds.to_pandas_refs()), ignore_index=True)
+    assert df.order_col.is_monotonic_increasing, "sanity check"
+    return df
+    fine_grained_meta = df[["dbidx", "order_col", "zoom_level", "x1", "y1", "x2", "y2"]]
+    fine_grained_embedding = df["vectors"].values.to_numpy()
+
+
+#  https://github.com/orm011/seesaw/blob/828589b92d7b82b0a2f8e6fad33b8567edb30edd/seesaw/dataset_manager.py
+# def compute_coarse():
+#         if not os.path.exists(coarse_meta_path) or force_recompute:
+#             if os.path.exists(coarse_meta_path):
+#                 shutil.rmtree(coarse_meta_path)
+#             print("computing coarse embedding...")
+#             coarse_emb = infer_coarse_embedding(df)
+#             assert coarse_emb.dbidx.is_monotonic_increasing
+#             coarse_emb.to_parquet(coarse_meta_path)
+#         else:
+#             print("using cached version...")
+
+#         coarse_df = pd.read_parquet(coarse_meta_path)
+#         assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
+#         embedded_dataset = coarse_df["vectors"].values.to_numpy()
+#         # assert embedded_dataset.shape[0] == self.paths.shape[0], corrupted images are not in embeddding but yes in files
+#     else:
+#         embedded_dataset = None
+
+#     if load_ground_truth:
+#         print("loading ground truth...")
+#         box_data, qgt = self.load_ground_truth()
+#     else:
+#         box_data = None
+#         qgt = None
+
+#     # if os.path.exists(self.index_path()):
+#     #     vec_index = self.index_path() # start actor elsewhere
+#     # else:
+#     vec_index = None
