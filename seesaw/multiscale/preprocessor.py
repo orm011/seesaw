@@ -1,3 +1,4 @@
+from seesaw.definitions import resolve_path
 from ..models.model import ImageEmbedding
 import pandas as pd
 from ray.data.extensions import TensorArray
@@ -185,3 +186,78 @@ class Preprocessor:
         x = x.assign(vectors=TensorArray(x["vectors"].to_numpy().astype("single")))
         x.to_parquet(ofile)
         return ofile
+
+
+import ray
+
+from ..dataset import SeesawDatasetManager
+import math
+import shutil
+
+
+def preprocess_dataset(
+    sds: SeesawDatasetManager,
+    model_path,
+    output_path,
+    cpu=False,
+    pyramid_factor=0.5,
+):
+    dataset = sds.get_pytorch_dataset()
+    output_path = resolve_path(output_path)
+    assert not os.path.exists(output_path), "output path already exists"
+    model_path = resolve_path(model_path)
+    assert os.path.exists(model_path), "model path doesnt exist"
+
+    dirname = os.path.basename(output_path)
+    dirpath = os.path.dirname(output_path)
+    output_path = f"{dirpath}/.tmp.{dirname}"
+    final_output_path = f"{dirpath}/{dirname}"
+
+    os.makedirs(dirpath, exist_ok=True)
+
+    if os.path.exists(output_path):  # remove old tmpfile
+        shutil.rmtree(output_path)
+
+    vector_path = f"{output_path}/vectors"
+    os.makedirs(vector_path)
+
+    model_link = f"{output_path}/model"
+    os.symlink(model_path, model_link)
+
+    dataset_link = f"{output_path}/dataset"
+    os.symlink(dataset.root, dataset_link)
+
+    real_prefix = f"{os.path.realpath(sds.image_root)}/"
+    read_paths = ((real_prefix + sds.paths)).tolist()
+    read_paths = [os.path.normpath(p) for p in read_paths]
+    meta_dict = dict(zip(read_paths, zip(sds.paths, np.arange(len(sds.paths)))))
+
+    actors = []
+    try:
+        print("starting actors...")
+        ngpus = ray.available_resources().get("GPU", 0)
+        ngpus = math.floor(ngpus)
+
+        nactors = ngpus if ngpus > 0 else 1
+        actors = [
+            ray.remote(Preprocessor)
+            .options(num_cpus=5, num_gpus=(1 if ngpus > 0 else 0))
+            .remote(jit_path=model_link, output_dir=vector_path, meta_dict=meta_dict)
+            for i in range(nactors)
+        ]
+
+        rds = ray.data.read_binary_files(
+            paths=read_paths, include_paths=True, parallelism=400
+        ).split(nactors, locality_hints=actors)
+
+        res_iter = []
+        for part_id, (actor, shard) in enumerate(zip(actors, rds)):
+            of = actor.extract_meta.remote(shard, pyramid_factor, part_id)
+            res_iter.append(of)
+        ray.get(res_iter)
+        print(f"finished, renaming to {final_output_path}")
+        os.rename(output_path, final_output_path)
+    finally:
+        print("shutting down actors...")
+        for a in actors:
+            ray.kill(a)

@@ -66,79 +66,6 @@ class SeesawDatasetManager:
     def __repr__(self):
         return f"{self.__class__.__name__}({self.dataset_name})"
 
-    def preprocess2(
-        self,
-        model_path,
-        output_path,
-        cpu=False,
-        pyramid_factor=0.5,
-    ):
-        import ray
-        from .multiscale.preprocessor import Preprocessor
-
-        dataset = self.get_pytorch_dataset()
-        jit_path = model_path
-        vector_root = self.vector_path()
-        if os.path.exists(vector_root):
-            i = 0
-            while True:
-                i += 1
-                backup_name = f"{vector_root}.bak.{i:03d}"
-                if os.path.exists(backup_name):
-                    continue
-                else:
-                    os.rename(vector_root, backup_name)
-                    break
-
-        os.makedirs(vector_root, exist_ok=False)
-        sds = self
-
-        real_prefix = f"{os.path.realpath(sds.image_root)}/"
-        read_paths = ((real_prefix + sds.paths)).tolist()
-
-        read_paths = [os.path.normpath(p) for p in read_paths]
-
-        # paths = [p.replace('//','/') for p in paths]
-        meta_dict = dict(zip(read_paths, zip(sds.paths, np.arange(len(sds.paths)))))
-        print(list(meta_dict.keys())[0])
-
-        # ngpus = len(self.actors) #
-        # actors = self.actors
-        actors = []
-        try:
-            print("starting actors...")
-            ngpus = math.ceil(ray.available_resources().get("GPU", 0))
-            nactors = ngpus if ngpus > 0 else 1
-            actors = [
-                ray.remote(Preprocessor)
-                .options(num_cpus=5, num_gpus=(1 if ngpus > 0 else 0))
-                .remote(jit_path=jit_path, output_dir=vector_root, meta_dict=meta_dict)
-                for i in range(nactors)
-            ]
-
-            rds = ray.data.read_binary_files(
-                paths=read_paths, include_paths=True, parallelism=400
-            ).split(nactors, locality_hints=actors)
-
-            res_iter = []
-            for part_id, (actor, shard) in enumerate(zip(actors, rds)):
-                of = actor.extract_meta.remote(shard, pyramid_factor, part_id)
-                res_iter.append(of)
-            ray.get(res_iter)
-            return self
-        finally:
-            print("shutting down actors...")
-            for a in actors:
-                ray.kill(a)
-
-    def save_vectors(self, vector_data):
-        assert (
-            np.sort(vector_data.dbidx.unique()) == np.arange(self.paths.shape[0])
-        ).all()
-        vector_root = self.vector_path()
-        os.makedirs(vector_root, exist_ok=False)
-        vector_data.to_parquet(f"{vector_root}/manually_saved_vectors.parquet")
-
     def save_ground_truth(self, box_data, qgt=None):
         """
         Will add qgt and box information. or overwrite it.
@@ -152,16 +79,9 @@ class SeesawDatasetManager:
         box_data.to_parquet(f"{gt_root}/boxes.parquet")
         qgt.to_parquet(f"{gt_root}/qgt.parquet")
 
-    def vector_path(self):
-        return f"{self.dataset_root}/indices/multiscale/vectors"
-
     def ground_truth_path(self):
         gt_root = f"{self.dataset_root}/ground_truth/"
         return gt_root
-
-    def load_vec_table(self):
-        ds = ray.data.read_parquet(self.vector_path())
-        return ds
 
     def load_eval_categories(self):
         assert os.path.exists(f"{self.dataset_root}/ground_truth")
