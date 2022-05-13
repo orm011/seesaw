@@ -20,29 +20,6 @@ from .models.embeddings import ModelStub, HGWrapper
 from .dataset import SeesawDatasetManager, create_dataset
 
 
-def split_df(df, n_splits):
-    lendf = df.shape[0]
-    base_lens = [lendf // n_splits] * n_splits
-    for i in range(lendf % n_splits):
-        base_lens[i] += 1
-
-    assert sum(base_lens) == lendf
-    assert len(base_lens) == n_splits
-
-    indices = np.cumsum([0] + base_lens)
-
-    start_index = indices[:-1]
-    end_index = indices[1:]
-    cutoffs = zip(start_index, end_index)
-    splits = []
-    for (a, b) in cutoffs:
-        splits.append(df.iloc[a:b])
-
-    tot = sum(map(lambda df: df.shape[0], splits))
-    assert df.shape[0] == tot
-    return splits
-
-
 import pickle
 
 
