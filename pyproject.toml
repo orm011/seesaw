@@ -29,6 +29,11 @@ ftfy = "^6.1.1"
 pytest = "^7.1.2"
 plotnine = "^0.8.0"
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"

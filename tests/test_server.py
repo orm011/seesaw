@@ -1,39 +1,32 @@
-from fastapi import FastAPI
-from seesaw.seesaw_web import WebSeesaw, SessionReq, ResetReq, app
+from seesaw.web.common import SessionReq, ResetReq
+from seesaw.web.seesaw_app import app
+from fastapi.testclient import TestClient
+from fastapi import Response
 import random, string, os
 import ray
+import pytest
+
+ray.init("auto", namespace="seesaw")
 
 
-def test_server():
-    TEST_ROOT = "/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/"
-    tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
-    TEST_SAVE = f'{os.environ["TMPDIR"]}/test_save/{tmp_name}'
+@pytest.mark.parametrize("mode", ["default", "pytorch"])
+def test_server(mode):
+    # TEST_ROOT = "/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/"
+    # tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
+    # TEST_SAVE = f'{os.environ["TMPDIR"]}/test_save/{tmp_name}'
 
-    ray.init("auto", namespace="seesaw", ignore_reinit_error=True)
-
-    webseesaw = WebSeesaw(TEST_ROOT, TEST_SAVE)
+    client = TestClient(app)
 
     # check basic calls work
-    state = webseesaw.getstate()
-    assert state.session is None  # starts as none
-    assert state.default_params is not None
+    resp = client.post(f"/session?mode={mode}")
+    assert resp.status_code == 200
+    session_id = resp.headers["set-cookie"].split(";")[0].split("=")[1]
+    client.cookies.set(f"session_id", session_id)
 
-    reset_req = ResetReq(config=state.default_params)
-    state = webseesaw.reset(reset_req)
-    assert len(state.session.gdata) == 0
+    resp2 = client.post(
+        "/next_task", json={"client_data": {"indices": [], "session": None}}
+    )
+    assert resp2.status_code == 200
 
-    state = webseesaw.text("bird")
-    assert len(state.session.gdata) == 1
-
-    for i in range(2, 4):
-        next_req = SessionReq(client_data=state)
-        state = webseesaw.next(next_req)
-        assert len(state.session.gdata) == i
-
-    ## check reset call
-    state = webseesaw.reset(ResetReq(config=state.default_params))
-    assert len(state.session.gdata) == 0
-
-    ## reset w/o arguments should destroy session
-    state = webseesaw.reset(ResetReq(config=None))
-    assert state.session is None
+    resp3 = client.post("/session_end")
+    assert resp3.status_code == 200
