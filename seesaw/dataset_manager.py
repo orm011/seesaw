@@ -295,9 +295,10 @@ class GlobalDataManager:
             return dataset_name
 
     def get_dataset(self, dataset_name) -> SeesawDatasetManager:
-        all_ds = self.list_datasets()
         d_path = self._fetch_dataset_path(dataset_name)
-        return SeesawDatasetManager(d_path, cache=self.global_cache)
+        dataset_path = f"{self.root}/{d_path}"
+        print(dataset_path, d_path)
+        return SeesawDatasetManager(dataset_path, cache=self.global_cache)
 
     def clone(
         self, ds=None, ds_name=None, clone_name: str = None

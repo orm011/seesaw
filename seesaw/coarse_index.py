@@ -8,7 +8,7 @@ import torch
 import pyroaring as pr
 
 import torch.utils.data
-from .embeddings import XEmbedding
+from .models.embeddings import XEmbedding
 from .query_interface import *
 from .dataset_manager import GlobalDataManager
 
