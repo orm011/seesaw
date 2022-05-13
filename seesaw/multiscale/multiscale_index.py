@@ -452,7 +452,7 @@ class MultiscaleIndex(AccessMethod):
         index_path = resolve_path(index_path)
         model_path = os.readlink(f"{index_path}/model")
         model_name = os.path.basename(model_path)
-        embedding = gdm.get_model_actor(model_name)
+        embedding = gdm.get_model_actor(f"models/{model_name}")
         cached_meta_path = f"{index_path}/vectors.sorted.cached"
         fullpath = f"{index_path}/vectors.annoy"
         relpath = fullpath[len(gdm.root) :].lstrip("/")
