@@ -1,13 +1,15 @@
 import ray
-from seesaw.seesaw_web import SessionManagerActor, WebSeesaw
+from seesaw.web.session_manager import SessionManagerActor
+from seesaw.web.seesaw_app import app
+import uvicorn
 import os
 import argparse
-from ray import serve
-import time
 
 """
 deploys session server and exits. if it has been run before, when re-run it will re-deploy the current version.
 """
+
+import argparse
 
 parser = argparse.ArgumentParser(description="start a seesaw session server")
 parser.add_argument("--seesaw_root", type=str, help="Seesaw root folder")
@@ -23,13 +25,11 @@ os.makedirs(args.save_path, exist_ok=True)
 assert os.path.isdir(args.seesaw_root)
 
 ray.init("auto", namespace="seesaw", log_to_driver=True)
-serve.start()  # started in init_spc.sh
 
 seesaw_root = os.path.abspath(os.path.expanduser(args.seesaw_root))
 save_path = os.path.abspath(os.path.expanduser(args.save_path))
 
 actor_name = "session_manager"
-
 try:
     oldh = ray.get_actor(actor_name)
     print("found old session_manager actor, destroying it (old sessions will be lost)")
@@ -37,12 +37,10 @@ try:
 except:
     pass
 
-session_manager = SessionManagerActor.options(
-    name=actor_name, lifetime="detached"
-).remote(root_dir=seesaw_root, save_path=save_path, num_cpus_per_session=args.num_cpus)
+session_manager = SessionManagerActor.options(name=actor_name).remote(
+    root_dir=seesaw_root, save_path=save_path, num_cpus_per_session=args.num_cpus
+)
 
-WebSeesaw.deploy(session_manager)
-print("new session server deployment is ready, visit it through http://localhost:9000")
-if not args.no_block:
-    while True:
-        input()
+ray.get(session_manager.ready.remote())
+
+uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")

@@ -18,10 +18,8 @@ bash +x $DIR/start_worker.bash --head
 uvicorn frameserver.server:app --host localhost.localdomain --port 8600  --workers=5  >> frameserver.log  2>&1 &
 
 python $DIR/cache_server.py 
-## start sreve
-python -c 'import ray; from ray import serve; ray.init("auto", namespace="seesaw"); serve.start(detached=True, http_options={"port":8000})' 
 
-#wait # for cache and serve
+# wait # for cache and serve
 
 if [ $# -gt 0 ]; then
     ## used by orm for user study.
