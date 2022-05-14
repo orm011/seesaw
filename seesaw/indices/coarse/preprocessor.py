@@ -2,10 +2,10 @@ from genericpath import exists
 import numpy as np
 from ray.data.extensions import TensorArray
 import os
-from ..definitions import resolve_path
+from ...definitions import resolve_path
 import shutil
 import ray.data
-from ..services import get_parquet
+from ...services import get_parquet
 
 
 def infer_coarse_embedding(pdtab):

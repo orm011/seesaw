@@ -1,41 +1,6 @@
-import numpy as np
 import pyroaring as pr
-import importlib
+from .indices.interface import get_constructor, AccessMethod
 from .basic_types import *
-
-
-def get_constructor(cons_name: str):
-    pieces = cons_name.split(".", maxsplit=-1)
-    index_mod = importlib.import_module(".".join(pieces[:-1]))
-    constructor = getattr(index_mod, pieces[-1])
-    return constructor
-
-
-class AccessMethod:
-    def string2vec(self, string: str) -> np.ndarray:
-        raise NotImplementedError("implement me")
-
-    def query(
-        self, *, vector: np.ndarray, topk: int, exclude: pr.BitMap = None
-    ) -> np.ndarray:
-        raise NotImplementedError("implement me")
-
-    def new_query(self):
-        raise NotImplementedError("implement me")
-
-    def subset(self, indices: pr.BitMap):
-        raise NotImplementedError("implement me")
-
-    @staticmethod
-    def from_path(gdm, index_subpath: str, model_name: str):
-        raise NotImplementedError("implement me")
-
-    @staticmethod
-    def restore(gdm, type_name: str, data_path: str, model_name: str):
-        c = get_constructor(type_name)
-        return c.from_path(gdm, data_path, model_name)
-
-
 import pandas as pd
 
 

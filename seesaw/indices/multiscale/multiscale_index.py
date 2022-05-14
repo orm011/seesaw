@@ -5,22 +5,21 @@ from torchvision import transforms as T
 
 import numpy as np
 import pandas as pd
-from ..dataset_tools import *
+from ...dataset_tools import *
 from torch.utils.data import DataLoader
 import math
 from tqdm.auto import tqdm
 import torch
-from ..query_interface import *
+from ...query_interface import *
 
-from ..models.embeddings import make_clip_transform, ImTransform, XEmbedding
-from ..dataset_search_terms import *
+from ...models.embeddings import make_clip_transform, ImTransform, XEmbedding
 import pyroaring as pr
 from operator import itemgetter
 import PIL
-from ..vector_index import VectorIndex
+from ...vector_index import VectorIndex
 import math
 import annoy
-from ..definitions import resolve_path
+from ...definitions import resolve_path
 import os
 
 
@@ -415,39 +414,8 @@ class MultiscaleIndex(AccessMethod):
             self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
 
     @staticmethod
-    def from_path(gdm, index_subpath: str, model_name: str):
-        embedding = gdm.get_model_actor(model_name)
-        cached_meta_path = f"{gdm.root}/{index_subpath}/vectors.sorted.cached"
-
-        relpath = f"{index_subpath}/vectors.annoy"
-        fullpath = f"{gdm.root}/{relpath}"
-
-        print(f"looking for vector index in {fullpath}")
-        if os.path.exists(fullpath):
-            print("using optimized index...")
-            vec_index = VectorIndex(load_path=fullpath, prefault=True)
-        else:
-            print("index file not found... using vectors")
-            vec_index = None
-
-        assert os.path.exists(cached_meta_path)
-        df = gdm.global_cache.read_parquet(cached_meta_path)
-        assert df.order_col.is_monotonic_increasing, "sanity check"
-        fine_grained_meta = df[
-            ["dbidx", "order_col", "zoom_level", "x1", "y1", "x2", "y2"]
-        ]
-        fine_grained_embedding = df["vectors"].values.to_numpy()
-
-        return MultiscaleIndex(
-            embedding=embedding,
-            vectors=fine_grained_embedding,
-            vector_meta=fine_grained_meta,
-            vec_index=vec_index,
-        )
-
-    @staticmethod
-    def from_dir(index_path: str):
-        from ..services import get_parquet, get_model_actor
+    def from_path(index_path: str):
+        from ...services import get_parquet, get_model_actor
 
         index_path = resolve_path(index_path)
         model_path = os.readlink(f"{index_path}/model")

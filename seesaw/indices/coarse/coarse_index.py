@@ -8,9 +8,9 @@ import torch
 import pyroaring as pr
 
 import torch.utils.data
-from ..models.embeddings import XEmbedding
-from ..query_interface import *
-from ..definitions import resolve_path
+from ...models.embeddings import XEmbedding
+from ...query_interface import *
+from ...definitions import resolve_path
 
 
 class CoarseIndex(AccessMethod):
@@ -34,22 +34,8 @@ class CoarseIndex(AccessMethod):
         return init_vec
 
     @staticmethod
-    def from_path(gdm, index_subpath: str, model_name: str):
-        embedding = gdm.get_model_actor(model_name)
-        coarse_meta_path = f"{gdm.root}/{index_subpath}/vectors.coarse.cached"
-
-        assert os.path.exists(coarse_meta_path)
-        coarse_df = pd.read_parquet(coarse_meta_path)
-        assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
-        embedded_dataset = coarse_df["vectors"].values.to_numpy()
-        vector_meta = coarse_df.drop("vectors", axis=1)
-        return CoarseIndex(
-            embedding=embedding, vectors=embedded_dataset, vector_meta=vector_meta
-        )
-
-    @staticmethod
-    def from_dir(index_path: str):
-        from ..services import get_parquet, get_model_actor
+    def from_path(index_path: str):
+        from ...services import get_parquet, get_model_actor
 
         index_path = resolve_path(index_path)
         model_path = os.readlink(f"{index_path}/model")

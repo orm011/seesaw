@@ -192,12 +192,8 @@ class GlobalDataManager:
         )
 
     def load_index(self, dataset_name, index_name) -> AccessMethod:
-        print("loading index")
-        cons_name, data_path, model_name = self.get_index_construction_data(
-            dataset_name, index_name
-        )
-        print("got index data")
-        return AccessMethod.restore(self, cons_name, data_path, model_name)
+        index_path = f"{self.root}/data/{dataset_name}/indices/{index_name}"
+        return AccessMethod.load(index_path)
 
     def _get_model_path(self, model_name: str) -> str:
         return self._fetch_unique(

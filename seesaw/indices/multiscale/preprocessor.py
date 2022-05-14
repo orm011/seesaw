@@ -1,5 +1,5 @@
 from seesaw.definitions import resolve_path
-from ..models.model import ImageEmbedding
+from ...models.model import ImageEmbedding
 import pandas as pd
 from ray.data.extensions import TensorArray
 import ray

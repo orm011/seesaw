@@ -73,8 +73,8 @@ _session_modes = {
 }
 
 _dataset_map = {
-    "lvis": "data/lvis/",
-    "coco": "data/coco/",
-    "bdd": "data/bdd/",
-    "objectnet": "data/objectnet/",
+    "lvis": "lvis",
+    "coco": "coco",
+    "bdd": "bdd",
+    "objectnet": "objectnet",
 }

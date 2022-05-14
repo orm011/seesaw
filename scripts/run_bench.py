@@ -103,8 +103,7 @@ for v in variants:
         )
     names.add(v["name"])
 
-datasets = ["data/lvis/", "data/bdd/", "data/coco/", "data/objectnet/"]
-# datasets = ['data/lvis/', 'data/objectnet/']
+datasets = ["bdd", "coco", "objectnet"]
 
 nclasses = math.inf if args.limit is None else args.limit
 cfgs = gen_configs(
