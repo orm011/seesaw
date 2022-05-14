@@ -1,9 +1,10 @@
 from typing import Optional, List, Dict, Callable
-from .common import *
 from ..seesaw_session import Session, make_session
 from ..util import reset_num_cpus
 import os
 import json
+from ..dataset_manager import GlobalDataManager
+from .common import *
 
 
 class WebSession:

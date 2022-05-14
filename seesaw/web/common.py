@@ -5,8 +5,7 @@ from fastapi import Body, FastAPI, HTTPException
 
 from fastapi import HTTPException
 
-from ..dataset_manager import GlobalDataManager, IndexSpec
-from ..basic_types import Box, SessionState, SessionParams
+from ..basic_types import Box, SessionState, SessionParams, IndexSpec
 
 import time
 

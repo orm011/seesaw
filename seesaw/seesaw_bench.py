@@ -483,7 +483,7 @@ def compute_stats(summ):
     return stats
 
 
-from .dataset_manager import IndexSpec
+from .basic_types import IndexSpec
 from .dataset_search_terms import category2query
 
 
