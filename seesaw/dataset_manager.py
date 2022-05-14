@@ -49,17 +49,6 @@ def convert_dbidx(ev: EvDataset, ds: SeesawDatasetManager, prepend_ev: str = "")
     ds.save_ground_truth(new_box_data)
 
 
-def infer_coarse_embedding(pdtab):
-    # max_zoom_out = pdtab.groupby('file_path').zoom_level.max().rename('max_zoom_level')
-    # wmax = pd.merge(pdtab, max_zoom_out, left_on='file_path', right_index=True)
-    wmax = pdtab
-    lev1 = wmax[wmax.zoom_level == wmax.max_zoom_level]
-    ser = lev1.groupby("dbidx").vectors.mean().reset_index()
-    res = ser["vectors"].values.to_numpy()
-    normres = res / np.maximum(np.linalg.norm(res, axis=1, keepdims=True), 1e-6)
-    return ser.assign(vectors=TensorArray(normres))
-
-
 """
 Expected data layout for a seesaw root with a few datasets:
 /workdir/seesaw_data

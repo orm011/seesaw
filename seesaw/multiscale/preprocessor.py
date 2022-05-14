@@ -344,35 +344,3 @@ def load_vecs(index_path, invalidate=False):
     return df
     fine_grained_meta = df[["dbidx", "order_col", "zoom_level", "x1", "y1", "x2", "y2"]]
     fine_grained_embedding = df["vectors"].values.to_numpy()
-
-
-#  https://github.com/orm011/seesaw/blob/828589b92d7b82b0a2f8e6fad33b8567edb30edd/seesaw/dataset_manager.py
-# def compute_coarse():
-#         if not os.path.exists(coarse_meta_path) or force_recompute:
-#             if os.path.exists(coarse_meta_path):
-#                 shutil.rmtree(coarse_meta_path)
-#             print("computing coarse embedding...")
-#             coarse_emb = infer_coarse_embedding(df)
-#             assert coarse_emb.dbidx.is_monotonic_increasing
-#             coarse_emb.to_parquet(coarse_meta_path)
-#         else:
-#             print("using cached version...")
-
-#         coarse_df = pd.read_parquet(coarse_meta_path)
-#         assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
-#         embedded_dataset = coarse_df["vectors"].values.to_numpy()
-#         # assert embedded_dataset.shape[0] == self.paths.shape[0], corrupted images are not in embeddding but yes in files
-#     else:
-#         embedded_dataset = None
-
-#     if load_ground_truth:
-#         print("loading ground truth...")
-#         box_data, qgt = self.load_ground_truth()
-#     else:
-#         box_data = None
-#         qgt = None
-
-#     # if os.path.exists(self.index_path()):
-#     #     vec_index = self.index_path() # start actor elsewhere
-#     # else:
-#     vec_index = None

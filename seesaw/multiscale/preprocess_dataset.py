@@ -28,10 +28,10 @@ if __name__ == "__main__":
 
     ray.init("auto", namespace="seesaw")
 
-    # ds = SeesawDatasetManager(args.dataset_path)
-    # preprocess_dataset(
-    #     ds, model_path=args.model_path, cpu=args.cpu, output_path=args.output_path
-    # )
+    ds = SeesawDatasetManager(args.dataset_path)
+    preprocess_dataset(
+        ds, model_path=args.model_path, cpu=args.cpu, output_path=args.output_path
+    )
 
     df = load_vecs(args.output_path)
     output_path = resolve_path(args.output_path)

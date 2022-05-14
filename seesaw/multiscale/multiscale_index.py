@@ -22,7 +22,6 @@ import math
 import annoy
 from ..definitions import resolve_path
 import os
-from ..services import get_parquet, get_model_actor
 
 
 def _postprocess_results(acc):
@@ -448,6 +447,8 @@ class MultiscaleIndex(AccessMethod):
 
     @staticmethod
     def from_dir(index_path: str):
+        from ..services import get_parquet, get_model_actor
+
         index_path = resolve_path(index_path)
         model_path = os.readlink(f"{index_path}/model")
         embedding = get_model_actor(model_path)
