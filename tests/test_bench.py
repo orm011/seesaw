@@ -16,8 +16,7 @@ import random, string, os
 from seesaw.configs import std_linear_config, std_textual_config
 
 
-# TEST_ROOT = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root/'
-TEST_ROOT = "/home/gridsan/omoll/seesaw_root/"
+TEST_ROOT = "/home/gridsan/groups/fastai/omoll/seesaw_root2/"
 tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 TEST_SAVE = f"~/tmp/seesaw_tests/test_save_{tmp_name}/"
 TEST_SAVE = os.path.expanduser(TEST_SAVE)
@@ -58,7 +57,7 @@ configs = [
             max_results=10000,
         ),
         SessionParams(
-            index_spec=IndexSpec(d_name="data/lvis/", i_name="multiscale", c_name=cat),
+            index_spec=IndexSpec(d_name="lvis", i_name="multiscale", c_name=cat),
             interactive="textual",
             agg_method="avg_score",
             method_config={**std_textual_config, "mode": "linear"},
@@ -90,7 +89,7 @@ configs = [
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="data/objectnet/", i_name="multiscale", c_name=cat_objectnet
+                d_name="objectnet", i_name="multiscale", c_name=cat_objectnet
             ),
             interactive="textual",
             agg_method="avg_vector",
@@ -111,7 +110,7 @@ configs = [
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="data/objectnet/", i_name="multiscale", c_name=cat_objectnet
+                d_name="objectnet", i_name="multiscale", c_name=cat_objectnet
             ),
             interactive="pytorch",
             agg_method="avg_vector",

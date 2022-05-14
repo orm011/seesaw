@@ -6,7 +6,8 @@ from .search_loop_tools import *
 
 from .dataset_tools import *
 from .fine_grained_embedding import *
-from .multiscale.multiscale_index import *
+
+# from .multiscale.multiscale_index import *
 from .search_loop_models import adjust_vec, adjust_vec2
 import numpy as np
 import math
@@ -185,6 +186,8 @@ _clip_tx = T.Compose(
     ]
 )
 
+from .indices.multiscale.multiscale_index import box_iou
+
 
 def fill_imdata(imdata: Imdata, box_data: pd.DataFrame, b: BenchParams):
     imdata = imdata.copy()
@@ -231,7 +234,7 @@ def benchmark_loop(
     p: SessionParams,
 ):
     def annotation_fun(cat):
-        dataset_name = p.index_spec.d_name.split("/")[-2]
+        dataset_name = p.index_spec.d_name
         term = category2query(dataset_name, cat)
         return b.query_template.format(term)
 

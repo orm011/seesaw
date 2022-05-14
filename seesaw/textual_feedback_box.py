@@ -1,5 +1,5 @@
 import string
-from .multiscale.multiscale_index import MultiscaleIndex, add_iou_score
+from .indices.multiscale.multiscale_index import MultiscaleIndex, add_iou_score
 import torch.nn as nn
 import torch.nn.functional as F
 import clip
