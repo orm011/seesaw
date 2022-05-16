@@ -1,4 +1,3 @@
-# from setuptools import find_packages
 from setuptools import setup, find_packages
 
 setup(
@@ -9,8 +8,8 @@ setup(
     author_email="orm@csail.mit.edu",
     description="implementation of the seesaw system for interactive image database search",
     packages=find_packages(where="seesaw"),
-    # install_requires=[],  # install from pyproject.toml using pip -r pyproject.toml
-    # extras_require={
+    # install_requires=[],  # seem to be installed from pyproject.toml
+    # extras_require={ # TODO: add these as dev deps in pyproject.toml
     #     "dev": [
     #         "plotnine",
     #         "pydantic-to-typescript",
