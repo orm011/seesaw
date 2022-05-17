@@ -25,7 +25,7 @@ if __name__ == "__main__":
 
     import ray
     from seesaw.dataset import SeesawDatasetManager
-    from preprocessor import preprocess_roi_dataset, load_vecs
+    from preprocessor import preprocess_roi_dataset
 
     #ray.init("auto", namespace="seesaw")
 
@@ -34,10 +34,4 @@ if __name__ == "__main__":
         ds, clip_model_path=args.model_path, cpu=args.cpu, output_path=args.output_path
     )
 
-    df = load_vecs(args.output_path)
-    output_path = resolve_path(args.output_path)
-    build_annoy_idx(
-        vecs=df["vectors"].to_numpy(),
-        output_path=f"{output_path}/vectors.annoy",
-        n_trees=100,
-    )
+    
