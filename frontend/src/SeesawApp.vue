@@ -331,6 +331,22 @@
         </button>
         </div>
     </m-modal>
+    <m-modal>
+      <picture-input 
+      ref="pictureInput"
+      width="600" 
+      height="600" 
+      margin="16" 
+      accept="image/jpeg,image/png" 
+      size="10" 
+      button-class="btn"
+      :custom-strings="{
+        upload: '<h1>Bummer!</h1>',
+        drag: 'Drag a 😺 GIF or GTFO'
+      }"
+      @change="onImportChange">
+    </picture-input>
+    </m-modal>
   </div>  
 </template>
 <script lang="ts">
@@ -351,8 +367,10 @@ import 'vue3-autocomplete/dist/vue3-autocomplete.css'
 
 import {image_accepted, getCookie, setCookie} from './util'
 
+import PictureInput from 'vue-picture-input'
+
 export default defineComponent({
-    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete, MExampleImageGallery},
+    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete, MExampleImageGallery, 'picture-input':PictureInput},
     props: {},
     data () { return { 
                 client_data : { session : null,
@@ -394,6 +412,7 @@ export default defineComponent({
                 task_started : false, 
                 task_start_time : Date.now(),
                 path_mode : false, 
+                import_image : null, 
               }
             },
     mounted (){
@@ -429,7 +448,16 @@ export default defineComponent({
         this.checkContainer(); 
     },
     methods : {
-      is_task_finished(){
+      onImportChange (image) {
+      console.log('New picture selected!')
+      if (image) {
+        console.log('Picture loaded.')
+        this.import_image = image
+      } else {
+        console.log('FileReader API not supported: use the <form>, Luke!')
+      }
+    }, 
+    is_task_finished(){
         //var value = this.image_index == 5; 
         let accepted = this.total_accepted(); 
         let seconds = Math.floor((Date.now() - this.task_start_time)/1000); 
