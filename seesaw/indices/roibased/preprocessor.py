@@ -143,6 +143,8 @@ def preprocess_roi_dataset(
 
     roi_extractor = AgnosticRoIExtractor(maskrcnn_model).to(device)
     roi_extractor.eval()
+    roi_extractor.model.rpn.min_size = 10
+    roi_extractor.model.rpn.nms_thresh = 0
 
     clip_model = CLIPModel.from_pretrained(clip_model_path).to(device)
     clip_processor = CLIPProcessor.from_pretrained(clip_model_path)
@@ -151,7 +153,7 @@ def preprocess_roi_dataset(
     paths = []
     with torch.no_grad():
         for i in range(len(dataset)): 
-            if i % 20 == 0: 
+            if i % 2000 == 0: 
                 if i != 0: 
                     ans = list(zip(paths, output))
                     df = to_dataframe(ans)
