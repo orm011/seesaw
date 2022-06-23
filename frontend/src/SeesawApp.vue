@@ -331,22 +331,6 @@
         </button>
         </div>
     </m-modal>
-    <m-modal>
-      <picture-input 
-      ref="pictureInput"
-      width="600" 
-      height="600" 
-      margin="16" 
-      accept="image/jpeg,image/png" 
-      size="10" 
-      button-class="btn"
-      :custom-strings="{
-        upload: '<h1>Bummer!</h1>',
-        drag: 'Drag a 😺 GIF or GTFO'
-      }"
-      @change="onImportChange">
-    </picture-input>
-    </m-modal>
   </div>  
 </template>
 <script lang="ts">
@@ -367,10 +351,8 @@ import 'vue3-autocomplete/dist/vue3-autocomplete.css'
 
 import {image_accepted, getCookie, setCookie} from './util'
 
-import PictureInput from 'vue-picture-input'
-
 export default defineComponent({
-    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete, MExampleImageGallery, 'picture-input':PictureInput},
+    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete, MExampleImageGallery},
     props: {},
     data () { return { 
                 client_data : { session : null,

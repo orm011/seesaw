@@ -126,7 +126,7 @@ class ROIIndex(AccessMethod):
                 boxscs[j] = score
             frame_activations = frame_vec_meta.assign(score=boxscs)
             frame_activations = frame_activations[frame_activations.score == frame_activations.score.max()][
-                ["x1", "y1", "x2", "y2", "dbidx", "score", "filename"]
+                ["x1", "y1", "x2", "y2", "_x1", "_y1", "_x2", "_y2", "dbidx", "score", "filename"]
             ]
             activations.append(frame_activations)
             dbscores[i] = np.max(boxscs)

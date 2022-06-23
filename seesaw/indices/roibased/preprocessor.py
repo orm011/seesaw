@@ -84,7 +84,7 @@ def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device)
     image_embeds = vision_outputs[1]
     image_embeds = clip_model.visual_projection(image_embeds)
     image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
-    return image_embeds
+    return image_embeds, new_boxes
 
 def preprocess_roi_dataset(
     sds: SeesawDatasetManager,
@@ -151,17 +151,25 @@ def preprocess_roi_dataset(
     print("Models defined")
     ims = []
     paths = []
+    #excluded = []
+    start = 240000
+    end = len(dataset)
     with torch.no_grad():
-        for i in range(len(dataset)): 
+        #for i in tqdm(range(len(dataset))): 
+        for i in tqdm(range(start, end)):
             if i % 2000 == 0: 
-                if i != 0: 
+                if i != start: 
                     ans = list(zip(paths, output))
+                    #print(output[0]['boxes'])
+                    #print(output[0]['new_boxes'])
                     df = to_dataframe(ans)
                     df['dbidx'] = dbidx
                     if clip: 
                         df['clip_feature'] = clip_features
                     #clip_array = run_clip_on_proposal()
                     #df.assign(clip_feature_vector=TensorArray(clip_array))
+                    #print(df.keys())
+                    #print(df[['x1', 'y1', 'x2', 'y2', '_x1', '_y1', '_x2', '_y2']])
                     df.to_parquet(output_path+"/"+str(i)+".parquet")
                 clip_features = []
                 output = []
@@ -169,22 +177,26 @@ def preprocess_roi_dataset(
                 dbidx = []
                 
             data = dataset[i]
-            ims.append(data['image'])
-            paths.append(data['file_path'])
-            images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
-            print("starting roi")
-            a = roi_extractor(images)[0]
-            if a['scores'].shape[0] > box_limiter: 
-                a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
-                a['scores'] = torch.split(a['scores'],box_limiter)[0]
-                a['features'] = torch.split(a['features'].detach(), box_limiter)[0]
-            dbidx.extend([i]*len(a['scores']))
-            if clip: 
-                clip_array = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device)
-                a['clip_feature_vector'] = clip_array
-                clip_features += clip_array.tolist()
-            output.append(a)
-            print(i)
+            if isinstance(data, str): 
+                print(data)
+                #excluded.append(data)
+
+            else: 
+                ims.append(data['image'])
+                paths.append(data['file_path'])
+                images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
+                a = roi_extractor(images)[0]
+                if a['scores'].shape[0] > box_limiter: 
+                    a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
+                    a['scores'] = torch.split(a['scores'],box_limiter)[0]
+                    a['features'] = torch.split(a['features'].detach(), box_limiter)[0]
+                dbidx.extend([i]*len(a['scores']))
+                if clip: 
+                    clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device)
+                    a['new_boxes'] = torch.tensor(new_boxes).to(device)
+                    a['clip_feature_vector'] = clip_array
+                    clip_features += clip_array.tolist()
+                output.append(a)
             
         ans = list(zip(paths, output))
         df = to_dataframe(ans)
@@ -193,7 +205,9 @@ def preprocess_roi_dataset(
             df['clip_feature'] = clip_features
         #clip_array = run_clip_on_proposal()
         #df.assign(clip_feature_vector=TensorArray(clip_array))
-        df.to_parquet(output_path+"/final.parquet")
+        df.to_parquet(output_path+"/"+str(i+1)+".parquet")
+        #print("EXCLUDED FILES")
+        #print(excluded)
 
         os.rename(output_path, final_output_path)
 

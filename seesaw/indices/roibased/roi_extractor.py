@@ -435,17 +435,37 @@ def to_dataframe(pairs):
             "y2": boxes[:, 3],
         }
 
+    def paddedBox2Dict(boxes): 
+        return {
+            "_x1": boxes[:, 0],
+            "_y1": boxes[:, 1],
+            "_x2": boxes[:, 2],
+            "_y2": boxes[:, 3],
+        }
+
     dfs = []
     for (filename, d) in pairs:
         d2 = to_numpy(d)
-        rdf = pd.DataFrame.from_dict(
-            {
-                "filename": filename,
-                **box2dict(d2["boxes"]),
-                "object_score": d2["scores"],
-                "features": TensorArray(d2["features"]),
-            }
-        )
+        rdf = None
+        if "new_boxes" in d2.keys(): 
+            rdf = pd.DataFrame.from_dict(
+                {
+                    "filename": filename,
+                    **box2dict(d2["boxes"]),
+                    **paddedBox2Dict(d2["new_boxes"]),
+                    "object_score": d2["scores"],
+                    "features": TensorArray(d2["features"]),
+                }
+            )
+        else: 
+            rdf = pd.DataFrame.from_dict(
+                {
+                    "filename": filename,
+                    **box2dict(d2["boxes"]),
+                    "object_score": d2["scores"],
+                    "features": TensorArray(d2["features"]),
+                }
+            )
         dfs.append(rdf)
 
     return pd.concat(dfs, ignore_index=True)

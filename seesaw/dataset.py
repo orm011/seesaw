@@ -109,6 +109,10 @@ def create_dataset(image_src, output_path, paths=[]) -> SeesawDatasetManager:
     final_dspath = f"{dirname}/{basename}"
     dspath = f"{dirname}/.tmp.{basename}"
 
+    print(dirname)
+    print(basename)
+    print(final_dspath)
+
     assert not os.path.exists(final_dspath), "name already used"
     if os.path.exists(dspath):
         os.rmdir(dspath)
