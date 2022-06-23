@@ -109,29 +109,27 @@ class ROITrackIndex(AccessMethod):
         dbidxs = np.zeros(nframes) * -1
         dbscores = np.zeros(nframes)
         activations = []
-        for i, (video_id, frame_vec) in enumerate(fullmeta.groupby("video_id")):
+        for i, (video_id, frame_vec_meta) in enumerate(fullmeta.groupby("video_id")):
             dbidxs[i] = video_id
-            for y, (track_id, frame_vec_meta) in enumerate(frame_vec.groupby("track_id")): 
-                
-                boxscs = np.zeros(frame_vec_meta.shape[0])
-                for j in range(frame_vec_meta.shape[0]): 
-                    tup = frame_vec_meta.iloc[j : j + 1]
-                    # GET BOX
-                    # GET IMAGE
+            boxscs = np.zeros(frame_vec_meta.shape[0])
+            for j in range(frame_vec_meta.shape[0]): 
+                tup = frame_vec_meta.iloc[j : j + 1]
+                # GET BOX
+                # GET IMAGE
 
-                    # GET VECTOR
-                    image_vector = tup.vectors.values[0]
-                    # CROSS VECTOR
-                    #print(tup)
-                    #print(tup.vectors.values[0])
-                    score = image_vector @ vector.reshape(-1)
-                    boxscs[j] = score
-                frame_activations = frame_vec_meta.assign(score=boxscs)
-                frame_activations = frame_activations[frame_activations.score == frame_activations.score.max()][
-                    ["x1", "y1", "x2", "y2", "_x1", "_y1", "_x2", "_y2", "dbidx", "score", "filename"]
-                ]
-                activations.append(frame_activations)
-                dbscores[i] = np.max(boxscs)
+                # GET VECTOR
+                image_vector = tup.vectors.values[0]
+                # CROSS VECTOR
+                #print(tup)
+                #print(tup.vectors.values[0])
+                score = image_vector @ vector.reshape(-1)
+                boxscs[j] = score
+            frame_activations = frame_vec_meta.assign(score=boxscs)
+            frame_activations = frame_activations[frame_activations.score == frame_activations.score.max()][
+                ["x1", "y1", "x2", "y2", "_x1", "_y1", "_x2", "_y2", "dbidx", "score", "filename"]
+            ]
+            activations.append(frame_activations)
+            dbscores[i] = np.max(boxscs)
 
         topkidx = np.argsort(-dbscores)[:topk]
         

@@ -148,16 +148,18 @@
         </div> -->
       </main>
     </div> 
-    <m-modal class='xmodal' v-if="path_error">
-      <span class='background-span'>
-        Error: Unknown application path
-      </span>
-    </m-modal>
-    <m-modal class='xmodal' v-else-if="!path_mode">
-      <span class='background-span'>
-        Loading...
-      </span>
-    </m-modal>
+    <div v-if="user_test_mode">
+      <m-modal class='xmodal' v-if="path_error">
+        <span class='background-span'>
+          Error: Unknown application path
+        </span>
+      </m-modal>
+      <m-modal class='xmodal' v-else-if="!path_mode">
+        <span class='background-span'>
+          Loading...
+        </span>
+      </m-modal>
+    </div>
     <m-modal
       v-if="selection != null"
       ref="modal"
@@ -300,7 +302,7 @@
 
     </m-modal>
     <m-modal
-      v-if="end_query == true"
+      v-if="end_query == true && user_test_mode"
       ref="notif-modal"
       @modalKeyDown="handleModalKeyUp('down', $event)"
       @modalKeyUp="handleModalKeyUp('up', $event)"
@@ -394,7 +396,7 @@ export default defineComponent({
                 task_started : false, 
                 task_start_time : Date.now(),
                 path_mode : false, 
-                import_image : null, 
+                user_test_mode : false, 
               }
             },
     mounted (){
@@ -430,15 +432,6 @@ export default defineComponent({
         this.checkContainer(); 
     },
     methods : {
-      onImportChange (image) {
-      console.log('New picture selected!')
-      if (image) {
-        console.log('Picture loaded.')
-        this.import_image = image
-      } else {
-        console.log('FileReader API not supported: use the <form>, Luke!')
-      }
-    }, 
     is_task_finished(){
         //var value = this.image_index == 5; 
         let accepted = this.total_accepted(); 
