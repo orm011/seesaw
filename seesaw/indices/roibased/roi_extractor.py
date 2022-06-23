@@ -58,6 +58,7 @@ class XRegionProposalNetwork(RegionProposalNetwork):
         for boxes, scores, lvl, img_shape in zip(
             proposals, objectness_prob, levels, image_shapes
         ):
+            lvl = torch.zeros_like(lvl)
             boxes = box_ops.clip_boxes_to_image(boxes, img_shape)
 
             # remove small boxes
