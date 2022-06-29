@@ -544,7 +544,10 @@ class MultiscaleIndex(AccessMethod):
             )
 
         if startk is None:
-            startk = len(exclude) * 10
+            if exclude is not None:
+                startk = len(exclude) * 10
+            else:
+                startk = 0
 
         db = self
         qvec = vector
