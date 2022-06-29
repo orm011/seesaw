@@ -77,4 +77,7 @@ _dataset_map = {
     "coco": "coco",
     "bdd": "bdd",
     "objectnet": "objectnet",
+    "bdd_track": "bdd_track", 
+    "roi_100": "manny_bdd_100",
+    "roitrack_100": "manny_bdd_100",
 }

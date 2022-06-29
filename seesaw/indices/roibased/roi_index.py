@@ -83,6 +83,8 @@ class ROIIndex(AccessMethod):
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
         coarse_df = get_parquet(vector_path)
+        print("VECTOR PATH: ", vector_path)
+        print(coarse_df.columns)
         coarse_df = coarse_df.sort_values('dbidx', axis=0) # Not sure if this is good PLS CHECK
         coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
         assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
@@ -126,7 +128,7 @@ class ROIIndex(AccessMethod):
                 boxscs[j] = score
             frame_activations = frame_vec_meta.assign(score=boxscs)
             frame_activations = frame_activations[frame_activations.score == frame_activations.score.max()][
-                ["x1", "y1", "x2", "y2", "_x1", "_y1", "_x2", "_y2", "dbidx", "score", "filename"]
+                ["x1", "y1", "x2", "y2", "dbidx", "score", "filename"]#["x1", "y1", "x2", "y2", "_x1", "_y1", "_x2", "_y2", "dbidx", "score", "filename"]
             ]
             activations.append(frame_activations)
             dbscores[i] = np.max(boxscs)

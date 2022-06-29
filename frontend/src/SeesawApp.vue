@@ -13,6 +13,7 @@
         aria-label="Search" 
         v-model="text_query"
         ref="text_input"
+        v-on:keyup.enter="text(text_query)"
       >
       <button
         class="navbar-toggler position-absolute d-md-none collapsed"
@@ -203,6 +204,7 @@
       </div>
       <div>
         <button
+            v-if="user_test_mode"
             class="btn btn-danger"
             onfocus="blur()"
           >
@@ -413,9 +415,9 @@ export default defineComponent({
             this.load_session(session_path)
         } else if (window.location.pathname === '/user_session'){
             // set front-end mode here based on user session params
-            fetch('/api/user_session?' + params, {method: 'POST'})
+            fetch('/api/id', {method: 'POST'})
             .then(response => response.json())
-            .then(this._update_client_data)
+            .then(this.call_session)
         }  else if (window.location.pathname === '/session') {
           // get task list metadata for loop. cookie will be initialized on return if it doesn't exist
             fetch('/api/session?' + params, {method:'POST'})
@@ -432,6 +434,16 @@ export default defineComponent({
         this.checkContainer(); 
     },
     methods : {
+    call_session(response){
+      window.VueApp = this;
+      let params = new URLSearchParams(window.location.search);
+      params.append("init", response.init) 
+      console.log(params); 
+      console.log(response); 
+      fetch('/api/user_session?' + params, {method: 'POST'})
+            .then(response => response.json())
+            .then(this._update_client_data)
+    }, 
     is_task_finished(){
         //var value = this.image_index == 5; 
         let accepted = this.total_accepted(); 
@@ -443,7 +455,7 @@ export default defineComponent({
       }, 
       nextButtonClick(){
         let finish = this.is_task_finished(); 
-        if (finish.value){ // End Task
+        if (finish.value && this.user_test_mode){ // Only get next description is user test
           this.close_modal(); 
           this.get_end_description(finish); 
         }
@@ -740,13 +752,13 @@ export default defineComponent({
       }
     }, 
     handleModalKeyUp(up_or_down, ev){
-
+      console.log("AM I HEARING?"); 
 
       if (up_or_down === 'up') {
         if (this.end_query){
         // don't use the other keybindings in the task description view,
         // as they cause api calls
-        if (this.selection && ev.code == 'KeyQ'){
+        if (this.user_test_mode && this.selection && ev.code == 'KeyQ'){
             this.log('query_info.end')
             this.end_query = false;
         } 
@@ -760,7 +772,7 @@ export default defineComponent({
           if (ev.code === 'KeyD'){
             this.nextButtonClick(); 
           } else if (ev.code === 'Escape'){
-            if (this.path_mode){
+            if (this.path_mode || !this.user_test_mode){
               this.close_modal(); 
             }  
           } else if (ev.code === 'KeyA'){
@@ -780,6 +792,8 @@ export default defineComponent({
             this.end_query = true; 
           } else if (ev.code == 'Space'){
             //this.next(); 
+          } else if (ev.code == 'Enter' && !this.user_test_mode){
+            this.text(this.text_query); 
           }
         } else { // assume text
           if (ev.code == 'Escape'){
@@ -893,7 +907,7 @@ export default defineComponent({
             this.selected_index = null
           }
 
-          if (this.client_data.worker_state.current_task_index == -1){
+          if (this.client_data.worker_state.current_task_index == -1 && this.user_test_mode){ // Only get the description if we are in the user test study
             this.get_end_description({}); 
           }
           this.next_task_ready = true; 
@@ -921,6 +935,8 @@ export default defineComponent({
         text(text_query : string){
             // TODO: refactor this after user study
             let params = new URLSearchParams({key:text_query})
+            console.log("RUNNING TEXT"); 
+            console.log(text_query);
             if (!this.path_mode){
               fetch(`/api/text?` + params,   
                   {method: 'POST', 
@@ -931,7 +947,7 @@ export default defineComponent({
               .then(data => {
                 console.log('text cb')
                 this._update_client_data(data);
-                if (this.selection === undefined || this.selection === null){
+                if (this.user_test_mode && (this.selection === undefined || this.selection === null)){
                       this.$refs.text_input.blur();
                       this.log("task.started"); 
                       this.task_start_time = Date.now(); 

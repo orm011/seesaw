@@ -76,19 +76,22 @@ class ROITrackIndex(AccessMethod):
     @staticmethod
     def from_path(index_path: str):
         from seesaw.services import get_parquet, get_model_actor
-
+        print("Starting from_path")
         index_path = resolve_path(index_path)
         model_path = os.readlink(f"{index_path}/model")
         #model_path = os.readlink("/home/gridsan/groups/fastai/omoll/seesaw_root2/models/clip-vit-base-patch32/")
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
+        print("Starting get_parquet")
         coarse_df = get_parquet(vector_path)
+        print("Finished get_parquet")
         coarse_df = coarse_df.sort_values('dbidx', axis=0) # Not sure if this is good PLS CHECK
         coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
         assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
         #embedded_dataset = coarse_df["vectors"].values.to_numpy()
         embedded_dataset = coarse_df["vectors"].values # GOT RID OF to_numpy()
         vector_meta = coarse_df.drop("vectors", axis=1)
+        print("Returning")
         return ROITrackIndex(
             embedding=embedding, vectors=embedded_dataset, vector_meta=coarse_df
         )

@@ -152,7 +152,7 @@ def preprocess_roi_dataset(
     ims = []
     paths = []
     #excluded = []
-    start = 240000
+    start = 0
     end = len(dataset)
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 

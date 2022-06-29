@@ -25,7 +25,7 @@ if __name__ == "__main__":
 
     import ray
     from seesaw.dataset import SeesawDatasetManager
-    from preprocessor import preprocess_roi_dataset
+    from preprocessor import preprocess_roi_dataset, load_vecs
 
     #ray.init("auto", namespace="seesaw")
 
@@ -33,5 +33,6 @@ if __name__ == "__main__":
     preprocess_roi_dataset(
         ds, clip_model_path=args.model_path, cpu=args.cpu, output_path=args.output_path
     )
+    load_vecs(args.output_path.rsplit('/', 1)[0], ds)
 
     
