@@ -78,6 +78,12 @@ _dataset_map = {
     "bdd": "bdd",
     "objectnet": "objectnet",
     "bdd_track": "bdd_track", 
-    "roi_100": "manny_bdd_100",
-    "roitrack_100": "manny_bdd_100",
+    "manny_bdd_1000": "manny_bdd_100",
+}
+
+_index_map = {
+    "multiscale": "multiscale", 
+    "coarse": "coarse", 
+    "roi": "roi", 
+    "roi_track": "roi_track", 
 }
