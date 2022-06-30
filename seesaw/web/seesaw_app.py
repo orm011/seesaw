@@ -102,7 +102,6 @@ async def user_session(
     mode,
     dataset,
     index, 
-    init, 
     #qkey,
     #user,
     response: Response,
@@ -110,22 +109,7 @@ async def user_session(
     manager=Depends(get_manager),
 ):
     """API for the old-school user study where we generated URLs and handed them out."""
-    assert session_id is not None
-    handle = await get_handle(session_id)
-    if init:
-        new_params = session_params(mode, dataset, index)
-        await handle._reset_dataset.remote(new_params)
-
-    return await handle.getstate.remote()
-
-@app.post("/id", response_model=IDState)
-async def id(
-    response: Response,
-    session_id=Cookie(default=None),
-    manager=Depends(get_manager),
-):
-    """API to create a session id. """
-    ans = False
+    new_session = False
     if session_id is None:
         session_id = await manager.new_session.remote()
         response.set_cookie(
@@ -133,8 +117,13 @@ async def id(
             value=session_id,
             max_age=pd.Timedelta("2 hours").total_seconds(),
         )
-        ans = True
-    return IDState(init=ans)
+        new_session = True
+    handle = await get_handle(session_id)
+    if new_session:
+        new_params = session_params(mode, dataset, index)
+        await handle._reset_dataset.remote(new_params)
+
+    return await handle.getstate.remote()
 
 @app.post("/session", response_model=AppState)
 async def session(

@@ -415,9 +415,9 @@ export default defineComponent({
             this.load_session(session_path)
         } else if (window.location.pathname === '/user_session'){
             // set front-end mode here based on user session params
-            fetch('/api/id', {method: 'POST'})
+            fetch('/api/user_session?' + params, {method: 'POST'})
             .then(response => response.json())
-            .then(this.call_session)
+            .then(this._update_client_data)
         }  else if (window.location.pathname === '/session') {
           // get task list metadata for loop. cookie will be initialized on return if it doesn't exist
             fetch('/api/session?' + params, {method:'POST'})
@@ -434,16 +434,6 @@ export default defineComponent({
         this.checkContainer(); 
     },
     methods : {
-    call_session(response){
-      window.VueApp = this;
-      let params = new URLSearchParams(window.location.search);
-      params.append("init", response.init) 
-      console.log(params); 
-      console.log(response); 
-      fetch('/api/user_session?' + params, {method: 'POST'})
-            .then(response => response.json())
-            .then(this._update_client_data)
-    }, 
     is_task_finished(){
         //var value = this.image_index == 5; 
         let accepted = this.total_accepted(); 

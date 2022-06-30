@@ -143,7 +143,7 @@ def preprocess_roi_dataset(
     ims = []
     paths = []
     #excluded = []
-    start = 0
+    start = 40000
     end = len(dataset)
     last_track_id = None
     tracker = None
@@ -158,7 +158,7 @@ def preprocess_roi_dataset(
                     df = to_dataframe(ans)
                     df['dbidx'] = dbidx
                     if clip: 
-                        df['clip_feature'] = clip_features
+                        df['clip_feature'] = TensorArray(clip_features)
                     #clip_array = run_clip_on_proposal()
                     #df.assign(clip_feature_vector=TensorArray(clip_array))
                     #print(df.keys())
@@ -188,6 +188,7 @@ def preprocess_roi_dataset(
                     clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device)
                     a['new_boxes'] = torch.tensor(new_boxes).to(device)
                     a['clip_feature_vector'] = clip_array
+                    
                     clip_features += clip_array.tolist()
                 track_id = data['file_path'].split('/')[1]
                 if track_id != last_track_id: 
@@ -208,7 +209,7 @@ def preprocess_roi_dataset(
         df = to_dataframe(ans)
         df['dbidx'] = dbidx
         if clip: 
-            df['clip_feature'] = clip_features
+            df['clip_feature'] = TensorArray(clip_features)
         #clip_array = run_clip_on_proposal()
         #df.assign(clip_feature_vector=TensorArray(clip_array))
         df.to_parquet(output_path+"/"+str(i+1)+".parquet")
@@ -228,87 +229,5 @@ def object_tracking(detection_list, tracker):
 
     return matches
 
-from seesaw.services import get_parquet
-
-def split_df(df, n_splits):
-    lendf = df.shape[0]
-    base_lens = [lendf // n_splits] * n_splits
-    for i in range(lendf % n_splits):
-        base_lens[i] += 1
-
-    assert sum(base_lens) == lendf
-    assert len(base_lens) == n_splits
-
-    indices = np.cumsum([0] + base_lens)
-
-    start_index = indices[:-1]
-    end_index = indices[1:]
-    cutoffs = zip(start_index, end_index)
-    splits = []
-    for (a, b) in cutoffs:
-        splits.append(df.iloc[a:b])
-
-    tot = sum(map(lambda df: df.shape[0], splits))
-    assert df.shape[0] == tot
-    return splits
-
-def load_vecs(index_path, sds, invalidate=False):
-    index_path = resolve_path(index_path)
-    ds = SeesawDatasetManager(f"{index_path}/dataset")
-    vec_path = f"{index_path}/vectors"
-    cached_meta_path = f"{index_path}/vectors.sorted.cached"
-
-    if not os.path.exists(cached_meta_path) or invalidate:
-        if os.path.exists(cached_meta_path):
-            shutil.rmtree(cached_meta_path)
-
-        tmp_path = f"{index_path}/.tmp.vectors.sorted.cached"
-        if os.path.exists(tmp_path):
-            shutil.rmtree(tmp_path)
-
-        idmap = dict(zip(ds.paths, range(len(ds.paths))))
-
-        def assign_ids(df):
-            return df.assign(dbidx=df.filename.map(lambda path: idmap[path]))
-
-        #ds = ray.data.read_parquet(
-        #    vec_path,
-        #    columns=["filename", "x1", "y1", "x2", "y2", "clip_feature", "object_score"],
-        #)
-        #df = pd.concat(ray.get(ds.to_pandas_refs()), axis=0, ignore_index=True)
-        df = get_parquet(vec_path)
-        #print(ds.columns)
-        #df = pd.concat(ds, axis=0, ignore_index=True)
-        df = assign_ids(df)
-        df = df.sort_values(
-            ["dbidx", "filename", "x1", "y1", "x2", "y2"]
-        ).reset_index(drop=True)
-        df = df.assign(order_col=df.index.values)
-        splits = split_df(df, n_splits=32)
-        ray.data.from_pandas(splits).write_parquet(tmp_path)
-        os.rename(tmp_path, cached_meta_path)
-    else:
-        print("vecs already exists, reading instead")
-
-    print("reading")
-    assert os.path.exists(cached_meta_path)
-    ds = ray.data.read_parquet(
-        cached_meta_path,
-        columns=[
-            "dbidx",
-            "filename", 
-            "order_col",
-            "x1",
-            "y1",
-            "x2",
-            "y2",
-            "clip_feature",
-            "object_score",
-        ],
-    )
-    df = pd.concat(ray.get(ds.to_pandas_refs()), ignore_index=True)
-    assert df.order_col.is_monotonic_increasing, "sanity check"
-    return df
-        
 
 

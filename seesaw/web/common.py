@@ -37,9 +37,6 @@ class AppState(BaseModel):  # Using this as a response for every state transitio
     default_params: Optional[SessionParams]
     session: Optional[SessionState]  # sometimes there is no active session
 
-class IDState(BaseModel): 
-    init: bool
-
 class SearchDesc(BaseModel):
     dataset: str
     qstr: str

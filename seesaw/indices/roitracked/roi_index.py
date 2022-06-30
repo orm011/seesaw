@@ -1,3 +1,5 @@
+from ray.data.extensions import TensorArray
+
 import pandas as pd
 import os
 import numpy as np
@@ -83,14 +85,15 @@ class ROITrackIndex(AccessMethod):
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
         print("Starting get_parquet")
-        coarse_df = get_parquet(vector_path)
+        print(vector_path)
+        coarse_df = get_parquet(vector_path, columns=['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2', 'clip_feature'])
         print("Finished get_parquet")
         coarse_df = coarse_df.sort_values('dbidx', axis=0) # Not sure if this is good PLS CHECK
         coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
         assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
         #embedded_dataset = coarse_df["vectors"].values.to_numpy()
-        embedded_dataset = coarse_df["vectors"].values # GOT RID OF to_numpy()
-        vector_meta = coarse_df.drop("vectors", axis=1)
+        embedded_dataset = coarse_df["vectors"].values.to_numpy() # GOT RID OF to_numpy()
+        #vector_meta = coarse_df.drop("vectors", axis=1)
         print("Returning")
         return ROITrackIndex(
             embedding=embedding, vectors=embedded_dataset, vector_meta=coarse_df
@@ -107,13 +110,37 @@ class ROITrackIndex(AccessMethod):
         if len(included) <= topk:
             topk = len(included)
 
+        print(self.vectors.shape)
+        print(vector.shape)
+        scores = self.vectors @ vector.reshape(-1)
+        vec_idxs = np.argsort(-scores)
+        scores = scores[vec_idxs]
+        topscores = self.vector_meta[['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2']].iloc[vec_idxs]
+        topscores = topscores.assign(score=scores)
+        topscores = topscores[topscores.dbidx.isin(included)]
+        scores_by_video = (
+            topscores.groupby('video_id').score.max().sort_values(ascending=False)
+        )
+        score_cutoff = scores_by_video.iloc[topk - 1]
+        topscores = topscores[topscores.score >= score_cutoff]
+        activations = []
+        for i, full_meta in topscores.groupby("dbidx"): 
+            activations.append(full_meta)
+        return {
+            "dbidxs": topscores.dbidx.values,
+            "nextstartk": 100, #nextstartk,
+            "activations": activations,
+        }
+
         fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(included)]
         nframes = len(included)
         dbidxs = np.zeros(nframes) * -1
         dbscores = np.zeros(nframes)
         activations = []
+        print("starting")
         for i, (video_id, frame_vec_meta) in enumerate(fullmeta.groupby("video_id")):
-            dbidxs[i] = video_id
+            print(i)
+            idxs = np.zeros(frame_vec_meta.shape[0])
             boxscs = np.zeros(frame_vec_meta.shape[0])
             for j in range(frame_vec_meta.shape[0]): 
                 tup = frame_vec_meta.iloc[j : j + 1]
@@ -126,14 +153,16 @@ class ROITrackIndex(AccessMethod):
                 #print(tup)
                 #print(tup.vectors.values[0])
                 score = image_vector @ vector.reshape(-1)
+                idxs[j] = tup.dbidx.values[0]
                 boxscs[j] = score
             frame_activations = frame_vec_meta.assign(score=boxscs)
             frame_activations = frame_activations[frame_activations.score == frame_activations.score.max()][
-                ["x1", "y1", "x2", "y2", "_x1", "_y1", "_x2", "_y2", "dbidx", "score", "filename"]
+                ["x1", "y1", "x2", "y2", "dbidx", "score", "filename"]
             ]
+            dbidx = frame_activations[frame_activations.score == frame_activations.score.max()]["dbidx"].iloc[0]
             activations.append(frame_activations)
+            dbidxs[i] = dbidx
             dbscores[i] = np.max(boxscs)
-
         topkidx = np.argsort(-dbscores)[:topk]
         
 
