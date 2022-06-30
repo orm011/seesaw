@@ -39,7 +39,6 @@ def image_clipper(image, boxes, padding):
     output = []
     new_boxes = []
     for box in boxes: 
-        #print(box.tolist())
         new_box = box.tolist()
         width = new_box[2] - new_box[0]
         height = new_box[3] - new_box[1]
@@ -82,9 +81,6 @@ def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device)
     Returns the vector of the embedding. 
     '''
     images, new_boxes = image_clipper(image, boxes, padding)
-    #print(images)
-    #print(images[0])
-    #images = torch.tensor(images, dtype=torch.float).to(device)
     inputs = clip_processor.feature_extractor(images=images, return_tensors="pt")
     inputs.to(device)
     vision_outputs = clip_model.vision_model(**inputs)
@@ -153,16 +149,10 @@ def preprocess_roi_dataset(
             if i % 2000 == 0: 
                 if i != start: 
                     ans = list(zip(paths, output))
-                    #print(output[0]['boxes'])
-                    #print(output[0]['new_boxes'])
                     df = to_dataframe(ans)
                     df['dbidx'] = dbidx
                     if clip: 
                         df['clip_feature'] = TensorArray(clip_features)
-                    #clip_array = run_clip_on_proposal()
-                    #df.assign(clip_feature_vector=TensorArray(clip_array))
-                    #print(df.keys())
-                    #print(df[['x1', 'y1', 'x2', 'y2', '_x1', '_y1', '_x2', '_y2']])
                     df.to_parquet(output_path+"/"+str(i)+".parquet")
                 clip_features = []
                 output = []
@@ -210,11 +200,7 @@ def preprocess_roi_dataset(
         df['dbidx'] = dbidx
         if clip: 
             df['clip_feature'] = TensorArray(clip_features)
-        #clip_array = run_clip_on_proposal()
-        #df.assign(clip_feature_vector=TensorArray(clip_array))
         df.to_parquet(output_path+"/"+str(i+1)+".parquet")
-        #print("EXCLUDED FILES")
-        #print(excluded)
 
         os.rename(output_path, final_output_path)
 
