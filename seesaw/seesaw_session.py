@@ -14,12 +14,6 @@ from dataclasses import dataclass, field
 
 
 def get_image_paths(image_root, path_array, idxs):
-    print("IMAGE FUNC")
-    print(image_root)
-    print(len(path_array))
-    for j in idxs: 
-        print(j)
-        print(path_array[int(j)])
     return [
         os.path.normpath(f"{image_root}/{path_array[int(i)]}").replace("//", "/")
         for i in idxs
