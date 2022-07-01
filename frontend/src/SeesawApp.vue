@@ -659,7 +659,6 @@ export default defineComponent({
           console.assert(false, 'should not reach this', gdata_idx, local_idx);
         },
     handle_selection_change(new_selection){
-      //console.log(this.idx, $event}); 
       if (this.$refs.annotator != undefined){
         let imdata = this.$refs.annotator.get_latest_imdata();
         this.data_update(imdata);
@@ -742,8 +741,6 @@ export default defineComponent({
       }
     }, 
     handleModalKeyUp(up_or_down, ev){
-      console.log("AM I HEARING?"); 
-
       if (up_or_down === 'up') {
         if (this.end_query){
         // don't use the other keybindings in the task description view,
@@ -810,8 +807,6 @@ export default defineComponent({
       }
     }, 
     create_full_box(){
-      //TODO
-      console.log("create full box ran");
       this.$refs.annotator.draw_full_frame_box(false); 
     }, 
     handle_arrow(delta){
@@ -925,8 +920,6 @@ export default defineComponent({
         text(text_query : string){
             // TODO: refactor this after user study
             let params = new URLSearchParams({key:text_query})
-            console.log("RUNNING TEXT"); 
-            console.log(text_query);
             if (!this.path_mode){
               fetch(`/api/text?` + params,   
                   {method: 'POST', 
@@ -977,7 +970,7 @@ export default defineComponent({
               })
             }
           } else { 
-            console.log("PREVENTED NEXT DUE TO WAITING");
+            console.log("Prevented next() due to waiting");
           }
 
         },
