@@ -113,7 +113,20 @@ class ROITrackIndex(AccessMethod):
         )
         score_cutoff = scores_by_video.iloc[topk - 1]
         topscores = topscores[topscores.score >= score_cutoff]
-        dbidxs = topscores.dbidx.values
+        video_ids = topscores.video_id.values
+        dbidxs = []
+        activations = []
+        video_scores = scores_by_video.iloc[:topk]
+        for score in video_scores: 
+            full_meta = topscores[topscores.score == score]
+            dbidx = full_meta[full_meta.score == full_meta.score.max()].dbidx.values[0]
+            dbidxs.append(dbidx)
+            activations.append(full_meta)
+        video_scores = np.array(video_scores)
+        dbidxs = np.array(dbidxs)
+        vec_idxs = np.argsort(-video_scores)
+        dbidxs = dbidxs[vec_idxs]
+
         activations = []
         for idx in dbidxs: 
             full_meta = topscores[topscores.dbidx == idx]

@@ -11,8 +11,6 @@ import time
 
 from ..configs import (
     _session_modes,
-    _dataset_map,
-    _index_map, 
     std_linear_config,
     std_textual_config,
 )
