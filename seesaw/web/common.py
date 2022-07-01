@@ -72,12 +72,10 @@ class EndSession(BaseModel):
 
 def session_params(mode, dataset, index, **kwargs):
     assert mode in _session_modes.keys()
-    assert dataset in _dataset_map.keys()
-    assert index in _index_map.keys()
 
     base = _session_modes[mode].copy(deep=True)
-    base.index_spec.d_name = _dataset_map[dataset]
-    base.index_spec.i_name = _index_map[index]
+    base.index_spec.d_name = dataset
+    base.index_spec.i_name = index
     ## base.index_spec.i_name set in template
     base.other_params = {"mode": mode, "dataset": dataset, **kwargs}
     return base

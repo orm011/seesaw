@@ -71,20 +71,3 @@ _session_modes = {
         batch_size=3,
     ),
 }
-
-_dataset_map = {
-    "lvis": "lvis",
-    "coco": "coco",
-    "bdd": "bdd",
-    "objectnet": "objectnet",
-    "bdd_track": "bdd_track", 
-    "manny_bdd_1000": "manny_bdd_100",
-}
-
-_index_map = {
-    "multiscale": "multiscale", 
-    "coarse": "coarse", 
-    "roi": "roi", 
-    "roi_track": "roi_track", 
-    "roibased": "roibased",
-}
