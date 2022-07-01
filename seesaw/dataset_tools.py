@@ -63,5 +63,5 @@ class ExplicitPathDataset(object):
             return {"file_path": relpath, "dbidx": idx, "image": image}
 
         except:
-            return "{}/{}".format(self.root, relpath)
+            return {"file_path": relpath, "dbidx": idx, "image": None}
 

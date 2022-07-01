@@ -177,7 +177,7 @@ def preprocess_roi_dataset(
                 dbidx = []
                 
             data = dataset[i]
-            if isinstance(data, str): 
+            if data['image'] is None: 
                 print(data)
                 #excluded.append(data)
 
