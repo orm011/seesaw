@@ -86,4 +86,5 @@ _index_map = {
     "coarse": "coarse", 
     "roi": "roi", 
     "roi_track": "roi_track", 
+    "roibased": "roibased",
 }

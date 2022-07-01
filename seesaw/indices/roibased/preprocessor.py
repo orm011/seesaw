@@ -32,7 +32,6 @@ def image_clipper(image, boxes, padding):
     output = []
     new_boxes = []
     for box in boxes: 
-        #print(box.tolist())
         new_box = box.tolist()
         width = new_box[2] - new_box[0]
         height = new_box[3] - new_box[1]

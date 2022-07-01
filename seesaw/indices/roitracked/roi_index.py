@@ -114,11 +114,14 @@ class ROITrackIndex(AccessMethod):
         )
         score_cutoff = scores_by_video.iloc[topk - 1]
         topscores = topscores[topscores.score >= score_cutoff]
+        dbidxs = topscores.dbidx.values
         activations = []
-        for i, full_meta in topscores.groupby("dbidx"): 
+        for idx in dbidxs: 
+            full_meta = topscores[topscores.dbidx == idx]
             activations.append(full_meta)
+
         return {
-            "dbidxs": topscores.dbidx.values,
+            "dbidxs": dbidxs,
             "nextstartk": 100, #nextstartk,
             "activations": activations,
         }

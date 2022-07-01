@@ -82,15 +82,11 @@ class ROIIndex(AccessMethod):
         #model_path = os.readlink("/home/gridsan/groups/fastai/omoll/seesaw_root2/models/clip-vit-base-patch32/")
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
-        coarse_df = get_parquet(vector_path)
-        print("VECTOR PATH: ", vector_path)
-        print(coarse_df.columns)
-        coarse_df = coarse_df.sort_values('dbidx', axis=0) # Not sure if this is good PLS CHECK
+        coarse_df = get_parquet(vector_path, columns=['dbidx', 'x1', 'y1', 'x2', 'y2', 'clip_feature'])
+        coarse_df = coarse_df.sort_values('dbidx', axis=0)
         coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
         assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
-        #embedded_dataset = coarse_df["vectors"].values.to_numpy()
-        embedded_dataset = coarse_df["vectors"].values # GOT RID OF to_numpy()
-        vector_meta = coarse_df.drop("vectors", axis=1)
+        embedded_dataset = coarse_df["vectors"].values.to_numpy()
         return ROIIndex(
             embedding=embedding, vectors=embedded_dataset, vector_meta=coarse_df
         )
@@ -106,6 +102,28 @@ class ROIIndex(AccessMethod):
         if len(included) <= topk:
             topk = len(included)
 
+        scores = self.vectors @ vector.reshape(-1)
+        vec_idxs = np.argsort(-scores)
+        scores = scores[vec_idxs]
+        topscores = self.vector_meta[['dbidx', 'x1', 'y1', 'x2', 'y2']].iloc[vec_idxs]
+        topscores = topscores.assign(score=scores)
+        topscores = topscores[topscores.dbidx.isin(included)]
+        scores_by_video = (
+            topscores.groupby('dbidx').score.max().sort_values(ascending=False)
+        )
+        score_cutoff = scores_by_video.iloc[topk - 1]
+        topscores = topscores[topscores.score >= score_cutoff]
+        dbidxs = topscores.dbidx.values
+        activations = []
+        for idx in dbidxs: 
+            full_meta = topscores[topscores.dbidx == idx]
+            activations.append(full_meta)
+        return {
+            "dbidxs": dbidxs,
+            "nextstartk": 100, #nextstartk,
+            "activations": activations,
+        }
+        '''
         fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(included)]
         nframes = len(included)
         dbidxs = np.zeros(nframes) * -1
@@ -141,6 +159,7 @@ class ROIIndex(AccessMethod):
             "nextstartk": 100, #nextstartk,
             "activations": [activations[idx] for idx in topkidx],
         }
+        '''
 
     def new_query(self):
         return ROIQuery(self)
