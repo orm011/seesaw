@@ -129,6 +129,7 @@ class CacheStub:
             else: 
                 ds = ray.data.read_parquet(path)
             df = pd.concat(ray.get(ds.to_pandas_refs()))
+            df = df.sort_values('dbidx', axis=0)
             return df
 
         return self._with_lock(path, _init_fun)
