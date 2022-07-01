@@ -13,6 +13,7 @@
         aria-label="Search" 
         v-model="text_query"
         ref="text_input"
+        v-on:keyup.enter="text(text_query)"
       >
       <button
         class="navbar-toggler position-absolute d-md-none collapsed"
@@ -148,16 +149,18 @@
         </div> -->
       </main>
     </div> 
-    <m-modal class='xmodal' v-if="path_error">
-      <span class='background-span'>
-        Error: Unknown application path
-      </span>
-    </m-modal>
-    <m-modal class='xmodal' v-else-if="!path_mode">
-      <span class='background-span'>
-        Loading...
-      </span>
-    </m-modal>
+    <div v-if="user_test_mode">
+      <m-modal class='xmodal' v-if="path_error">
+        <span class='background-span'>
+          Error: Unknown application path
+        </span>
+      </m-modal>
+      <m-modal class='xmodal' v-else-if="!path_mode">
+        <span class='background-span'>
+          Loading...
+        </span>
+      </m-modal>
+    </div>
     <m-modal
       v-if="selection != null"
       ref="modal"
@@ -201,6 +204,7 @@
       </div>
       <div>
         <button
+            v-if="user_test_mode"
             class="btn btn-danger"
             onfocus="blur()"
           >
@@ -300,7 +304,7 @@
 
     </m-modal>
     <m-modal
-      v-if="end_query == true"
+      v-if="end_query == true && user_test_mode"
       ref="notif-modal"
       @modalKeyDown="handleModalKeyUp('down', $event)"
       @modalKeyUp="handleModalKeyUp('up', $event)"
@@ -331,22 +335,6 @@
         </button>
         </div>
     </m-modal>
-    <m-modal>
-      <picture-input 
-      ref="pictureInput"
-      width="600" 
-      height="600" 
-      margin="16" 
-      accept="image/jpeg,image/png" 
-      size="10" 
-      button-class="btn"
-      :custom-strings="{
-        upload: '<h1>Bummer!</h1>',
-        drag: 'Drag a 😺 GIF or GTFO'
-      }"
-      @change="onImportChange">
-    </picture-input>
-    </m-modal>
   </div>  
 </template>
 <script lang="ts">
@@ -367,10 +355,8 @@ import 'vue3-autocomplete/dist/vue3-autocomplete.css'
 
 import {image_accepted, getCookie, setCookie} from './util'
 
-import PictureInput from 'vue-picture-input'
-
 export default defineComponent({
-    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete, MExampleImageGallery, 'picture-input':PictureInput},
+    components : {'m-image-gallery':MImageGallery, 'm-modal':MModal, 'm-annotator':MAnnotator, MConfigVue3, Autocomplete, MExampleImageGallery},
     props: {},
     data () { return { 
                 client_data : { session : null,
@@ -412,7 +398,7 @@ export default defineComponent({
                 task_started : false, 
                 task_start_time : Date.now(),
                 path_mode : false, 
-                import_image : null, 
+                user_test_mode : false, 
               }
             },
     mounted (){
@@ -448,15 +434,6 @@ export default defineComponent({
         this.checkContainer(); 
     },
     methods : {
-      onImportChange (image) {
-      console.log('New picture selected!')
-      if (image) {
-        console.log('Picture loaded.')
-        this.import_image = image
-      } else {
-        console.log('FileReader API not supported: use the <form>, Luke!')
-      }
-    }, 
     is_task_finished(){
         //var value = this.image_index == 5; 
         let accepted = this.total_accepted(); 
@@ -468,7 +445,7 @@ export default defineComponent({
       }, 
       nextButtonClick(){
         let finish = this.is_task_finished(); 
-        if (finish.value){ // End Task
+        if (finish.value && this.user_test_mode){ // Only get next description is user test
           this.close_modal(); 
           this.get_end_description(finish); 
         }
@@ -682,7 +659,6 @@ export default defineComponent({
           console.assert(false, 'should not reach this', gdata_idx, local_idx);
         },
     handle_selection_change(new_selection){
-      //console.log(this.idx, $event}); 
       if (this.$refs.annotator != undefined){
         let imdata = this.$refs.annotator.get_latest_imdata();
         this.data_update(imdata);
@@ -765,13 +741,11 @@ export default defineComponent({
       }
     }, 
     handleModalKeyUp(up_or_down, ev){
-
-
       if (up_or_down === 'up') {
         if (this.end_query){
         // don't use the other keybindings in the task description view,
         // as they cause api calls
-        if (this.selection && ev.code == 'KeyQ'){
+        if (this.user_test_mode && this.selection && ev.code == 'KeyQ'){
             this.log('query_info.end')
             this.end_query = false;
         } 
@@ -785,7 +759,7 @@ export default defineComponent({
           if (ev.code === 'KeyD'){
             this.nextButtonClick(); 
           } else if (ev.code === 'Escape'){
-            if (this.path_mode){
+            if (this.path_mode || !this.user_test_mode){
               this.close_modal(); 
             }  
           } else if (ev.code === 'KeyA'){
@@ -805,6 +779,8 @@ export default defineComponent({
             this.end_query = true; 
           } else if (ev.code == 'Space'){
             //this.next(); 
+          } else if (ev.code == 'Enter' && !this.user_test_mode){
+            this.text(this.text_query); 
           }
         } else { // assume text
           if (ev.code == 'Escape'){
@@ -831,8 +807,6 @@ export default defineComponent({
       }
     }, 
     create_full_box(){
-      //TODO
-      console.log("create full box ran");
       this.$refs.annotator.draw_full_frame_box(false); 
     }, 
     handle_arrow(delta){
@@ -918,7 +892,7 @@ export default defineComponent({
             this.selected_index = null
           }
 
-          if (this.client_data.worker_state.current_task_index == -1){
+          if (this.client_data.worker_state.current_task_index == -1 && this.user_test_mode){ // Only get the description if we are in the user test study
             this.get_end_description({}); 
           }
           this.next_task_ready = true; 
@@ -956,7 +930,7 @@ export default defineComponent({
               .then(data => {
                 console.log('text cb')
                 this._update_client_data(data);
-                if (this.selection === undefined || this.selection === null){
+                if (this.user_test_mode && (this.selection === undefined || this.selection === null)){
                       this.$refs.text_input.blur();
                       this.log("task.started"); 
                       this.task_start_time = Date.now(); 
@@ -996,7 +970,7 @@ export default defineComponent({
               })
             }
           } else { 
-            console.log("PREVENTED NEXT DUE TO WAITING");
+            console.log("Prevented next() due to waiting");
           }
 
         },

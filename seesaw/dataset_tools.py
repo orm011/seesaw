@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 import torch.utils.data
 import PIL
 
@@ -57,5 +58,10 @@ class ExplicitPathDataset(object):
 
     def __getitem__(self, idx):
         relpath = self.paths[idx].lstrip("./")
-        image = PIL.Image.open("{}/{}".format(self.root, relpath))
-        return {"file_path": relpath, "dbidx": idx, "image": image}
+        try:
+            image = PIL.Image.open("{}/{}".format(self.root, relpath))
+            return {"file_path": relpath, "dbidx": idx, "image": image}
+
+        except:
+            return {"file_path": relpath, "dbidx": idx, "image": None}
+
