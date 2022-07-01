@@ -151,8 +151,9 @@ def preprocess_roi_dataset(
     ims = []
     paths = []
     #excluded = []
-    start = 0
+    start = 60000
     end = len(dataset)
+    #print(len(dataset))
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
         for i in tqdm(range(start, end)):
@@ -164,7 +165,7 @@ def preprocess_roi_dataset(
                     df = to_dataframe(ans)
                     df['dbidx'] = dbidx
                     if clip: 
-                        df['clip_feature'] = clip_features
+                        df['clip_feature'] = TensorArray(clip_features)
                     #clip_array = run_clip_on_proposal()
                     #df.assign(clip_feature_vector=TensorArray(clip_array))
                     #print(df.keys())
@@ -201,7 +202,7 @@ def preprocess_roi_dataset(
         df = to_dataframe(ans)
         df['dbidx'] = dbidx
         if clip: 
-            df['clip_feature'] = clip_features
+            df['clip_feature'] = TensorArray(clip_features)
         #clip_array = run_clip_on_proposal()
         #df.assign(clip_feature_vector=TensorArray(clip_array))
         df.to_parquet(output_path+"/"+str(i+1)+".parquet")
