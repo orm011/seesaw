@@ -20,7 +20,14 @@ import roi_extractor
 from roi_extractor import AgnosticRoIExtractor
 from roi_extractor import to_dataframe
 from tqdm import tqdm
+
+from deepsort import Detection, NearestNeighborDistanceMetric, Tracker
 #import transforms
+
+# Definition of the parameters
+max_cosine_distance = 0.7
+max_euclidean_distance = 0.7
+nn_budget = None
 
 def image_clipper(image, boxes, padding): 
     '''
@@ -74,9 +81,6 @@ def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device)
     Returns the vector of the embedding. 
     '''
     images, new_boxes = image_clipper(image, boxes, padding)
-    #print(images)
-    #print(images[0])
-    #images = torch.tensor(images, dtype=torch.float).to(device)
     inputs = clip_processor.feature_extractor(images=images, return_tensors="pt")
     inputs.to(device)
     vision_outputs = clip_model.vision_model(**inputs)
@@ -121,22 +125,6 @@ def preprocess_roi_dataset(
 
     os.makedirs(output_path)
 
-    '''
-    vector_path = f"{output_path}/vectors"
-    os.makedirs(vector_path)
-
-    model_link = f"{output_path}/model"
-    os.symlink(model_path, model_link)
-
-    dataset_link = f"{output_path}/dataset"
-    os.symlink(sds.dataset_root, dataset_link)
-
-    real_prefix = f"{os.path.realpath(sds.image_root)}/"
-    read_paths = ((real_prefix + sds.paths)).tolist()
-    read_paths = [os.path.normpath(p) for p in read_paths]
-    meta_dict = dict(zip(read_paths, zip(sds.paths, np.arange(len(sds.paths)))))
-    '''
-
     maskrcnn_model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True).to(device)
     maskrcnn_model.eval()
 
@@ -151,25 +139,20 @@ def preprocess_roi_dataset(
     ims = []
     paths = []
     #excluded = []
-    start = 60000
+    start = 40000
     end = len(dataset)
-    #print(len(dataset))
+    last_track_id = None
+    tracker = None
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
         for i in tqdm(range(start, end)):
             if i % 2000 == 0: 
                 if i != start: 
                     ans = list(zip(paths, output))
-                    #print(output[0]['boxes'])
-                    #print(output[0]['new_boxes'])
                     df = to_dataframe(ans)
                     df['dbidx'] = dbidx
                     if clip: 
                         df['clip_feature'] = TensorArray(clip_features)
-                    #clip_array = run_clip_on_proposal()
-                    #df.assign(clip_feature_vector=TensorArray(clip_array))
-                    #print(df.keys())
-                    #print(df[['x1', 'y1', 'x2', 'y2', '_x1', '_y1', '_x2', '_y2']])
                     df.to_parquet(output_path+"/"+str(i)+".parquet")
                 clip_features = []
                 output = []
@@ -195,7 +178,21 @@ def preprocess_roi_dataset(
                     clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device)
                     a['new_boxes'] = torch.tensor(new_boxes).to(device)
                     a['clip_feature_vector'] = clip_array
+                    
                     clip_features += clip_array.tolist()
+                track_id = data['file_path'].split('/')[1]
+                if track_id != last_track_id: 
+                    metric = NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
+                    tracker = Tracker(metric)
+                    last_track_id = track_id
+                detection_list = []
+                for j in range(a['scores'].shape[0]): 
+                    var = a['boxes'][j]
+                    box = [var[0].item(), var[1].item(), abs(var[2] - var[0]).item(), abs(var[3].item() - var[1]).item()]
+                    det = Detection(box, a['scores'][j], 'seesaw', a['clip_feature_vector'][j])
+                    detection_list.append(det)
+                matches = object_tracking(detection_list, tracker)
+                a['track_id'] = torch.tensor(matches)
                 output.append(a)
             
         ans = list(zip(paths, output))
@@ -203,13 +200,20 @@ def preprocess_roi_dataset(
         df['dbidx'] = dbidx
         if clip: 
             df['clip_feature'] = TensorArray(clip_features)
-        #clip_array = run_clip_on_proposal()
-        #df.assign(clip_feature_vector=TensorArray(clip_array))
         df.to_parquet(output_path+"/"+str(i+1)+".parquet")
-        #print("EXCLUDED FILES")
-        #print(excluded)
 
         os.rename(output_path, final_output_path)
+
+
+# Function for object tracking on video
+def object_tracking(detection_list, tracker):
+    
+    
+    # Pass detections to the deepsort object and obtain the track information.
+    tracker.predict()
+    matches = tracker.update(detection_list)
+
+    return matches
 
 
 

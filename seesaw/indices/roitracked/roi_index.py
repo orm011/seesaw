@@ -1,3 +1,5 @@
+from ray.data.extensions import TensorArray
+
 import pandas as pd
 import os
 import numpy as np
@@ -53,7 +55,7 @@ def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method):
     else:
         assert False, f"unknown agg_method {agg_method}"
 
-class ROIIndex(AccessMethod):
+class ROITrackIndex(AccessMethod):
     """Structure holding a dataset,
     together with precomputed embeddings
     and (optionally) data structure
@@ -76,17 +78,16 @@ class ROIIndex(AccessMethod):
     @staticmethod
     def from_path(index_path: str):
         from seesaw.services import get_parquet, get_model_actor
-
         index_path = resolve_path(index_path)
         model_path = os.readlink(f"{index_path}/model")
         #model_path = os.readlink("/home/gridsan/groups/fastai/omoll/seesaw_root2/models/clip-vit-base-patch32/")
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
-        coarse_df = get_parquet(vector_path, columns=['dbidx', 'x1', 'y1', 'x2', 'y2', 'clip_feature'])
+        coarse_df = get_parquet(vector_path, columns=['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2', 'clip_feature'])
         coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
         assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
-        embedded_dataset = coarse_df["vectors"].values.to_numpy()
-        return ROIIndex(
+        embedded_dataset = coarse_df["vectors"].values.to_numpy() 
+        return ROITrackIndex(
             embedding=embedding, vectors=embedded_dataset, vector_meta=coarse_df
         )
 
@@ -104,11 +105,11 @@ class ROIIndex(AccessMethod):
         scores = self.vectors @ vector.reshape(-1)
         vec_idxs = np.argsort(-scores)
         scores = scores[vec_idxs]
-        topscores = self.vector_meta[['dbidx', 'x1', 'y1', 'x2', 'y2']].iloc[vec_idxs]
+        topscores = self.vector_meta[['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2']].iloc[vec_idxs]
         topscores = topscores.assign(score=scores)
         topscores = topscores[topscores.dbidx.isin(included)]
         scores_by_video = (
-            topscores.groupby('dbidx').score.max().sort_values(ascending=False)
+            topscores.groupby('video_id').score.max().sort_values(ascending=False)
         )
         score_cutoff = scores_by_video.iloc[topk - 1]
         topscores = topscores[topscores.score >= score_cutoff]
@@ -117,19 +118,23 @@ class ROIIndex(AccessMethod):
         for idx in dbidxs: 
             full_meta = topscores[topscores.dbidx == idx]
             activations.append(full_meta)
+
         return {
             "dbidxs": dbidxs,
             "nextstartk": 100, #nextstartk,
             "activations": activations,
         }
+
         '''
         fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(included)]
         nframes = len(included)
         dbidxs = np.zeros(nframes) * -1
         dbscores = np.zeros(nframes)
         activations = []
-        for i, (dbidx, frame_vec_meta) in enumerate(fullmeta.groupby("dbidx")):
-            dbidxs[i] = dbidx
+        print("starting")
+        for i, (video_id, frame_vec_meta) in enumerate(fullmeta.groupby("video_id")):
+            print(i)
+            idxs = np.zeros(frame_vec_meta.shape[0])
             boxscs = np.zeros(frame_vec_meta.shape[0])
             for j in range(frame_vec_meta.shape[0]): 
                 tup = frame_vec_meta.iloc[j : j + 1]
@@ -142,14 +147,16 @@ class ROIIndex(AccessMethod):
                 #print(tup)
                 #print(tup.vectors.values[0])
                 score = image_vector @ vector.reshape(-1)
+                idxs[j] = tup.dbidx.values[0]
                 boxscs[j] = score
             frame_activations = frame_vec_meta.assign(score=boxscs)
             frame_activations = frame_activations[frame_activations.score == frame_activations.score.max()][
-                ["x1", "y1", "x2", "y2", "dbidx", "score", "filename"]#["x1", "y1", "x2", "y2", "_x1", "_y1", "_x2", "_y2", "dbidx", "score", "filename"]
+                ["x1", "y1", "x2", "y2", "dbidx", "score", "filename"]
             ]
+            dbidx = frame_activations[frame_activations.score == frame_activations.score.max()]["dbidx"].iloc[0]
             activations.append(frame_activations)
+            dbidxs[i] = dbidx
             dbscores[i] = np.max(boxscs)
-
         topkidx = np.argsort(-dbscores)[:topk]
         
 
@@ -165,7 +172,7 @@ class ROIIndex(AccessMethod):
 
     def subset(self, indices: pr.BitMap):
         mask = self.vector_meta.dbidx.isin(indices)
-        return ROIIndex(
+        return ROITrackIndex(
             embedding=self.embedding,
             vectors=self.vectors[mask],
             vector_meta=self.vector_meta[mask].reset_index(drop=True),
@@ -173,7 +180,7 @@ class ROIIndex(AccessMethod):
 
 
 class ROIQuery(InteractiveQuery):
-    def __init__(self, db: ROIIndex):
+    def __init__(self, db: ROITrackIndex):
         super().__init__(db)
 
     def getXy(self):

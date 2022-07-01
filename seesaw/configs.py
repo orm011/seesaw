@@ -71,10 +71,3 @@ _session_modes = {
         batch_size=3,
     ),
 }
-
-_dataset_map = {
-    "lvis": "lvis",
-    "coco": "coco",
-    "bdd": "bdd",
-    "objectnet": "objectnet",
-}

@@ -101,10 +101,11 @@ app.router.route_class = ErrorLoggingRoute
 async def user_session(
     mode,
     dataset,
-    qkey,
-    user,
+    index, 
+    #qkey,
+    #user,
     response: Response,
-    session_id=Cookie(None),
+    session_id=Cookie(default=None),
     manager=Depends(get_manager),
 ):
     """API for the old-school user study where we generated URLs and handed them out."""
@@ -117,14 +118,12 @@ async def user_session(
             max_age=pd.Timedelta("2 hours").total_seconds(),
         )
         new_session = True
-
     handle = await get_handle(session_id)
     if new_session:
-        new_params = session_params(mode, dataset, qkey=qkey, user=user)
+        new_params = session_params(mode, dataset, index)
         await handle._reset_dataset.remote(new_params)
 
     return await handle.getstate.remote()
-
 
 @app.post("/session", response_model=AppState)
 async def session(
