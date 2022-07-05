@@ -455,7 +455,7 @@ def to_dataframe(pairs):
                     **paddedBox2Dict(d2["new_boxes"]),
                     "object_score": d2["scores"],
                     "features": TensorArray(d2["features"]),
-                    "video_id": filename.split('/')[1], 
+                    "video_id": filename.split('/')[0], 
                     "track_id": d2["track_id"],
                 }
             )

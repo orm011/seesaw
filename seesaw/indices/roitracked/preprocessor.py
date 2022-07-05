@@ -139,7 +139,7 @@ def preprocess_roi_dataset(
     ims = []
     paths = []
     #excluded = []
-    start = 40000
+    start = 0
     end = len(dataset)
     last_track_id = None
     tracker = None

@@ -68,6 +68,7 @@ class ROITrackIndex(AccessMethod):
         self.vectors = vectors
         self.vector_meta = vector_meta
         self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
+        self.returned = pr.BitMap()
         # assert len(self.images) >= self.vectors.shape[0]
 
     def string2vec(self, string: str) -> np.ndarray:
@@ -92,6 +93,8 @@ class ROITrackIndex(AccessMethod):
         )
 
     def query(self, *, topk, vector, exclude=None, startk=None, **kwargs):
+        exclude = self.returned
+        #print(exclude)
         agg_method = 'avg_score'
         if exclude is None:
             exclude = pr.BitMap([])
@@ -113,21 +116,28 @@ class ROITrackIndex(AccessMethod):
         )
         score_cutoff = scores_by_video.iloc[topk - 1]
         topscores = topscores[topscores.score >= score_cutoff]
-        video_ids = topscores.video_id.values
         dbidxs = []
+        videos = []
         activations = []
         video_scores = scores_by_video.iloc[:topk]
         for score in video_scores: 
             full_meta = topscores[topscores.score == score]
-            dbidx = full_meta[full_meta.score == full_meta.score.max()].dbidx.values[0]
+            full_meta = full_meta[full_meta.score == full_meta.score.max()]
+            dbidx = full_meta.dbidx.values[0]
             dbidxs.append(dbidx)
+            videos.append(full_meta.video_id.values[0])
             activations.append(full_meta)
+        excluded_dbidxs = []
+        for video in videos: 
+            excluded_dbidxs.extend(self.vector_meta[self.vector_meta.video_id == video][['dbidx', 'video_id']].dbidx.unique())
+        self.returned.update(excluded_dbidxs)
         video_scores = np.array(video_scores)
         dbidxs = np.array(dbidxs)
         vec_idxs = np.argsort(-video_scores)
         dbidxs = dbidxs[vec_idxs]
 
         activations = []
+        
         for idx in dbidxs: 
             full_meta = topscores[topscores.dbidx == idx]
             activations.append(full_meta)
