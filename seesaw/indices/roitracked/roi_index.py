@@ -114,12 +114,15 @@ class ROITrackIndex(AccessMethod):
         scores_by_video = (
             topscores.groupby('video_id').score.max().sort_values(ascending=False)
         )
-        score_cutoff = scores_by_video.iloc[topk - 1]
+        top = min(topk, scores_by_video.shape[0])
+        score_cutoff = scores_by_video.iloc[top - 1]
         topscores = topscores[topscores.score >= score_cutoff]
         dbidxs = []
         videos = []
         activations = []
-        video_scores = scores_by_video.iloc[:topk]
+        print(top)
+        print(scores_by_video.shape[0])
+        video_scores = scores_by_video.iloc[:top]
         for score in video_scores: 
             full_meta = topscores[topscores.score == score]
             full_meta = full_meta[full_meta.score == full_meta.score.max()]
