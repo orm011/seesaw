@@ -64,9 +64,13 @@ class InteractiveQuery(object):
         res = self.index.query(
             *args, topk=batch_size, **kwargs, exclude=self.returned, startk=self.startk
         )
+        if 'excluded_dbidxs' in res.keys(): 
+            self.returned.update(res['excluded_dbidxs'])
+            del res['excluded_dbidxs']
+        else: 
+            self.returned.update(res["dbidxs"])
         # assert nextstartk >= self.startk nor really true: if vector changes a lot,
         self.startk = res["nextstartk"]
-        self.returned.update(res["dbidxs"])
         del res["nextstartk"]
         return res
 

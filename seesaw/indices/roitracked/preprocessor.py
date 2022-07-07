@@ -16,9 +16,8 @@ import math
 import shutil
 import torchvision
 from transformers import CLIPProcessor, CLIPModel
-import roi_extractor
-from roi_extractor import AgnosticRoIExtractor
-from roi_extractor import to_dataframe
+from roi_track_extractor import AgnosticRoIExtractor
+from roi_track_extractor import to_dataframe
 from tqdm import tqdm
 
 from deepsort import Detection, NearestNeighborDistanceMetric, Tracker
@@ -180,15 +179,19 @@ def preprocess_roi_dataset(
                     a['clip_feature_vector'] = clip_array
                     
                     clip_features += clip_array.tolist()
-                track_id = data['file_path'].split('/')[1]
+                track_id = data['file_path'].split('/')[0]
                 if track_id != last_track_id: 
+                    print("Previous Track ID")
+                    print(last_track_id)
+                    print("Current Track ID")
+                    print(track_id)
                     metric = NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
                     tracker = Tracker(metric)
                     last_track_id = track_id
                 detection_list = []
                 for j in range(a['scores'].shape[0]): 
                     var = a['boxes'][j]
-                    box = [var[0].item(), var[1].item(), abs(var[2] - var[0]).item(), abs(var[3].item() - var[1]).item()]
+                    box = [var[0].item(), var[1].item(), abs(var[2] - var[0]).item(), abs(var[3] - var[1]).item()]
                     det = Detection(box, a['scores'][j], 'seesaw', a['clip_feature_vector'][j])
                     detection_list.append(det)
                 matches = object_tracking(detection_list, tracker)

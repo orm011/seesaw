@@ -68,7 +68,6 @@ class ROITrackIndex(AccessMethod):
         self.vectors = vectors
         self.vector_meta = vector_meta
         self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
-        self.returned = pr.BitMap()
         # assert len(self.images) >= self.vectors.shape[0]
 
     def string2vec(self, string: str) -> np.ndarray:
@@ -84,7 +83,7 @@ class ROITrackIndex(AccessMethod):
         #model_path = os.readlink("/home/gridsan/groups/fastai/omoll/seesaw_root2/models/clip-vit-base-patch32/")
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
-        coarse_df = get_parquet(vector_path, columns=['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2', 'clip_feature'])
+        coarse_df = get_parquet(vector_path, columns=['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2', 'clip_feature', 'track_id', 'filename'])
         coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
         assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
         embedded_dataset = coarse_df["vectors"].values.to_numpy() 
@@ -93,7 +92,6 @@ class ROITrackIndex(AccessMethod):
         )
 
     def query(self, *, topk, vector, exclude=None, startk=None, **kwargs):
-        exclude = self.returned
         #print(exclude)
         agg_method = 'avg_score'
         if exclude is None:
@@ -133,7 +131,7 @@ class ROITrackIndex(AccessMethod):
         excluded_dbidxs = []
         for video in videos: 
             excluded_dbidxs.extend(self.vector_meta[self.vector_meta.video_id == video][['dbidx', 'video_id']].dbidx.unique())
-        self.returned.update(excluded_dbidxs)
+        
         video_scores = np.array(video_scores)
         dbidxs = np.array(dbidxs)
         vec_idxs = np.argsort(-video_scores)
@@ -149,6 +147,7 @@ class ROITrackIndex(AccessMethod):
             "dbidxs": dbidxs,
             "nextstartk": 100, #nextstartk,
             "activations": activations,
+            "excluded_dbidxs": excluded_dbidxs, 
         }
 
         '''
@@ -194,7 +193,7 @@ class ROITrackIndex(AccessMethod):
         '''
 
     def new_query(self):
-        return ROIQuery(self)
+        return ROITrackQuery(self)
 
     def subset(self, indices: pr.BitMap):
         mask = self.vector_meta.dbidx.isin(indices)
@@ -205,7 +204,7 @@ class ROITrackIndex(AccessMethod):
         )
 
 
-class ROIQuery(InteractiveQuery):
+class ROITrackQuery(InteractiveQuery):
     def __init__(self, db: ROITrackIndex):
         super().__init__(db)
 

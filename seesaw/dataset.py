@@ -120,6 +120,7 @@ def create_dataset(image_src, output_path, paths=[]) -> SeesawDatasetManager:
     os.symlink(image_src, image_path)
     if len(paths) == 0:
         paths = list_image_paths(image_src)
+        paths = sorted(paths)
 
     df = pd.DataFrame({"file_path": paths})
     df.to_parquet(f"{dspath}/file_meta.parquet")
