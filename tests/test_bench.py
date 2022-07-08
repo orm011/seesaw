@@ -22,8 +22,8 @@ TEST_SAVE = f"~/tmp/seesaw_tests/test_save_{tmp_name}/"
 TEST_SAVE = os.path.expanduser(TEST_SAVE)
 
 
-cat = "soya milk"
-qstr = "a soya milk"
+cat = "bike"
+qstr = "a bike"
 
 cat_objectnet = "air freshener"
 qstr_objectnet = "an air freshener"
@@ -119,6 +119,71 @@ configs = [
         ),
     ),
 ]
+configs = [
+    (
+        BenchParams(
+            name="multiscale",
+            ground_truth_category=cat,
+            qstr=qstr,
+            provide_textual_feedback=False,
+            n_batches=4,
+            max_feedback=None,
+            box_drop_prob=0.0,
+            max_results=10000,
+        ),
+        SessionParams(
+            index_spec=IndexSpec(
+                d_name="bdd", i_name="multiscale", c_name=cat
+            ),
+            interactive="pytorch",
+            agg_method="avg_vector",
+            method_config=std_linear_config,
+            batch_size=3,
+        ),
+    ),
+    (
+        BenchParams(
+            name="coarse",
+            ground_truth_category=cat,
+            qstr=qstr,
+            provide_textual_feedback=False,
+            n_batches=4,
+            max_feedback=None,
+            box_drop_prob=0.0,
+            max_results=10000,
+        ),
+        SessionParams(
+            index_spec=IndexSpec(
+                d_name="bdd", i_name="coarse", c_name=cat
+            ),
+            interactive="pytorch",
+            agg_method="avg_vector",
+            method_config=std_linear_config,
+            batch_size=3,
+        ),
+    ),
+    (
+        BenchParams(
+            name="roibased",
+            ground_truth_category=cat,
+            qstr=qstr,
+            provide_textual_feedback=False,
+            n_batches=4,
+            max_feedback=None,
+            box_drop_prob=0.0,
+            max_results=10000,
+        ),
+        SessionParams(
+            index_spec=IndexSpec(
+                d_name="bdd", i_name="roibased", c_name=cat
+            ),
+            interactive="pytorch",
+            agg_method="avg_vector",
+            method_config=std_linear_config,
+            batch_size=3,
+        ),
+    ),
+]
 
 import json
 
@@ -160,3 +225,5 @@ def test_bench():
     a = get_all_session_summaries(TEST_SAVE)
     assert a.shape[0] == len(configs)
     assert os.path.isdir(a["session_path"].values[0])  # session path is correct
+
+test_bench()

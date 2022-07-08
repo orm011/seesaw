@@ -27,7 +27,7 @@ class GlobalDataManager:
             os.makedirs(p, exist_ok=True)
 
     def list_datasets(self):
-        return [os.listdir(self.data_root)]
+        return os.listdir(self.data_root)
 
     def list_indices(self):
         return []  # TODO: fix this
