@@ -121,12 +121,12 @@ class CacheStub:
 
         return obj
 
-    def read_parquet(self, path: str, columns = None):
+    def read_parquet(self, path: str, columns=None):
         def _init_fun():
             ds = None
-            if columns is not None: 
+            if columns is not None:
                 ds = ray.data.read_parquet(path, columns=columns)
-            else: 
+            else:
                 ds = ray.data.read_parquet(path)
             df = pd.concat(ray.get(ds.to_pandas_refs()))
             return df
