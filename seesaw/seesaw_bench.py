@@ -497,7 +497,6 @@ def gen_configs(
 ):
     configs = []
     avail_datasets = gdm.list_datasets()
-
     for d in datasets:
         assert d in avail_datasets
         ds = gdm.get_dataset(d)
@@ -507,7 +506,7 @@ def gen_configs(
                 break
             for var in variants:
                 update_b = {}
-                term = category2query(d.split("/")[-2], c)
+                term = category2query(d, c)
                 qstr = b_template["query_template"].format(term)
                 update_b["qstr"] = qstr
                 update_b["ground_truth_category"] = c
