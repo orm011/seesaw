@@ -92,7 +92,6 @@ class ROITrackIndex(AccessMethod):
         )
 
     def query(self, *, topk, vector, exclude=None, startk=None, **kwargs):
-        #print(exclude)
         agg_method = 'avg_score'
         if exclude is None:
             exclude = pr.BitMap([])
@@ -118,8 +117,6 @@ class ROITrackIndex(AccessMethod):
         dbidxs = []
         videos = []
         activations = []
-        print(top)
-        print(scores_by_video.shape[0])
         video_scores = scores_by_video.iloc[:top]
         for score in video_scores: 
             full_meta = topscores[topscores.score == score]

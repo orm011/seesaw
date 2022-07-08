@@ -433,7 +433,7 @@ class MultiscaleIndex(AccessMethod):
 
         assert os.path.exists(cached_meta_path)
         df: pd.DataFrame = get_parquet(cached_meta_path)
-        #assert df["order_col"].is_monotonic_increasing, "sanity check"
+        assert df["order_col"].is_monotonic_increasing, "sanity check"
 
         fine_grained_meta = df[
             ["dbidx", "order_col", "zoom_level", "x1", "y1", "x2", "y2"]

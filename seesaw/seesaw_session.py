@@ -108,8 +108,6 @@ class SeesawLoop:
             vec = s.tvec
             rescore_m = lambda vecs: vecs @ vec.reshape(-1, 1)
 
-        print(s.tmode)
-        print(p.batch_size)
         b = self.q.query_stateful(
             mode=s.tmode,
             vector=vec,
