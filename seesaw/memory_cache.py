@@ -121,15 +121,19 @@ class CacheStub:
 
         return obj
 
-    def read_parquet(self, path: str, columns = None):
+    def read_parquet(self, path: str, columns=None):
         def _init_fun():
             ds = None
-            if columns is not None: 
+            if columns is not None:
                 ds = ray.data.read_parquet(path, columns=columns)
-            else: 
+            else:
                 ds = ray.data.read_parquet(path)
             df = pd.concat(ray.get(ds.to_pandas_refs()))
-            df = df.sort_values('dbidx', axis=0)
+            # if "dbidx" in df.columns:  # TODO: figure out if we need this.
+            #     # this is kind of undesirable, and ideally the dataframe should be stored
+            #     # in the order it wants to be read, so this is not done repeatedly.
+            #     # The main issue is to know that the API for reading it will preserver the order
+            #     df = df.sort_values("dbidx", axis=0)
             return df
 
         return self._with_lock(path, _init_fun)
