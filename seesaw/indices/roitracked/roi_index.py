@@ -83,7 +83,7 @@ class ROITrackIndex(AccessMethod):
         #model_path = os.readlink("/home/gridsan/groups/fastai/omoll/seesaw_root2/models/clip-vit-base-patch32/")
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
-        coarse_df = get_parquet(vector_path, columns=['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2', 'clip_feature'])
+        coarse_df = get_parquet(vector_path, columns=['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2', 'clip_feature', 'track_id', 'filename'])
         coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
         assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
         embedded_dataset = coarse_df["vectors"].values.to_numpy() 
@@ -111,10 +111,31 @@ class ROITrackIndex(AccessMethod):
         scores_by_video = (
             topscores.groupby('video_id').score.max().sort_values(ascending=False)
         )
-        score_cutoff = scores_by_video.iloc[topk - 1]
+        top = min(topk, scores_by_video.shape[0])
+        score_cutoff = scores_by_video.iloc[top - 1]
         topscores = topscores[topscores.score >= score_cutoff]
-        dbidxs = topscores.dbidx.values
+        dbidxs = []
+        videos = []
         activations = []
+        video_scores = scores_by_video.iloc[:top]
+        for score in video_scores: 
+            full_meta = topscores[topscores.score == score]
+            full_meta = full_meta[full_meta.score == full_meta.score.max()]
+            dbidx = full_meta.dbidx.values[0]
+            dbidxs.append(dbidx)
+            videos.append(full_meta.video_id.values[0])
+            activations.append(full_meta)
+        excluded_dbidxs = []
+        for video in videos: 
+            excluded_dbidxs.extend(self.vector_meta[self.vector_meta.video_id == video][['dbidx', 'video_id']].dbidx.unique())
+        
+        video_scores = np.array(video_scores)
+        dbidxs = np.array(dbidxs)
+        vec_idxs = np.argsort(-video_scores)
+        dbidxs = dbidxs[vec_idxs]
+
+        activations = []
+        
         for idx in dbidxs: 
             full_meta = topscores[topscores.dbidx == idx]
             activations.append(full_meta)
@@ -123,6 +144,7 @@ class ROITrackIndex(AccessMethod):
             "dbidxs": dbidxs,
             "nextstartk": 100, #nextstartk,
             "activations": activations,
+            "excluded_dbidxs": excluded_dbidxs, 
         }
 
         '''
@@ -168,7 +190,7 @@ class ROITrackIndex(AccessMethod):
         '''
 
     def new_query(self):
-        return ROIQuery(self)
+        return ROITrackQuery(self)
 
     def subset(self, indices: pr.BitMap):
         mask = self.vector_meta.dbidx.isin(indices)
@@ -179,7 +201,7 @@ class ROITrackIndex(AccessMethod):
         )
 
 
-class ROIQuery(InteractiveQuery):
+class ROITrackQuery(InteractiveQuery):
     def __init__(self, db: ROITrackIndex):
         super().__init__(db)
 
