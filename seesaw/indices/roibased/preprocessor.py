@@ -68,16 +68,23 @@ def image_clipper(image, boxes, padding):
         
     return output, new_boxes
 
-def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device): 
+def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device, i): 
     '''
     This function takes an image, the boxes, and requested padding and runs the clip embedding on them. 
     Returns the vector of the embedding. 
     '''
+    #print("Clip Proposal")
+    #print(image)
     images, new_boxes = image_clipper(image, boxes, padding)
+    #print(images)
     #print(images)
     #print(images[0])
     #images = torch.tensor(images, dtype=torch.float).to(device)
-    inputs = clip_processor.feature_extractor(images=images, return_tensors="pt")
+    try: 
+        inputs = clip_processor.feature_extractor(images=images, return_tensors="pt")
+    except: 
+        print("Missed: " + str(i))
+        return False, False
     inputs.to(device)
     vision_outputs = clip_model.vision_model(**inputs)
     image_embeds = vision_outputs[1]
@@ -151,14 +158,17 @@ def preprocess_roi_dataset(
     ims = []
     paths = []
     #excluded = []
-    start = 60000
+    print("Length of Dataset")
+    print(len(dataset))
+    start = 110000
     end = len(dataset)
     #print(len(dataset))
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
         for i in tqdm(range(start, end)):
-            if i % 2000 == 0: 
+            if i % 2000 == 0: #TURN 87 TO 2000
                 if i != start: 
+                    print("saving")
                     ans = list(zip(paths, output))
                     #print(output[0]['boxes'])
                     #print(output[0]['new_boxes'])
@@ -183,20 +193,25 @@ def preprocess_roi_dataset(
 
             else: 
                 ims.append(data['image'])
-                paths.append(data['file_path'])
                 images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
                 a = roi_extractor(images)[0]
                 if a['scores'].shape[0] > box_limiter: 
                     a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
                     a['scores'] = torch.split(a['scores'],box_limiter)[0]
                     a['features'] = torch.split(a['features'].detach(), box_limiter)[0]
-                dbidx.extend([i]*len(a['scores']))
-                if clip: 
-                    clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device)
+                
+                #print(data['file_path'])
+                #print(a['boxes'])
+                clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device, i)
+                if not isinstance(clip_array, bool): 
                     a['new_boxes'] = torch.tensor(new_boxes).to(device)
                     a['clip_feature_vector'] = clip_array
                     clip_features += clip_array.tolist()
-                output.append(a)
+                    output.append(a)
+                    dbidx.extend([i]*len(a['scores']))
+                    paths.append(data['file_path'])
+                else: 
+                    print("image results were not added")
             
         ans = list(zip(paths, output))
         df = to_dataframe(ans)

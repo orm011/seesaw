@@ -119,12 +119,18 @@ configs = [
         ),
     ),
 ]
-configs = [
-    (
+
+def make_config(): 
+    config = []
+    cat_list = [("bike", "a bike"), ("gas stations scene", "a gas station"), ("person", "a person"), ("bus", "a bus"), ("train", "a train"), ("tunnel scene", "a tunnel")]
+    for pair in cat_list: 
+        catt = pair[0]
+        qstrr = pair[1]
+        config.extend([(
         BenchParams(
             name="multiscale",
-            ground_truth_category=cat,
-            qstr=qstr,
+            ground_truth_category=catt,
+            qstr=qstrr,
             provide_textual_feedback=False,
             n_batches=4,
             max_feedback=None,
@@ -133,7 +139,7 @@ configs = [
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="multiscale", c_name=cat
+                d_name="bdd", i_name="multiscale", c_name=catt
             ),
             interactive="pytorch",
             agg_method="avg_vector",
@@ -144,8 +150,8 @@ configs = [
     (
         BenchParams(
             name="coarse",
-            ground_truth_category=cat,
-            qstr=qstr,
+            ground_truth_category=catt,
+            qstr=qstrr,
             provide_textual_feedback=False,
             n_batches=4,
             max_feedback=None,
@@ -154,7 +160,7 @@ configs = [
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="coarse", c_name=cat
+                d_name="bdd", i_name="coarse", c_name=catt
             ),
             interactive="pytorch",
             agg_method="avg_vector",
@@ -165,8 +171,8 @@ configs = [
     (
         BenchParams(
             name="roibased",
-            ground_truth_category=cat,
-            qstr=qstr,
+            ground_truth_category=catt,
+            qstr=qstrr,
             provide_textual_feedback=False,
             n_batches=4,
             max_feedback=None,
@@ -175,15 +181,15 @@ configs = [
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="roibased", c_name=cat
+                d_name="bdd", i_name="roibased", c_name=catt
             ),
             interactive="pytorch",
             agg_method="avg_vector",
             method_config=std_linear_config,
             batch_size=3,
         ),
-    ),
-]
+    )])
+    return config
 
 import json
 

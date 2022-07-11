@@ -83,9 +83,9 @@ class ROIIndex(AccessMethod):
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
         coarse_df = get_parquet(vector_path, columns=['dbidx', 'x1', 'y1', 'x2', 'y2', 'clip_feature'])
-        coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
-        assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
-        embedded_dataset = coarse_df["vectors"].values.to_numpy()
+        #coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
+        #assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
+        embedded_dataset = coarse_df["clip_feature"].values.to_numpy()
         return ROIIndex(
             embedding=embedding, vectors=embedded_dataset, vector_meta=coarse_df
         )
@@ -165,6 +165,9 @@ class ROIIndex(AccessMethod):
 
     def subset(self, indices: pr.BitMap):
         mask = self.vector_meta.dbidx.isin(indices)
+        if mask.all(): 
+            return self
+
         return ROIIndex(
             embedding=self.embedding,
             vectors=self.vectors[mask],
