@@ -112,7 +112,7 @@ class ROIIndex(AccessMethod):
         )
         score_cutoff = scores_by_video.iloc[topk - 1]
         topscores = topscores[topscores.score >= score_cutoff]
-        dbidxs = topscores.dbidx.values
+        dbidxs = topscores.dbidx.unique()[:topk]
         activations = []
         for idx in dbidxs: 
             full_meta = topscores[topscores.dbidx == idx]

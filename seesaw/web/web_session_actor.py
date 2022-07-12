@@ -17,7 +17,7 @@ class WebSession:
     worker: Optional[Worker]
 
     def __init__(
-        self, root_dir, save_path, session_id, worker: Worker = None, num_cpus=None
+        self, root_dir, save_path, session_id, dataset, worker: Worker = None, num_cpus=None
     ):
         if num_cpus is not None:
             reset_num_cpus(num_cpus)
@@ -28,7 +28,7 @@ class WebSession:
         self.worker = worker
 
         self.gdm = GlobalDataManager(root_dir)
-        self.indices = self.gdm.list_indices()
+        self.indices = self.gdm.list_indices(dataset)
         self.session = None
         print("web session constructed")
 

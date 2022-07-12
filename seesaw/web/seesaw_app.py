@@ -111,7 +111,7 @@ async def user_session(
     """API for the old-school user study where we generated URLs and handed them out."""
     new_session = False
     if session_id is None:
-        session_id = await manager.new_session.remote()
+        session_id = await manager.new_session.remote(dataset)
         response.set_cookie(
             key="session_id",
             value=session_id,
