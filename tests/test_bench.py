@@ -18,7 +18,7 @@ from seesaw.configs import std_linear_config, std_textual_config
 
 TEST_ROOT = "/home/gridsan/groups/fastai/omoll/seesaw_root2/"
 tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
-TEST_SAVE = f"~/tmp/seesaw_tests/test_save_{tmp_name}/"
+TEST_SAVE = f"~/tmp/coco_seesaw_tests/test_save_{tmp_name}/"
 TEST_SAVE = os.path.expanduser(TEST_SAVE)
 
 
@@ -139,7 +139,7 @@ def make_config():
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="multiscale", c_name=catt
+                d_name="coco", i_name="multiscale", c_name=catt
             ),
             interactive="pytorch",
             agg_method="avg_vector",
@@ -160,7 +160,7 @@ def make_config():
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="coarse", c_name=catt
+                d_name="coco", i_name="coarse", c_name=catt
             ),
             interactive="pytorch",
             agg_method="avg_vector",
@@ -181,7 +181,7 @@ def make_config():
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="roibased", c_name=catt
+                d_name="coco", i_name="roibased", c_name=catt
             ),
             interactive="pytorch",
             agg_method="avg_vector",
