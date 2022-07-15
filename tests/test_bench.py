@@ -18,7 +18,7 @@ from seesaw.configs import std_linear_config, std_textual_config
 
 TEST_ROOT = "/home/gridsan/groups/fastai/omoll/seesaw_root2/"
 tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
-TEST_SAVE = f"~/tmp/seesaw_tests/test_save_{tmp_name}/"
+TEST_SAVE = f"~/tmp/coco_seesaw_tests/test_save_{tmp_name}/"
 TEST_SAVE = os.path.expanduser(TEST_SAVE)
 
 
@@ -122,8 +122,9 @@ configs = [
 
 def make_config(): 
     config = []
-    cat_list = [("bike", "a bike"), ("gas stations scene", "a gas station"), ("person", "a person"), ("bus", "a bus"), ("train", "a train"), ("tunnel scene", "a tunnel")]
-    for pair in cat_list: 
+    bdd_cat_list = [("bike", "a bike"), ("gas stations scene", "a gas station"), ("person", "a person"), ("bus", "a bus"), ("train", "a train"), ("tunnel scene", "a tunnel")]
+    coco_cat_list = [("bicycle", "a bicycle"), ("boat", "a boat"), ("wine glass", "a glass of wine"), ("kite", "a kite"), ("laptop", "a laptop"), ("zebra", "a zebra"), ("sink", "a sink"),("toaster", "a toaster"),]
+    for pair in coco_cat_list: 
         catt = pair[0]
         qstrr = pair[1]
         config.extend([(
@@ -139,7 +140,7 @@ def make_config():
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="multiscale", c_name=catt
+                d_name="coco", i_name="multiscale", c_name=catt
             ),
             interactive="pytorch",
             agg_method="avg_vector",
@@ -160,7 +161,7 @@ def make_config():
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="coarse", c_name=catt
+                d_name="coco", i_name="coarse", c_name=catt
             ),
             interactive="pytorch",
             agg_method="avg_vector",
@@ -181,7 +182,7 @@ def make_config():
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="roibased", c_name=catt
+                d_name="coco", i_name="roibased", c_name=catt
             ),
             interactive="pytorch",
             agg_method="avg_vector",
@@ -202,7 +203,7 @@ def test_bench():
     os.chdir(gdm.root)
     br = BenchRunner(gdm.root, results_dir=TEST_SAVE, redirect_output=False)
 
-    for (i, (b, p)) in enumerate(configs):
+    for (i, (b, p)) in enumerate(make_config()):
         print("test case", i)
         path = br.run_loop(b, p)
         print("done with loop")
