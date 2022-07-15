@@ -122,8 +122,9 @@ configs = [
 
 def make_config(): 
     config = []
-    cat_list = [("bike", "a bike"), ("gas stations scene", "a gas station"), ("person", "a person"), ("bus", "a bus"), ("train", "a train"), ("tunnel scene", "a tunnel")]
-    for pair in cat_list: 
+    bdd_cat_list = [("bike", "a bike"), ("gas stations scene", "a gas station"), ("person", "a person"), ("bus", "a bus"), ("train", "a train"), ("tunnel scene", "a tunnel")]
+    coco_cat_list = [("bicycle", "a bicycle"), ("boat", "a boat"), ("wine glass", "a glass of wine"), ("kite", "a kite"), ("laptop", "a laptop"), ("zebra", "a zebra"), ("sink", "a sink"),("toaster", "a toaster"),]
+    for pair in coco_cat_list: 
         catt = pair[0]
         qstrr = pair[1]
         config.extend([(
@@ -202,7 +203,7 @@ def test_bench():
     os.chdir(gdm.root)
     br = BenchRunner(gdm.root, results_dir=TEST_SAVE, redirect_output=False)
 
-    for (i, (b, p)) in enumerate(configs):
+    for (i, (b, p)) in enumerate(make_config()):
         print("test case", i)
         path = br.run_loop(b, p)
         print("done with loop")
