@@ -43,13 +43,13 @@ class SessionManager:
     def ready(self):
         return True
 
-    def _new_session(self, task_list, dataset):
+    def _new_session(self, task_list):
         session_id = generate_id()
         worker = Worker(session_id=session_id, task_list=task_list)
         self.sessions[session_id] = WebSessionActor.options(
             name=f"web_session#{session_id}", num_cpus=self.num_cpus
         ).remote(
-            self.root_dir, self.save_path, session_id, dataset, worker, num_cpus=self.num_cpus
+            self.root_dir, self.save_path, session_id, worker, num_cpus=self.num_cpus
         )
         return session_id
 
@@ -57,8 +57,8 @@ class SessionManager:
         task_list = generate_task_list(mode)
         return self._new_session(task_list)
 
-    def new_session(self, dataset = None):
-        return self._new_session([], dataset)
+    def new_session(self):
+        return self._new_session([])
 
     def session_exists(self, session_id):
         return session_id in self.sessions
