@@ -88,6 +88,7 @@ class SeesawDatasetManager:
         return json.load(open(f"{self.dataset_root}/ground_truth/categories.json"))
 
     def load_ground_truth(self):
+        print(self.dataset_root)
         assert os.path.exists(f"{self.dataset_root}/ground_truth")
         qgt = self.cache.read_parquet(f"{self.dataset_root}/ground_truth/qgt.parquet")
         box_data = self.cache.read_parquet(

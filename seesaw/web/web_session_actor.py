@@ -28,7 +28,6 @@ class WebSession:
         self.worker = worker
 
         self.gdm = GlobalDataManager(root_dir)
-        self.indices = self.gdm.list_indices()
         self.session = None
         print("web session constructed")
 
