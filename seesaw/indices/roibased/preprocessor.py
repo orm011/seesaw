@@ -160,7 +160,7 @@ def preprocess_roi_dataset(
     #excluded = []
     print("Length of Dataset")
     print(len(dataset))
-    start = 110000
+    start = 0
     end = len(dataset)
     #print(len(dataset))
     with torch.no_grad():
