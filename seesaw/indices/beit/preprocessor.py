@@ -16,11 +16,80 @@ import math
 import shutil
 import torchvision
 from transformers import CLIPProcessor, CLIPModel
-import roi_extractor
-from roi_extractor import AgnosticRoIExtractor
-from roi_extractor import to_dataframe
+from transformers import BeitFeatureExtractor, BeitForSemanticSegmentation
 from tqdm import tqdm
+import skimage.measure
 #import transforms
+
+BEIT_LINK = "/home/gridsan/groups/fastai/omoll/seesaw_root2/models/beit-base-finetuned-ade-640-640"
+
+def get_beit_boxes(image, feature_extractor, beit_model, device): 
+    inputs = feature_extractor(images=image, return_tensors="pt").to(device)
+    outputs = beit_model(**inputs)
+
+    logits = torch.nn.functional.interpolate(outputs.logits,
+                    size=image.size[::-1], # (height, width)
+                    mode='bilinear',
+                    align_corners=False)
+
+    # Second, apply argmax on the class dimension
+    seg = logits.argmax(dim=1)[0].cpu()
+    masks = skimage.measure.label(seg.numpy(), connectivity=1)
+    boxes = skimage.measure.regionprops(masks)
+    temp_list = []
+    for item in boxes: 
+        b = item.bbox
+        if (abs(b[3] - b[1]) > 10 and abs(b[2] - b[0]) > 10): 
+            temp_list.append([b[1], b[0], b[3], b[2]])
+    a = [{}]
+    n = len(temp_list)
+    a[0]['boxes'] = torch.tensor(temp_list).to(device)
+    a[0]['num_boxes'] = n
+    return a 
+
+def to_dataframe(pairs):
+
+    def to_numpy(d):
+        return {k: v.detach().cpu().numpy() for (k, v) in d.items()}
+
+    def box2dict(boxes):
+        return {
+            "x1": boxes[:, 0],
+            "y1": boxes[:, 1],
+            "x2": boxes[:, 2],
+            "y2": boxes[:, 3],
+        }
+
+    def paddedBox2Dict(boxes): 
+        return {
+            "_x1": boxes[:, 0],
+            "_y1": boxes[:, 1],
+            "_x2": boxes[:, 2],
+            "_y2": boxes[:, 3],
+        }
+
+    dfs = []
+    for (filename, d) in pairs:
+        d2 = to_numpy(d)
+        rdf = None
+        if "new_boxes" in d2.keys(): 
+            rdf = pd.DataFrame.from_dict(
+                {
+                    "filename": filename,
+                    **box2dict(d2["boxes"]),
+                    **paddedBox2Dict(d2["new_boxes"]),
+                }
+            )
+        else: 
+            rdf = pd.DataFrame.from_dict(
+                {
+                    "filename": filename,
+                    **box2dict(d2["boxes"]),
+                }
+            )
+        dfs.append(rdf)
+
+    return pd.concat(dfs, ignore_index=True)
 
 def image_clipper(image, boxes, padding): 
     '''
@@ -92,7 +161,7 @@ def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device,
     image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
     return image_embeds, new_boxes
 
-def preprocess_roi_dataset(
+def preprocess_beit_dataset(
     sds: SeesawDatasetManager,
     output_path,
     clip_model_path = None, 
@@ -128,29 +197,11 @@ def preprocess_roi_dataset(
 
     os.makedirs(output_path)
 
-    '''
-    vector_path = f"{output_path}/vectors"
-    os.makedirs(vector_path)
-
-    model_link = f"{output_path}/model"
-    os.symlink(model_path, model_link)
-
-    dataset_link = f"{output_path}/dataset"
-    os.symlink(sds.dataset_root, dataset_link)
-
-    real_prefix = f"{os.path.realpath(sds.image_root)}/"
-    read_paths = ((real_prefix + sds.paths)).tolist()
-    read_paths = [os.path.normpath(p) for p in read_paths]
-    meta_dict = dict(zip(read_paths, zip(sds.paths, np.arange(len(sds.paths)))))
-    '''
-
     maskrcnn_model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True).to(device)
     maskrcnn_model.eval()
 
-    roi_extractor = AgnosticRoIExtractor(maskrcnn_model).to(device)
-    roi_extractor.eval()
-    roi_extractor.model.rpn.min_size = 10
-    roi_extractor.model.rpn.nms_thresh = 0
+    feature_extractor = BeitFeatureExtractor.from_pretrained(BEIT_LINK)
+    beit_model = BeitForSemanticSegmentation.from_pretrained(BEIT_LINK).to(device)
 
     clip_model = CLIPModel.from_pretrained(clip_model_path).to(device)
     clip_processor = CLIPProcessor.from_pretrained(clip_model_path)
@@ -160,30 +211,20 @@ def preprocess_roi_dataset(
     #excluded = []
     print("Length of Dataset")
     print(len(dataset))
-    start = 0
+    start = 40000
     end = len(dataset)
-    stat = torch.cuda.memory_stats(device=device)['reserved_bytes.all.current']
-    print(torch.cuda.memory_stats(device=device)['reserved_bytes.all.current'])
     #print(len(dataset))
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
         for i in tqdm(range(start, end)):
-            print(torch.cuda.memory_stats(device=device)['reserved_bytes.all.current'] - stat)
-            stat = torch.cuda.memory_stats(device=device)['reserved_bytes.all.current']
-            if i % 2000 == 0: #TURN 87 TO 2000
+            if i % 2000 == 0: # Keep at 2000
                 if i != start: 
                     print("saving")
                     ans = list(zip(paths, output))
-                    #print(output[0]['boxes'])
-                    #print(output[0]['new_boxes'])
                     df = to_dataframe(ans)
                     df['dbidx'] = dbidx
                     if clip: 
                         df['clip_feature'] = TensorArray(clip_features)
-                    #clip_array = run_clip_on_proposal()
-                    #df.assign(clip_feature_vector=TensorArray(clip_array))
-                    #print(df.keys())
-                    #print(df[['x1', 'y1', 'x2', 'y2', '_x1', '_y1', '_x2', '_y2']])
                     df.to_parquet(output_path+"/"+str(i)+".parquet")
                 clip_features = []
                 output = []
@@ -197,22 +238,21 @@ def preprocess_roi_dataset(
 
             else: 
                 ims.append(data['image'])
-                images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
-                a = roi_extractor(images)[0]
-                if a['scores'].shape[0] > box_limiter: 
+                #images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
+                a = get_beit_boxes(data['image'], feature_extractor, beit_model, device)[0]
+                num_boxes = a['num_boxes']
+                del a['num_boxes']
+                if num_boxes > box_limiter: 
                     a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
-                    a['scores'] = torch.split(a['scores'],box_limiter)[0]
-                    a['features'] = torch.split(a['features'].detach(), box_limiter)[0]
+                    num_boxes = box_limiter
                 
-                #print(data['file_path'])
-                #print(a['boxes'])
                 clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device, i)
                 if not isinstance(clip_array, bool): 
                     a['new_boxes'] = torch.tensor(new_boxes).to(device)
                     a['clip_feature_vector'] = clip_array
                     clip_features += clip_array.tolist()
                     output.append(a)
-                    dbidx.extend([i]*len(a['scores']))
+                    dbidx.extend([i]*num_boxes)
                     paths.append(data['file_path'])
                 else: 
                     print("image results were not added")
