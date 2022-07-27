@@ -24,7 +24,11 @@ import skimage.measure
 BEIT_LINK = "/home/gridsan/groups/fastai/omoll/seesaw_root2/models/beit-base-finetuned-ade-640-640"
 
 def get_beit_boxes(image, feature_extractor, beit_model, device): 
-    inputs = feature_extractor(images=image, return_tensors="pt").to(device)
+    try: 
+        inputs = feature_extractor(images=image, return_tensors="pt").to(device)
+    except: 
+        print("Missed")
+        return False
     outputs = beit_model(**inputs)
 
     logits = torch.nn.functional.interpolate(outputs.logits,
@@ -211,7 +215,7 @@ def preprocess_beit_dataset(
     #excluded = []
     print("Length of Dataset")
     print(len(dataset))
-    start = 40000
+    start = 60000
     end = len(dataset)
     #print(len(dataset))
     with torch.no_grad():
@@ -239,23 +243,27 @@ def preprocess_beit_dataset(
             else: 
                 ims.append(data['image'])
                 #images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
-                a = get_beit_boxes(data['image'], feature_extractor, beit_model, device)[0]
-                num_boxes = a['num_boxes']
-                del a['num_boxes']
-                if num_boxes > box_limiter: 
-                    a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
-                    num_boxes = box_limiter
-                
-                clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device, i)
-                if not isinstance(clip_array, bool): 
-                    a['new_boxes'] = torch.tensor(new_boxes).to(device)
-                    a['clip_feature_vector'] = clip_array
-                    clip_features += clip_array.tolist()
-                    output.append(a)
-                    dbidx.extend([i]*num_boxes)
-                    paths.append(data['file_path'])
+                a = get_beit_boxes(data['image'], feature_extractor, beit_model, device)
+                if isinstance(a, bool): 
+                    print("Image results were not added")
                 else: 
-                    print("image results were not added")
+                    a = a[0]
+                    num_boxes = a['num_boxes']
+                    del a['num_boxes']
+                    if num_boxes > box_limiter: 
+                        a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
+                        num_boxes = box_limiter
+                    
+                    clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device, i)
+                    if not isinstance(clip_array, bool): 
+                        a['new_boxes'] = torch.tensor(new_boxes).to(device)
+                        a['clip_feature_vector'] = clip_array
+                        clip_features += clip_array.tolist()
+                        output.append(a)
+                        dbidx.extend([i]*num_boxes)
+                        paths.append(data['file_path'])
+                    else: 
+                        print("image results were not added")
             
         ans = list(zip(paths, output))
         df = to_dataframe(ans)

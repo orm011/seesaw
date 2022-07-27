@@ -115,7 +115,11 @@ def image_clipper(image, boxes, padding):
     return output, new_boxes
 
 def get_detr_bboxes(image, feature_extractor, detr_model, device): 
-    inputs = feature_extractor(images=image, return_tensors="pt")
+    try: 
+        inputs = feature_extractor(images=image, return_tensors="pt")
+    except: 
+        print("Missed")
+        return False
     inputs.to(device)
     outputs = detr_model(**inputs)
     #image = Image.open(path)
@@ -227,7 +231,7 @@ def preprocess_detr_dataset(
     #excluded = []
     print("Length of Dataset")
     print(len(dataset))
-    start = 40000
+    start = 0
     end = len(dataset)
     #print(len(dataset))
     with torch.no_grad():
@@ -261,24 +265,28 @@ def preprocess_detr_dataset(
             else: 
                 ims.append(data['image'])
                 #images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
-                a = get_detr_bboxes(data['image'], feature_extractor, detr_model, device)[0]
-                if a['scores'].shape[0] > box_limiter: 
-                    a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
-                    a['scores'] = torch.split(a['scores'],box_limiter)[0]
-                
-                #print(data['file_path'])
-                #print(a['boxes'])
-                clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device, i)
-                if not isinstance(clip_array, bool): 
-                    a['new_boxes'] = torch.tensor(new_boxes).to(device)
-                    a['clip_feature_vector'] = clip_array
-                    clip_features += clip_array.tolist()
-                    output.append(a)
-                    dbidx.extend([i]*len(a['scores']))
-                    paths.append(data['file_path'])
-                else: 
+                a = get_detr_bboxes(data['image'], feature_extractor, detr_model, device)
+                if isinstance(a, bool): 
                     print("image results were not added")
-            
+                else: 
+                    a = a[0]
+                    if a['scores'].shape[0] > box_limiter: 
+                        a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
+                        a['scores'] = torch.split(a['scores'],box_limiter)[0]
+                    
+                    #print(data['file_path'])
+                    #print(a['boxes'])
+                    clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device, i)
+                    if not isinstance(clip_array, bool): 
+                        a['new_boxes'] = torch.tensor(new_boxes).to(device)
+                        a['clip_feature_vector'] = clip_array
+                        clip_features += clip_array.tolist()
+                        output.append(a)
+                        dbidx.extend([i]*len(a['scores']))
+                        paths.append(data['file_path'])
+                    else: 
+                        print("image results were not added")
+
         ans = list(zip(paths, output))
         df = to_dataframe(ans)
         df['dbidx'] = dbidx
