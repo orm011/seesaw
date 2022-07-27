@@ -44,6 +44,7 @@ class BeitIndex(AccessMethod):
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
         coarse_df = get_parquet(vector_path, columns=['dbidx', 'x1', 'y1', 'x2', 'y2', 'clip_feature'])
+        coarse_df = coarse_df.reset_index(drop=True)
         #coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
         #assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
         embedded_dataset = coarse_df["clip_feature"].values.to_numpy()
@@ -118,7 +119,7 @@ def get_pos_negs_all_v2(dbidxs, label_db: LabelDB, vec_meta: pd.DataFrame):
     for idx in dbidxs:
         acc_vecs = relvecs[relvecs.dbidx == idx]
         acc_boxes = acc_vecs[["x1", "x2", "y1", "y2"]]
-        label_boxes = label_db.get(idx, format="df")
+        label_boxes = label_db.get(idx, format="df") 
         ious = box_iou(label_boxes, acc_boxes)
         total_iou = ious.sum(axis=0)
         negatives = total_iou == 0

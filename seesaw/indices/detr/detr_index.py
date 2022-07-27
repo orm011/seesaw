@@ -43,6 +43,7 @@ class DetrIndex(AccessMethod):
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
         coarse_df = get_parquet(vector_path, columns=['dbidx', 'x1', 'y1', 'x2', 'y2', 'object_score', 'clip_feature'])
+        coarse_df = coarse_df.reset_index(drop=True)
         embedded_dataset = coarse_df["clip_feature"].values.to_numpy()
         return DetrIndex(
             embedding=embedding, vectors=embedded_dataset, vector_meta=coarse_df

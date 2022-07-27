@@ -122,7 +122,7 @@ configs = [
 
 test_config = [(
         BenchParams(
-            name="roibased",
+            name="beit",
             ground_truth_category="bike",
             qstr="a bike",
             provide_textual_feedback=True,
@@ -133,7 +133,7 @@ test_config = [(
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="roibased", c_name="bike"
+                d_name="bdd", i_name="beit", c_name="bike"
             ),
             interactive="pytorch",
             agg_method="avg_vector",
@@ -149,6 +149,7 @@ def make_config():
     coco_cat_list = [("bicycle", "a bicycle"), ("boat", "a boat"), ("wine glass", "a glass of wine"), ("kite", "a kite"), ("laptop", "a laptop"), ("zebra", "a zebra"), ("sink", "a sink"),("toaster", "a toaster"),]
     dataset = "bdd"
     batches = 25
+    agg_method = "avg_score"#"avg_vector"
     feedback = True
     for pair in old_bdd_cat_list: 
         catt = pair[0]
@@ -169,7 +170,7 @@ def make_config():
                 d_name=dataset, i_name="multiscale", c_name=catt
             ),
             interactive="pytorch",
-            agg_method="avg_vector",
+            agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
         ),
@@ -190,7 +191,7 @@ def make_config():
                 d_name=dataset, i_name="coarse", c_name=catt
             ),
             interactive="pytorch",
-            agg_method="avg_vector",
+            agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
         ),
@@ -211,7 +212,7 @@ def make_config():
                 d_name=dataset, i_name="roibased", c_name=catt
             ),
             interactive="pytorch",
-            agg_method="avg_vector",
+            agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
         ),
@@ -231,7 +232,7 @@ def make_config():
                 d_name=dataset, i_name="detr", c_name=catt
             ),
             interactive="pytorch",
-            agg_method="avg_vector",
+            agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
         ),
@@ -251,7 +252,7 @@ def make_config():
                 d_name=dataset, i_name="beit", c_name=catt
             ),
             interactive="pytorch",
-            agg_method="avg_vector",
+            agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
         ),
