@@ -13,7 +13,7 @@ from ...models.embeddings import XEmbedding
 from ...query_interface import *
 from ...definitions import resolve_path
 
-class ROIIndex(AccessMethod):
+class DetrIndex(AccessMethod):
     """Structure holding a dataset,
     together with precomputed embeddings
     and (optionally) data structure
@@ -42,12 +42,10 @@ class ROIIndex(AccessMethod):
         #model_path = os.readlink("/home/gridsan/groups/fastai/omoll/seesaw_root2/models/clip-vit-base-patch32/")
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
-        coarse_df = get_parquet(vector_path, columns=['dbidx', 'x1', 'y1', 'x2', 'y2', 'clip_feature'])
+        coarse_df = get_parquet(vector_path, columns=['dbidx', 'x1', 'y1', 'x2', 'y2', 'object_score', 'clip_feature'])
         coarse_df = coarse_df.reset_index(drop=True)
-        #coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
-        #assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
         embedded_dataset = coarse_df["clip_feature"].values.to_numpy()
-        return ROIIndex(
+        return DetrIndex(
             embedding=embedding, vectors=embedded_dataset, vector_meta=coarse_df
         )
 
@@ -65,7 +63,7 @@ class ROIIndex(AccessMethod):
         scores = self.vectors @ vector.reshape(-1)
         vec_idxs = np.argsort(-scores)
         scores = scores[vec_idxs]
-        topscores = self.vector_meta[['dbidx', 'x1', 'y1', 'x2', 'y2']].iloc[vec_idxs]
+        topscores = self.vector_meta[['dbidx', 'x1', 'y1', 'x2', 'y2', 'object_score']].iloc[vec_idxs]
         topscores = topscores.assign(score=scores)
         topscores = topscores[topscores.dbidx.isin(included)]
         scores_by_video = (
@@ -83,53 +81,17 @@ class ROIIndex(AccessMethod):
             "nextstartk": 100, #nextstartk,
             "activations": activations,
         }
-        '''
-        fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(included)]
-        nframes = len(included)
-        dbidxs = np.zeros(nframes) * -1
-        dbscores = np.zeros(nframes)
-        activations = []
-        for i, (dbidx, frame_vec_meta) in enumerate(fullmeta.groupby("dbidx")):
-            dbidxs[i] = dbidx
-            boxscs = np.zeros(frame_vec_meta.shape[0])
-            for j in range(frame_vec_meta.shape[0]): 
-                tup = frame_vec_meta.iloc[j : j + 1]
-                # GET BOX
-                # GET IMAGE
-
-                # GET VECTOR
-                image_vector = tup.vectors.values[0]
-                # CROSS VECTOR
-                #print(tup)
-                #print(tup.vectors.values[0])
-                score = image_vector @ vector.reshape(-1)
-                boxscs[j] = score
-            frame_activations = frame_vec_meta.assign(score=boxscs)
-            frame_activations = frame_activations[frame_activations.score == frame_activations.score.max()][
-                ["x1", "y1", "x2", "y2", "dbidx", "score", "filename"]#["x1", "y1", "x2", "y2", "_x1", "_y1", "_x2", "_y2", "dbidx", "score", "filename"]
-            ]
-            activations.append(frame_activations)
-            dbscores[i] = np.max(boxscs)
-
-        topkidx = np.argsort(-dbscores)[:topk]
         
 
-        return {
-            "dbidxs": dbidxs[topkidx].astype("int"),
-            "nextstartk": 100, #nextstartk,
-            "activations": [activations[idx] for idx in topkidx],
-        }
-        '''
-
     def new_query(self):
-        return ROIQuery(self)
+        return DetrQuery(self)
 
     def subset(self, indices: pr.BitMap):
         mask = self.vector_meta.dbidx.isin(indices)
         if mask.all(): 
             return self
 
-        return ROIIndex(
+        return DetrIndex(
             embedding=self.embedding,
             vectors=self.vectors[mask],
             vector_meta=self.vector_meta[mask].reset_index(drop=True),
@@ -177,15 +139,16 @@ def get_pos_negs_all_v2(dbidxs, label_db: LabelDB, vec_meta: pd.DataFrame):
     negidxs = pr.BitMap(np.concatenate(neg))
     return posidxs, negidxs
 
-class ROIQuery(InteractiveQuery):
-    def __init__(self, db: ROIIndex):
+
+class DetrQuery(InteractiveQuery):
+    def __init__(self, db: DetrIndex):
         super().__init__(db)
 
     def getXy(self):
         pos, neg = get_pos_negs_all_v2(
             self.label_db.get_seen(), self.label_db, self.index.vector_meta
         )
-        
+
         allpos = self.index.vectors[pos]
         allneg = self.index.vectors[neg]
         Xt = np.concatenate([allpos, allneg])

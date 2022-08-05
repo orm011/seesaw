@@ -83,10 +83,10 @@ class ROITrackIndex(AccessMethod):
         #model_path = os.readlink("/home/gridsan/groups/fastai/omoll/seesaw_root2/models/clip-vit-base-patch32/")
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
-        coarse_df = get_parquet(vector_path, columns=['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2', 'clip_feature', 'track_id', 'filename'])
-        coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
-        assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
-        embedded_dataset = coarse_df["vectors"].values.to_numpy() 
+        coarse_df = get_parquet(vector_path, columns=['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2', 'clip_feature', 'track_id'])
+        #coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
+        #assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
+        embedded_dataset = coarse_df["clip_feature"].values.to_numpy() 
         return ROITrackIndex(
             embedding=embedding, vectors=embedded_dataset, vector_meta=coarse_df
         )
@@ -120,7 +120,6 @@ class ROITrackIndex(AccessMethod):
         video_scores = scores_by_video.iloc[:top]
         for score in video_scores: 
             full_meta = topscores[topscores.score == score]
-            full_meta = full_meta[full_meta.score == full_meta.score.max()]
             dbidx = full_meta.dbidx.values[0]
             dbidxs.append(dbidx)
             videos.append(full_meta.video_id.values[0])
@@ -194,6 +193,9 @@ class ROITrackIndex(AccessMethod):
 
     def subset(self, indices: pr.BitMap):
         mask = self.vector_meta.dbidx.isin(indices)
+        if mask.all(): 
+            return self
+
         return ROITrackIndex(
             embedding=self.embedding,
             vectors=self.vectors[mask],

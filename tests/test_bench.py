@@ -18,7 +18,7 @@ from seesaw.configs import std_linear_config, std_textual_config
 
 TEST_ROOT = "/home/gridsan/groups/fastai/omoll/seesaw_root2/"
 tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
-TEST_SAVE = f"~/tmp/seesaw_tests/test_save_{tmp_name}/"
+TEST_SAVE = f"~/tmp/bdd_5_feedback_index_seesaw_tests/test_save_{tmp_name}/"
 TEST_SAVE = os.path.expanduser(TEST_SAVE)
 
 
@@ -119,13 +119,13 @@ configs = [
         ),
     ),
 ]
-configs = [
-    (
+
+test_config = [(
         BenchParams(
-            name="multiscale",
-            ground_truth_category=cat,
-            qstr=qstr,
-            provide_textual_feedback=False,
+            name="beit",
+            ground_truth_category="bike",
+            qstr="a bike",
+            provide_textual_feedback=True,
             n_batches=4,
             max_feedback=None,
             box_drop_prob=0.0,
@@ -133,10 +133,44 @@ configs = [
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="multiscale", c_name=cat
+                d_name="bdd", i_name="beit", c_name="bike"
             ),
             interactive="pytorch",
             agg_method="avg_vector",
+            method_config=std_linear_config,
+            batch_size=3,
+        ),
+    ),]
+
+def make_config(): 
+    config = []
+    old_bdd_cat_list = [("bike", "a bike"), ("gas stations scene", "a gas station"), ("person", "a person"), ("bus", "a bus"), ("train", "a train"), ("tunnel scene", "a tunnel"), ("truck", "a truck"), ("green traffic light", "a green traffic light"), ("parking lot scene", "a parking lot")]
+    # (NOT WORKING YET) new_bdd_cat_list = [("bicycle", "a bike"), ("pedestrian", "a pedestrian"), ("bus", "a bus"), ("train", "a train"), ("traffic light", "a traffic light"), ("traffic sign", "a traffic sign"), ("trailer", "a trailer"), ("rider", "a rider")]
+    coco_cat_list = [("bicycle", "a bicycle"), ("boat", "a boat"), ("wine glass", "a glass of wine"), ("kite", "a kite"), ("laptop", "a laptop"), ("zebra", "a zebra"), ("sink", "a sink"),("toaster", "a toaster"),]
+    dataset = "bdd"
+    batches = 25
+    agg_method = "avg_score"#"avg_vector"
+    feedback = True
+    for pair in old_bdd_cat_list: 
+        catt = pair[0]
+        qstrr = pair[1]
+        config.extend([(
+        BenchParams(
+            name="multiscale",
+            ground_truth_category=catt,
+            qstr=qstrr,
+            provide_textual_feedback=feedback,
+            n_batches=batches,
+            max_feedback=None,
+            box_drop_prob=0.0,
+            max_results=10000,
+        ),
+        SessionParams(
+            index_spec=IndexSpec(
+                d_name=dataset, i_name="multiscale", c_name=catt
+            ),
+            interactive="pytorch",
+            agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
         ),
@@ -144,20 +178,20 @@ configs = [
     (
         BenchParams(
             name="coarse",
-            ground_truth_category=cat,
-            qstr=qstr,
-            provide_textual_feedback=False,
-            n_batches=4,
+            ground_truth_category=catt,
+            qstr=qstrr,
+            provide_textual_feedback=feedback,
+            n_batches=batches,
             max_feedback=None,
             box_drop_prob=0.0,
             max_results=10000,
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="coarse", c_name=cat
+                d_name=dataset, i_name="coarse", c_name=catt
             ),
             interactive="pytorch",
-            agg_method="avg_vector",
+            agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
         ),
@@ -165,25 +199,65 @@ configs = [
     (
         BenchParams(
             name="roibased",
-            ground_truth_category=cat,
-            qstr=qstr,
-            provide_textual_feedback=False,
-            n_batches=4,
+            ground_truth_category=catt,
+            qstr=qstrr,
+            provide_textual_feedback=feedback,
+            n_batches=batches,
             max_feedback=None,
             box_drop_prob=0.0,
             max_results=10000,
         ),
         SessionParams(
             index_spec=IndexSpec(
-                d_name="bdd", i_name="roibased", c_name=cat
+                d_name=dataset, i_name="roibased", c_name=catt
             ),
             interactive="pytorch",
-            agg_method="avg_vector",
+            agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
         ),
-    ),
-]
+    ),(
+        BenchParams(
+            name="detr",
+            ground_truth_category=catt,
+            qstr=qstrr,
+            provide_textual_feedback=feedback,
+            n_batches=batches,
+            max_feedback=None,
+            box_drop_prob=0.0,
+            max_results=10000,
+        ),
+        SessionParams(
+            index_spec=IndexSpec(
+                d_name=dataset, i_name="detr", c_name=catt
+            ),
+            interactive="pytorch",
+            agg_method=agg_method,
+            method_config=std_linear_config,
+            batch_size=3,
+        ),
+    ),(
+        BenchParams(
+            name="beit",
+            ground_truth_category=catt,
+            qstr=qstrr,
+            provide_textual_feedback=feedback,
+            n_batches=batches,
+            max_feedback=None,
+            box_drop_prob=0.0,
+            max_results=10000,
+        ),
+        SessionParams(
+            index_spec=IndexSpec(
+                d_name=dataset, i_name="beit", c_name=catt
+            ),
+            interactive="pytorch",
+            agg_method=agg_method,
+            method_config=std_linear_config,
+            batch_size=3,
+        ),
+    ),])
+    return config
 
 import json
 
@@ -196,7 +270,7 @@ def test_bench():
     os.chdir(gdm.root)
     br = BenchRunner(gdm.root, results_dir=TEST_SAVE, redirect_output=False)
 
-    for (i, (b, p)) in enumerate(configs):
+    for (i, (b, p)) in enumerate(make_config()):
         print("test case", i)
         path = br.run_loop(b, p)
         print("done with loop")

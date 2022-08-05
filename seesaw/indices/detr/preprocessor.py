@@ -16,11 +16,57 @@ import math
 import shutil
 import torchvision
 from transformers import CLIPProcessor, CLIPModel
-import roi_extractor
-from roi_extractor import AgnosticRoIExtractor
-from roi_extractor import to_dataframe
+from transformers import DetrFeatureExtractor, DetrForSegmentation
 from tqdm import tqdm
 #import transforms
+
+DETR_LINK = "/home/gridsan/groups/fastai/omoll/seesaw_root2/models/detr-resnet-50-panoptic"
+
+def to_dataframe(pairs):
+
+    def to_numpy(d):
+        return {k: v.detach().cpu().numpy() for (k, v) in d.items()}
+
+    def box2dict(boxes):
+        return {
+            "x1": boxes[:, 0],
+            "y1": boxes[:, 1],
+            "x2": boxes[:, 2],
+            "y2": boxes[:, 3],
+        }
+
+    def paddedBox2Dict(boxes): 
+        return {
+            "_x1": boxes[:, 0],
+            "_y1": boxes[:, 1],
+            "_x2": boxes[:, 2],
+            "_y2": boxes[:, 3],
+        }
+
+    dfs = []
+    for (filename, d) in pairs:
+        d2 = to_numpy(d)
+        rdf = None
+        if "new_boxes" in d2.keys(): 
+            rdf = pd.DataFrame.from_dict(
+                {
+                    "filename": filename,
+                    **box2dict(d2["boxes"]),
+                    **paddedBox2Dict(d2["new_boxes"]),
+                    "object_score": d2["scores"],
+                }
+            )
+        else: 
+            rdf = pd.DataFrame.from_dict(
+                {
+                    "filename": filename,
+                    **box2dict(d2["boxes"]),
+                    "object_score": d2["scores"],
+                }
+            )
+        dfs.append(rdf)
+
+    return pd.concat(dfs, ignore_index=True)
 
 def image_clipper(image, boxes, padding): 
     '''
@@ -68,6 +114,49 @@ def image_clipper(image, boxes, padding):
         
     return output, new_boxes
 
+def get_detr_bboxes(image, feature_extractor, detr_model, device): 
+    try: 
+        inputs = feature_extractor(images=image, return_tensors="pt")
+    except: 
+        print("Missed")
+        return False
+    inputs.to(device)
+    outputs = detr_model(**inputs)
+    #image = Image.open(path)
+    #width, height = image.size
+    #inputs = feature_extractor(images=image, return_tensors="pt")
+    #outputs = detr_model(**inputs)
+    target = [(image.size[1], image.size[0])] * outputs.pred_boxes.shape[1]
+    #print(target)
+    ex = feature_extractor.post_process_segmentation(outputs, target, threshold=.35)
+    n = ex[0]['masks'].shape[0]
+    boxes = torch.zeros((n, 4)).to(device)
+    for index, mask in enumerate(ex[0]['masks']): 
+        y, x = torch.where(mask != 0)
+
+        if y.size() == torch.Size([0]) or x.size() == torch.Size([0]):  
+            boxes[index] = torch.tensor([-1, -1, -1, -1])
+        else: 
+            b1 = torch.min(x)
+            b2 = torch.min(y)
+            b3 = torch.max(x)
+            b4 = torch.max(y)
+            if (abs(b3 - b1) < 10 or abs(b4 - b2) < 10): 
+                boxes[index] = torch.tensor([-1, -1, -1, -1])
+            else: 
+                boxes[index, 0] = b1
+                boxes[index, 1] = b2
+                boxes[index, 2] = b3
+                boxes[index, 3] = b4
+    filter = boxes[:, 0] != -1
+    boxes = boxes[filter]
+    ex[0]['boxes'] = boxes    
+    ex[0]['scores'] = ex[0]['scores'][filter]
+    del ex[0]['masks']
+    del ex[0]['labels']
+    del inputs
+    return ex
+
 def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device, i): 
     '''
     This function takes an image, the boxes, and requested padding and runs the clip embedding on them. 
@@ -90,9 +179,10 @@ def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device,
     image_embeds = vision_outputs[1]
     image_embeds = clip_model.visual_projection(image_embeds)
     image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
+    del inputs
     return image_embeds, new_boxes
 
-def preprocess_roi_dataset(
+def preprocess_detr_dataset(
     sds: SeesawDatasetManager,
     output_path,
     clip_model_path = None, 
@@ -128,29 +218,10 @@ def preprocess_roi_dataset(
 
     os.makedirs(output_path)
 
-    '''
-    vector_path = f"{output_path}/vectors"
-    os.makedirs(vector_path)
+    feature_extractor = DetrFeatureExtractor.from_pretrained(DETR_LINK)
 
-    model_link = f"{output_path}/model"
-    os.symlink(model_path, model_link)
-
-    dataset_link = f"{output_path}/dataset"
-    os.symlink(sds.dataset_root, dataset_link)
-
-    real_prefix = f"{os.path.realpath(sds.image_root)}/"
-    read_paths = ((real_prefix + sds.paths)).tolist()
-    read_paths = [os.path.normpath(p) for p in read_paths]
-    meta_dict = dict(zip(read_paths, zip(sds.paths, np.arange(len(sds.paths)))))
-    '''
-
-    maskrcnn_model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True).to(device)
-    maskrcnn_model.eval()
-
-    roi_extractor = AgnosticRoIExtractor(maskrcnn_model).to(device)
-    roi_extractor.eval()
-    roi_extractor.model.rpn.min_size = 10
-    roi_extractor.model.rpn.nms_thresh = 0
+    detr_model = DetrForSegmentation.from_pretrained(DETR_LINK).to(device)
+    detr_model.eval()
 
     clip_model = CLIPModel.from_pretrained(clip_model_path).to(device)
     clip_processor = CLIPProcessor.from_pretrained(clip_model_path)
@@ -162,15 +233,11 @@ def preprocess_roi_dataset(
     print(len(dataset))
     start = 0
     end = len(dataset)
-    stat = torch.cuda.memory_stats(device=device)['reserved_bytes.all.current']
-    print(torch.cuda.memory_stats(device=device)['reserved_bytes.all.current'])
     #print(len(dataset))
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
         for i in tqdm(range(start, end)):
-            print(torch.cuda.memory_stats(device=device)['reserved_bytes.all.current'] - stat)
-            stat = torch.cuda.memory_stats(device=device)['reserved_bytes.all.current']
-            if i % 2000 == 0: #TURN 87 TO 2000
+            if i % 2000 == 0: #TURN TO 2000
                 if i != start: 
                     print("saving")
                     ans = list(zip(paths, output))
@@ -197,26 +264,29 @@ def preprocess_roi_dataset(
 
             else: 
                 ims.append(data['image'])
-                images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
-                a = roi_extractor(images)[0]
-                if a['scores'].shape[0] > box_limiter: 
-                    a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
-                    a['scores'] = torch.split(a['scores'],box_limiter)[0]
-                    a['features'] = torch.split(a['features'].detach(), box_limiter)[0]
-                
-                #print(data['file_path'])
-                #print(a['boxes'])
-                clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device, i)
-                if not isinstance(clip_array, bool): 
-                    a['new_boxes'] = torch.tensor(new_boxes).to(device)
-                    a['clip_feature_vector'] = clip_array
-                    clip_features += clip_array.tolist()
-                    output.append(a)
-                    dbidx.extend([i]*len(a['scores']))
-                    paths.append(data['file_path'])
-                else: 
+                #images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
+                a = get_detr_bboxes(data['image'], feature_extractor, detr_model, device)
+                if isinstance(a, bool): 
                     print("image results were not added")
-            
+                else: 
+                    a = a[0]
+                    if a['scores'].shape[0] > box_limiter: 
+                        a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
+                        a['scores'] = torch.split(a['scores'],box_limiter)[0]
+                    
+                    #print(data['file_path'])
+                    #print(a['boxes'])
+                    clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device, i)
+                    if not isinstance(clip_array, bool): 
+                        a['new_boxes'] = torch.tensor(new_boxes).to(device)
+                        a['clip_feature_vector'] = clip_array
+                        clip_features += clip_array.tolist()
+                        output.append(a)
+                        dbidx.extend([i]*len(a['scores']))
+                        paths.append(data['file_path'])
+                    else: 
+                        print("image results were not added")
+
         ans = list(zip(paths, output))
         df = to_dataframe(ans)
         df['dbidx'] = dbidx

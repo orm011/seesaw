@@ -13,7 +13,8 @@ from ...models.embeddings import XEmbedding
 from ...query_interface import *
 from ...definitions import resolve_path
 
-class ROIIndex(AccessMethod):
+
+class BeitIndex(AccessMethod):
     """Structure holding a dataset,
     together with precomputed embeddings
     and (optionally) data structure
@@ -47,7 +48,7 @@ class ROIIndex(AccessMethod):
         #coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
         #assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
         embedded_dataset = coarse_df["clip_feature"].values.to_numpy()
-        return ROIIndex(
+        return BeitIndex(
             embedding=embedding, vectors=embedded_dataset, vector_meta=coarse_df
         )
 
@@ -83,58 +84,21 @@ class ROIIndex(AccessMethod):
             "nextstartk": 100, #nextstartk,
             "activations": activations,
         }
-        '''
-        fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(included)]
-        nframes = len(included)
-        dbidxs = np.zeros(nframes) * -1
-        dbscores = np.zeros(nframes)
-        activations = []
-        for i, (dbidx, frame_vec_meta) in enumerate(fullmeta.groupby("dbidx")):
-            dbidxs[i] = dbidx
-            boxscs = np.zeros(frame_vec_meta.shape[0])
-            for j in range(frame_vec_meta.shape[0]): 
-                tup = frame_vec_meta.iloc[j : j + 1]
-                # GET BOX
-                # GET IMAGE
-
-                # GET VECTOR
-                image_vector = tup.vectors.values[0]
-                # CROSS VECTOR
-                #print(tup)
-                #print(tup.vectors.values[0])
-                score = image_vector @ vector.reshape(-1)
-                boxscs[j] = score
-            frame_activations = frame_vec_meta.assign(score=boxscs)
-            frame_activations = frame_activations[frame_activations.score == frame_activations.score.max()][
-                ["x1", "y1", "x2", "y2", "dbidx", "score", "filename"]#["x1", "y1", "x2", "y2", "_x1", "_y1", "_x2", "_y2", "dbidx", "score", "filename"]
-            ]
-            activations.append(frame_activations)
-            dbscores[i] = np.max(boxscs)
-
-        topkidx = np.argsort(-dbscores)[:topk]
-        
-
-        return {
-            "dbidxs": dbidxs[topkidx].astype("int"),
-            "nextstartk": 100, #nextstartk,
-            "activations": [activations[idx] for idx in topkidx],
-        }
-        '''
 
     def new_query(self):
-        return ROIQuery(self)
+        return BeitQuery(self)
 
     def subset(self, indices: pr.BitMap):
         mask = self.vector_meta.dbidx.isin(indices)
         if mask.all(): 
             return self
 
-        return ROIIndex(
+        return BeitIndex(
             embedding=self.embedding,
             vectors=self.vectors[mask],
             vector_meta=self.vector_meta[mask].reset_index(drop=True),
         )
-
+    
 def box_iou(tup, boxes):
     b1 = torch.from_numpy(
         np.stack([tup.x1.values, tup.y1.values, tup.x2.values, tup.y2.values], axis=1)
@@ -155,7 +119,7 @@ def get_pos_negs_all_v2(dbidxs, label_db: LabelDB, vec_meta: pd.DataFrame):
     for idx in dbidxs:
         acc_vecs = relvecs[relvecs.dbidx == idx]
         acc_boxes = acc_vecs[["x1", "x2", "y1", "y2"]]
-        label_boxes = label_db.get(idx, format="df")
+        label_boxes = label_db.get(idx, format="df") 
         ious = box_iou(label_boxes, acc_boxes)
         total_iou = ious.sum(axis=0)
         negatives = total_iou == 0
@@ -177,15 +141,16 @@ def get_pos_negs_all_v2(dbidxs, label_db: LabelDB, vec_meta: pd.DataFrame):
     negidxs = pr.BitMap(np.concatenate(neg))
     return posidxs, negidxs
 
-class ROIQuery(InteractiveQuery):
-    def __init__(self, db: ROIIndex):
+
+class BeitQuery(InteractiveQuery):
+    def __init__(self, db: BeitIndex):
         super().__init__(db)
 
     def getXy(self):
         pos, neg = get_pos_negs_all_v2(
             self.label_db.get_seen(), self.label_db, self.index.vector_meta
         )
-        
+
         allpos = self.index.vectors[pos]
         allneg = self.index.vectors[neg]
         Xt = np.concatenate([allpos, allneg])
