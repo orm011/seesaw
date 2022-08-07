@@ -16,40 +16,18 @@ import math
 import shutil
 import torchvision
 from transformers import CLIPProcessor, CLIPModel
-from transformers import BeitFeatureExtractor, BeitForSemanticSegmentation
+from transformers import DetrFeatureExtractor, DetrForSegmentation
 from tqdm import tqdm
-import skimage.measure
+
+from seesaw.indices.deepsort import Detection, NearestNeighborDistanceMetric, Tracker
 #import transforms
 
-BEIT_LINK = "/home/gridsan/groups/fastai/omoll/seesaw_root2/models/beit-base-finetuned-ade-640-640"
+# Definition of the parameters
+max_cosine_distance = 0.7
+max_euclidean_distance = 0.7
+nn_budget = None
 
-def get_beit_boxes(image, feature_extractor, beit_model, device): 
-    try: 
-        inputs = feature_extractor(images=image, return_tensors="pt").to(device)
-    except: 
-        print("Missed")
-        return False
-    outputs = beit_model(**inputs)
-
-    logits = torch.nn.functional.interpolate(outputs.logits,
-                    size=image.size[::-1], # (height, width)
-                    mode='bilinear',
-                    align_corners=False)
-
-    # Second, apply argmax on the class dimension
-    seg = logits.argmax(dim=1)[0].cpu() + 1
-    masks = skimage.measure.label(seg.numpy(), connectivity=1)
-    boxes = skimage.measure.regionprops(masks)
-    temp_list = []
-    for item in boxes: 
-        b = item.bbox
-        if (abs(b[3] - b[1]) > 10 and abs(b[2] - b[0]) > 10): 
-            temp_list.append([b[1], b[0], b[3], b[2]])
-    a = [{}]
-    n = len(temp_list)
-    a[0]['boxes'] = torch.tensor(temp_list).to(device)
-    a[0]['num_boxes'] = n
-    return a 
+DETR_LINK = "/home/gridsan/groups/fastai/omoll/seesaw_root2/models/detr-resnet-50-panoptic"
 
 def to_dataframe(pairs):
 
@@ -82,6 +60,10 @@ def to_dataframe(pairs):
                     "filename": filename,
                     **box2dict(d2["boxes"]),
                     **paddedBox2Dict(d2["new_boxes"]),
+                    "object_score": d2["scores"],
+                    "object_label": d2["labels"], 
+                    "video_id": filename.split('/')[1], 
+                    "track_id": d2["track_id"],
                 }
             )
         else: 
@@ -89,6 +71,10 @@ def to_dataframe(pairs):
                 {
                     "filename": filename,
                     **box2dict(d2["boxes"]),
+                    "object_score": d2["scores"],
+                    "object_label": d2["labels"], 
+                    "video_id": filename.split('/')[1], 
+                    "track_id": d2["track_id"],
                 }
             )
         dfs.append(rdf)
@@ -141,6 +127,57 @@ def image_clipper(image, boxes, padding):
         
     return output, new_boxes
 
+def get_detr_bboxes(image, feature_extractor, detr_model, device): 
+    try: 
+        inputs = feature_extractor(images=image, return_tensors="pt")
+    except: 
+        print("Missed")
+        return False
+    inputs.to(device)
+    outputs = detr_model(**inputs)
+    #image = Image.open(path)
+    #width, height = image.size
+    #inputs = feature_extractor(images=image, return_tensors="pt")
+    #outputs = detr_model(**inputs)
+    target = [(image.size[1], image.size[0])] * outputs.pred_boxes.shape[1]
+    #print(target)
+    ex = feature_extractor.post_process_segmentation(outputs, target, threshold=.35)
+    n = ex[0]['masks'].shape[0]
+    boxes = torch.zeros((n, 4)).to(device)
+    idx = np.argsort(-ex[0]['scores'].cpu().detach())
+
+
+    for index, mask in enumerate(ex[0]['masks']): 
+        y, x = torch.where(mask != 0)
+
+        if y.size() == torch.Size([0]) or x.size() == torch.Size([0]):  
+            boxes[index] = torch.tensor([-1, -1, -1, -1])
+        else: 
+            b1 = torch.min(x)
+            b2 = torch.min(y)
+            b3 = torch.max(x)
+            b4 = torch.max(y)
+            if (abs(b3 - b1) < 10 or abs(b4 - b2) < 10): 
+                boxes[index] = torch.tensor([-1, -1, -1, -1])
+            else: 
+                boxes[index, 0] = b1
+                boxes[index, 1] = b2
+                boxes[index, 2] = b3
+                boxes[index, 3] = b4
+
+    boxes = boxes[idx]
+    ex[0]['scores'] = ex[0]['scores'][idx]
+    ex[0]['labels'] = ex[0]['labels'][idx]
+    
+    filter = boxes[:, 0] != -1
+    boxes = boxes[filter]
+    ex[0]['boxes'] = boxes    
+    ex[0]['scores'] = ex[0]['scores'][filter]
+    ex[0]['labels'] = ex[0]['labels'][filter]
+    del ex[0]['masks']
+    del inputs
+    return ex
+
 def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device, i): 
     '''
     This function takes an image, the boxes, and requested padding and runs the clip embedding on them. 
@@ -163,9 +200,10 @@ def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device,
     image_embeds = vision_outputs[1]
     image_embeds = clip_model.visual_projection(image_embeds)
     image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
+    del inputs
     return image_embeds, new_boxes
 
-def preprocess_beit_dataset(
+def preprocess_detr_dataset(
     sds: SeesawDatasetManager,
     output_path,
     clip_model_path = None, 
@@ -173,6 +211,8 @@ def preprocess_beit_dataset(
     image_limiter = None, 
     box_limiter = 100,
     padding = 5, 
+    start_index = None, 
+    end_index = None,
 ):
     if (not cpu) and torch.cuda.is_available(): 
         device = torch.device("cuda")
@@ -201,35 +241,49 @@ def preprocess_beit_dataset(
 
     os.makedirs(output_path)
 
-    maskrcnn_model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True).to(device)
-    maskrcnn_model.eval()
+    feature_extractor = DetrFeatureExtractor.from_pretrained(DETR_LINK)
 
-    feature_extractor = BeitFeatureExtractor.from_pretrained(BEIT_LINK)
-    beit_model = BeitForSemanticSegmentation.from_pretrained(BEIT_LINK).to(device)
+    detr_model = DetrForSegmentation.from_pretrained(DETR_LINK).to(device)
+    detr_model.eval()
 
     clip_model = CLIPModel.from_pretrained(clip_model_path).to(device)
     clip_processor = CLIPProcessor.from_pretrained(clip_model_path)
     print("Models defined")
     ims = []
     paths = []
-
+    #excluded = []
     print("Length of Dataset")
     print(len(dataset))
-    start = 40000
+    start = 0
+    if start_index != None: 
+        start = start_index
     end = len(dataset)
+    if end_index != None: 
+        end = end_index
+
+    print("Started at: {}, Ending at: {}".format(start_index, end_index))
+    last_track_id = None
+    tracker = None
+
     convert_count = 0
     #print(len(dataset))
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
         for i in tqdm(range(start, end)):
-            if i % 2000 == 0: # Keep at 2000
+            if (i - start) % 2000 == 0: #TURN TO 2000
                 if i != start: 
                     print("saving")
                     ans = list(zip(paths, output))
+                    #print(output[0]['boxes'])
+                    #print(output[0]['new_boxes'])
                     df = to_dataframe(ans)
                     df['dbidx'] = dbidx
                     if clip: 
                         df['clip_feature'] = TensorArray(clip_features)
+                    #clip_array = run_clip_on_proposal()
+                    #df.assign(clip_feature_vector=TensorArray(clip_array))
+                    #print(df.keys())
+                    #print(df[['x1', 'y1', 'x2', 'y2', '_x1', '_y1', '_x2', '_y2']])
                     df.to_parquet(output_path+"/"+str(i)+".parquet")
                 clip_features = []
                 output = []
@@ -249,28 +303,46 @@ def preprocess_beit_dataset(
                     convert_count += 1
                     print(convert_count)
                 #images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
-                a = get_beit_boxes(data['image'], feature_extractor, beit_model, device)
+                a = get_detr_bboxes(data['image'], feature_extractor, detr_model, device)
                 if isinstance(a, bool): 
-                    print("Image results were not added")
+                    print(data['file_path'])
+                    print("image results were not added")
                 else: 
                     a = a[0]
-                    num_boxes = a['num_boxes']
-                    del a['num_boxes']
-                    if num_boxes > box_limiter: 
+                    if a['scores'].shape[0] > box_limiter: 
                         a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
-                        num_boxes = box_limiter
+                        a['scores'] = torch.split(a['scores'],box_limiter)[0]
+                        a['labels'] = torch.split(a['labels'],box_limiter)[0]
                     
+                    #print(data['file_path'])
+                    #print(a['boxes'])
                     clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device, i)
                     if not isinstance(clip_array, bool): 
                         a['new_boxes'] = torch.tensor(new_boxes).to(device)
                         a['clip_feature_vector'] = clip_array
                         clip_features += clip_array.tolist()
+
+                        track_id = data['file_path'].split('/')[1]
+                        if track_id != last_track_id: 
+                            metric = NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
+                            tracker = Tracker(metric)
+                            last_track_id = track_id
+                        detection_list = []
+                        for j in range(a['scores'].shape[0]): 
+                            var = a['boxes'][j]
+                            box = [var[0].item(), var[1].item(), abs(var[2] - var[0]).item(), abs(var[3] - var[1]).item()]
+                            det = Detection(box, a['scores'][j], a['labels'][j], a['clip_feature_vector'][j])
+                            detection_list.append(det)
+                        matches = object_tracking(detection_list, tracker)
+                        a['track_id'] = torch.tensor(matches)
+
                         output.append(a)
-                        dbidx.extend([i]*num_boxes)
+                        dbidx.extend([i]*len(a['scores']))
                         paths.append(data['file_path'])
                     else: 
+                        print(data['file_path'])
                         print("image results were not added")
-            
+
         ans = list(zip(paths, output))
         df = to_dataframe(ans)
         df['dbidx'] = dbidx
@@ -285,4 +357,12 @@ def preprocess_beit_dataset(
         os.rename(output_path, final_output_path)
 
 
+# Function for object tracking on video
+def object_tracking(detection_list, tracker):
+    
+    
+    # Pass detections to the deepsort object and obtain the track information.
+    tracker.predict()
+    matches = tracker.update(detection_list)
 
+    return matches

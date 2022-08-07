@@ -19,24 +19,20 @@ if __name__ == "__main__":
 
     parser.add_argument("--cpu", action="store_true", help="use cpu rather than GPU")
     parser.add_argument("--model_path", type=str, required=True, help="path for model")
+    parser.add_argument("--start", type=int, help="which index to start at")
+    parser.add_argument("--end", type=int, help="which index to end at")
 
     args = parser.parse_args()
 
     import ray
     from seesaw.dataset import SeesawDatasetManager
-    from seesaw.indices.multiscale.preprocessor import preprocess_dataset, load_vecs
+    from preprocessor import preprocess_detr_dataset
 
-    ray.init("auto", namespace="seesaw")
+    #ray.init("auto", namespace="seesaw")
 
     ds = SeesawDatasetManager(args.dataset_path)
-    preprocess_dataset(
-        ds, model_path=args.model_path, cpu=args.cpu, output_path=args.output_path
+    preprocess_detr_dataset(
+        ds, clip_model_path=args.model_path, cpu=args.cpu, output_path=args.output_path, start_index=args.start, end_index=args.end, 
     )
 
-    df = load_vecs(args.output_path)
-    output_path = resolve_path(args.output_path)
-    build_annoy_idx(
-        vecs=df["vectors"].to_numpy(),
-        output_path=f"{output_path}/vectors.annoy",
-        n_trees=100,
-    )
+    

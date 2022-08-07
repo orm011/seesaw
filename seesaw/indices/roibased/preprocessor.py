@@ -162,14 +162,11 @@ def preprocess_roi_dataset(
     print(len(dataset))
     start = 0
     end = len(dataset)
-    stat = torch.cuda.memory_stats(device=device)['reserved_bytes.all.current']
-    print(torch.cuda.memory_stats(device=device)['reserved_bytes.all.current'])
+    convert_count = 0
     #print(len(dataset))
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
         for i in tqdm(range(start, end)):
-            print(torch.cuda.memory_stats(device=device)['reserved_bytes.all.current'] - stat)
-            stat = torch.cuda.memory_stats(device=device)['reserved_bytes.all.current']
             if i % 2000 == 0: #TURN 87 TO 2000
                 if i != start: 
                     print("saving")
@@ -197,6 +194,11 @@ def preprocess_roi_dataset(
 
             else: 
                 ims.append(data['image'])
+                if data['image'].mode == "L": 
+                    print("Converted image: " + str(i))
+                    data['image'] = data['image'].convert("RGB")
+                    convert_count += 1
+                    print(convert_count)
                 images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
                 a = roi_extractor(images)[0]
                 if a['scores'].shape[0] > box_limiter: 

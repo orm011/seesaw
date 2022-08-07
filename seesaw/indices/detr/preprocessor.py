@@ -233,6 +233,7 @@ def preprocess_detr_dataset(
     print(len(dataset))
     start = 0
     end = len(dataset)
+    convert_count = 0
     #print(len(dataset))
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
@@ -264,6 +265,11 @@ def preprocess_detr_dataset(
 
             else: 
                 ims.append(data['image'])
+                if data['image'].mode == "L": 
+                    print("Converted image: " + str(i))
+                    data['image'] = data['image'].convert("RGB")
+                    convert_count += 1
+                    print(convert_count)
                 #images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
                 a = get_detr_bboxes(data['image'], feature_extractor, detr_model, device)
                 if isinstance(a, bool): 

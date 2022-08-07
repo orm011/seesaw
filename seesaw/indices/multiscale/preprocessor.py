@@ -1,14 +1,15 @@
 from seesaw.definitions import resolve_path
-from ...models.model import ImageEmbedding
+from seesaw.models.model import ImageEmbedding
 import pandas as pd
 from ray.data.extensions import TensorArray
+from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 import ray
 import io
 import torch
 import PIL
 import os
 import PIL.Image
-from .multiscale_index import PyramidTx, non_resized_transform, get_boxes
+from seesaw.indices.multiscale.multiscale_index import PyramidTx, non_resized_transform, get_boxes
 from operator import itemgetter
 import numpy as np
 
@@ -112,7 +113,7 @@ class BatchInferModel:
             return [postprocess_results(res)]
 
 
-from ..util import reset_num_cpus
+from seesaw.util import reset_num_cpus
 
 
 class Preprocessor:
@@ -123,7 +124,7 @@ class Preprocessor:
 
         self.num_cpus = int(os.environ.get("OMP_NUM_THREADS"))
         self.device = "cuda:0" if len(ray.get_gpu_ids()) > 0 else "cpu"
-
+        
         reset_num_cpus(self.num_cpus)
         emb = ImageEmbedding(device=self.device, jit_path=jit_path)
         self.bim = BatchInferModel(emb, self.device)
@@ -190,7 +191,7 @@ class Preprocessor:
 
 import ray
 
-from ..dataset import SeesawDatasetManager
+from seesaw.dataset import SeesawDatasetManager
 import math
 import shutil
 
@@ -245,13 +246,26 @@ def preprocess_dataset(
             .remote(jit_path=model_link, output_dir=vector_path, meta_dict=meta_dict)
             for i in range(nactors)
         ]
-
+        print("actors set")
+        file_meta = FastFileMetadataProvider()
+        print("made file meta")
         rds = ray.data.read_binary_files(
-            paths=read_paths, include_paths=True, parallelism=400
-        ).split(nactors, locality_hints=actors)
+            paths=read_paths, include_paths=True, parallelism=400, meta_provider=file_meta
+        ).split(200)
 
+        '''
+        rds = ray.data.read_binary_files(
+            paths=read_paths, include_paths=True, parallelism=400, meta_provider=file_meta
+        ).split(nactors, locality_hints=actors)
+        '''
+        # Split into 100, make a repetitive list of 100 actors by multiplying the list
+        rep_actors = actors * int(200/nactors)
+        print("Rep actors made: " + str(200/nactors))
+        print("reading")
         res_iter = []
-        for part_id, (actor, shard) in enumerate(zip(actors, rds)):
+        for part_id, (actor, shard) in enumerate(zip(rep_actors, rds)):
+            print("Part ID")
+            print(part_id)
             of = actor.extract_meta.remote(shard, pyramid_factor, part_id)
             res_iter.append(of)
         ray.get(res_iter)
