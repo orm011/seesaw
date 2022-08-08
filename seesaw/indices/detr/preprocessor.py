@@ -190,6 +190,8 @@ def preprocess_detr_dataset(
     image_limiter = None, 
     box_limiter = 100,
     padding = 5, 
+    start_index = None, 
+    end_index = None,
 ):
     if (not cpu) and torch.cuda.is_available(): 
         device = torch.device("cuda")
@@ -232,13 +234,18 @@ def preprocess_detr_dataset(
     print("Length of Dataset")
     print(len(dataset))
     start = 0
+    if start_index != None: 
+        start = start_index
     end = len(dataset)
+    if end_index != None: 
+        end = end_index
+
     convert_count = 0
     #print(len(dataset))
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
         for i in tqdm(range(start, end)):
-            if i % 2000 == 0: #TURN TO 2000
+            if (i - start) % 2000 == 0: #TURN TO 2000
                 if i != start: 
                     print("saving")
                     ans = list(zip(paths, output))
