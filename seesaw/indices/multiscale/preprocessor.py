@@ -260,12 +260,8 @@ def preprocess_dataset(
         '''
         # Split into 100, make a repetitive list of 100 actors by multiplying the list
         rep_actors = actors * int(200/nactors)
-        print("Rep actors made: " + str(200/nactors))
-        print("reading")
         res_iter = []
         for part_id, (actor, shard) in enumerate(zip(rep_actors, rds)):
-            print("Part ID")
-            print(part_id)
             of = actor.extract_meta.remote(shard, pyramid_factor, part_id)
             res_iter.append(of)
         ray.get(res_iter)
