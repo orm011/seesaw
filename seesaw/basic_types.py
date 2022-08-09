@@ -59,7 +59,8 @@ class SessionParams(BaseModel):
     index_spec: IndexSpec
     interactive: str
     batch_size: int
-    agg_method: str = "avg_vector"  # | 'avg_vector'
+    aug_larger: str = 'all',
+    agg_method: str = "avg_score"  # | 'avg_vector'
     shortlist_size: int = 30
     method_config: Optional[dict]  # changes from method to method (interactive)
     image_vector_strategy: str = "matched"  # | 'computed'

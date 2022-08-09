@@ -285,20 +285,25 @@ def box_iou(tup, boxes):
     return ious.numpy()
 
 
-def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method):
+def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method, aug_larger):
     assert callable(rescore_method)
     vec_meta = vec_meta.reset_index(drop=True)
     ious = box_iou(tup, vec_meta)
-    vec_meta = vec_meta.assign(iou=ious.reshape(-1))
+    vec_meta = vec_meta.assign(iou=ious.reshape(-1))    
     max_boxes = vec_meta.groupby("zoom_level").iou.idxmax()
-    max_boxes = max_boxes.sort_index(
-        ascending=True
-    )  # largest zoom level (zoomed out) goes last
-    relevant_meta = vec_meta.iloc[max_boxes]
-    relevant_iou = (
+    # largest zoom level means zoomed out max
+    relevant_meta = vec_meta.iloc[max_boxes.values]
+    relevant_mask = (
         relevant_meta.iou > 0
     )  # there should be at least some overlap for it to be relevant
-    max_boxes = max_boxes[relevant_iou.values]
+
+    if aug_larger == 'larger':
+        relevant_mask = relevant_mask & (relevant_meta.zoom_level >= tup.zoom_level.values[0])
+    elif aug_larger == 'oneplus':
+        zl = tup.zoom_level.values[0]
+        relevant_mask = relevant_mask & (relevant_meta.zoom_level.isin([zl, zl+1]))
+
+    max_boxes = max_boxes[relevant_mask.values]
     rel_vecs = vecs[max_boxes]
 
     if agg_method == "avg_score":
@@ -531,6 +536,7 @@ class MultiscaleIndex(AccessMethod):
         shortlist_size,
         agg_method,
         rescore_method,
+        aug_larger,
         exclude=None,
         startk=None,
         **kwargs,
@@ -585,6 +591,7 @@ class MultiscaleIndex(AccessMethod):
                     relvecs,
                     agg_method=agg_method,
                     rescore_method=rescore_method,
+                    aug_larger=aug_larger,
                 )
 
             frame_activations = frame_vec_meta.assign(score=boxscs)[

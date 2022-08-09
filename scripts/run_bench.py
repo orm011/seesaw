@@ -1,6 +1,8 @@
 import ray
+
 from seesaw.seesaw_bench import *
 from seesaw.configs import std_textual_config, std_linear_config
+
 
 import random
 import string
@@ -51,7 +53,7 @@ ray.init("auto", namespace="seesaw", log_to_driver=False, ignore_reinit_error=Tr
 gdm = GlobalDataManager(args.root_dir)
 os.chdir(gdm.root)
 
-s0 = dict(batch_size=args.result_batch_size, method_config={}, shortlist_size=50)
+s0 = dict(batch_size=args.result_batch_size, method_config={}, shortlist_size=100)
 # b0 = dict(n_batches=300, max_feedback=None, box_drop_prob=0., max_results=5, provide_textual_feedback=False,
 #   query_template='a picture of a {}')
 if args.positive_result_limit == -1:
@@ -71,21 +73,31 @@ b0 = dict(
 variants = [
     # dict(name='seesaw_avg_vec', interactive='pytorch', index_name='multiscale', agg_method='avg_vector', method_config=std_linear_config),
     # dict(name='multi_avg_score', interactive='plain', index_name='multiscale', agg_method='avg_score'),
+    # dict(
+    #     name="multi",
+    #     interactive="plain",
+    #     index_name="multiscale",
+    #     agg_method="avg_score",
+    # ),
     dict(
-        name="multi_avg_vec",
-        interactive="plain",
-        index_name="multiscale",
-        agg_method="avg_vector",
-    ),
-    dict(
-        name="seesaw_avg_vec",
+        name="seesaw_adjacent",
         interactive="pytorch",
         index_name="multiscale",
-        agg_method="avg_vector",
+        agg_method="avg_score",
+        aug_larger='adjacent',
         method_config=std_linear_config,
     ),
+    dict(
+        name="seesaw_all",
+        interactive="pytorch",
+        index_name="multiscale",
+        agg_method="avg_score",
+        aug_larger='all',
+        method_config=std_linear_config,
+    ),
+
     # dict(name='seesaw_avg_score', interactive='pytorch', index_name='multiscale', agg_method='avg_score', method_config=std_linear_config),
-    dict(name="baseline", interactive="plain", index_name="coarse"),
+    # dict(name="baseline", interactive="plain", index_name="coarse"),
     # dict(name='refine', interactive='pytorch', index_name='coarse', method_config=std_linear_config),
     # dict(name='textual_linear_avg_vec', interactive='textual', index_name='multiscale',
     #   agg_method='avg_vector', method_config={**std_textual_config, **{'mode':'linear'}}, provide_textual_feedback=True),
@@ -103,7 +115,7 @@ for v in variants:
         )
     names.add(v["name"])
 
-datasets = ["bdd", "coco", "objectnet"]
+datasets = ["bdd", 'lvis', "coco", "objectnet"]
 
 nclasses = math.inf if args.limit is None else args.limit
 cfgs = gen_configs(

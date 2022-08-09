@@ -114,6 +114,7 @@ class SeesawLoop:
             batch_size=p.batch_size,
             shortlist_size=p.shortlist_size,
             agg_method=p.agg_method,
+            aug_larger=p.aug_larger,
             rescore_method=rescore_m,
         )
 
