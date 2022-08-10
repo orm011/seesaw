@@ -26,12 +26,10 @@ if __name__ == "__main__":
 
     import ray
     from seesaw.dataset import SeesawDatasetManager
-    from preprocessor import preprocess_detr_dataset
-
-    #ray.init("auto", namespace="seesaw")
+    from preprocessor import preprocess_beit_dataset
 
     ds = SeesawDatasetManager(args.dataset_path)
-    preprocess_detr_dataset(
+    preprocess_beit_dataset(
         ds, clip_model_path=args.model_path, cpu=args.cpu, output_path=args.output_path, start_index=args.start, end_index=args.end, 
     )
 

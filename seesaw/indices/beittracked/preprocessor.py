@@ -21,6 +21,13 @@ from tqdm import tqdm
 import skimage.measure
 #import transforms
 
+from seesaw.indices.deepsort import Detection, NearestNeighborDistanceMetric, Tracker
+
+# Definition of the parameters
+max_cosine_distance = 0.7
+max_euclidean_distance = 0.7
+nn_budget = None
+
 BEIT_LINK = "/home/gridsan/groups/fastai/omoll/seesaw_root2/models/beit-base-finetuned-ade-640-640"
 
 def get_beit_boxes(image, feature_extractor, beit_model, device): 
@@ -37,17 +44,27 @@ def get_beit_boxes(image, feature_extractor, beit_model, device):
                     align_corners=False)
 
     # Second, apply argmax on the class dimension
+    values, indices = logits.softmax(dim=1).max(dim=1)
+    values = values[0].cpu().detach().numpy()
+
+
     seg = logits.argmax(dim=1)[0].cpu() + 1
     masks = skimage.measure.label(seg.numpy(), connectivity=1)
-    boxes = skimage.measure.regionprops(masks)
+    boxes = skimage.measure.regionprops(masks, intensity_image=values)
     temp_list = []
+    temp_label = []
+    temp_score = []
     for item in boxes: 
         b = item.bbox
         if (abs(b[3] - b[1]) > 10 and abs(b[2] - b[0]) > 10): 
             temp_list.append([b[1], b[0], b[3], b[2]])
+            temp_label.append(item.label)
+            temp_score.append(item.mean_intensity)
     a = [{}]
     n = len(temp_list)
     a[0]['boxes'] = torch.tensor(temp_list).to(device)
+    a[0]['labels'] = torch.tensor(temp_label).to(device)
+    a[0]['scores'] = torch.tensor(temp_score).to(device)
     a[0]['num_boxes'] = n
     return a 
 
@@ -82,6 +99,9 @@ def to_dataframe(pairs):
                     "filename": filename,
                     **box2dict(d2["boxes"]),
                     **paddedBox2Dict(d2["new_boxes"]),
+                    "object_score": d2["scores"],
+                    "video_id": filename.split('/')[1], 
+                    "track_id": d2["track_id"],
                 }
             )
         else: 
@@ -89,6 +109,9 @@ def to_dataframe(pairs):
                 {
                     "filename": filename,
                     **box2dict(d2["boxes"]),
+                    "object_score": d2["scores"],
+                    "video_id": filename.split('/')[1], 
+                    "track_id": d2["track_id"],
                 }
             )
         dfs.append(rdf)
@@ -173,6 +196,8 @@ def preprocess_beit_dataset(
     image_limiter = None, 
     box_limiter = 100,
     padding = 5, 
+    start_index = None, 
+    end_index = None, 
 ):
     if (not cpu) and torch.cuda.is_available(): 
         device = torch.device("cuda")
@@ -215,14 +240,23 @@ def preprocess_beit_dataset(
 
     print("Length of Dataset")
     print(len(dataset))
-    start = 40000
+    start = 0
+    if start_index != None: 
+        start = start_index
     end = len(dataset)
+    if end_index != None: 
+        end = end_index
+
+    print("Started at: %i, Ending at: %i".format(start_index, end_index))
+    last_track_id = None
+    tracker = None
+
     convert_count = 0
     #print(len(dataset))
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
         for i in tqdm(range(start, end)):
-            if i % 2000 == 0: # Keep at 2000
+            if (i - start) % 2000 == 0: # Keep at 2000
                 if i != start: 
                     print("saving")
                     ans = list(zip(paths, output))
@@ -251,6 +285,7 @@ def preprocess_beit_dataset(
                 #images = torchvision.transforms.ToTensor()(data['image']).unsqueeze(0).to(device)
                 a = get_beit_boxes(data['image'], feature_extractor, beit_model, device)
                 if isinstance(a, bool): 
+                    print(data['file_path'])
                     print("Image results were not added")
                 else: 
                     a = a[0]
@@ -258,6 +293,8 @@ def preprocess_beit_dataset(
                     del a['num_boxes']
                     if num_boxes > box_limiter: 
                         a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
+                        a['scores'] = torch.split(a['scores'],box_limiter)[0]
+                        a['labels'] = torch.split(a['labels'],box_limiter)[0]
                         num_boxes = box_limiter
                     
                     clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device, i)
@@ -265,10 +302,26 @@ def preprocess_beit_dataset(
                         a['new_boxes'] = torch.tensor(new_boxes).to(device)
                         a['clip_feature_vector'] = clip_array
                         clip_features += clip_array.tolist()
+
+                        track_id = data['file_path'].split('/')[1]
+                        if track_id != last_track_id: 
+                            metric = NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
+                            tracker = Tracker(metric)
+                            last_track_id = track_id
+                        detection_list = []
+                        for j in range(num_boxes): 
+                            var = a['boxes'][j]
+                            box = [var[0].item(), var[1].item(), abs(var[2] - var[0]).item(), abs(var[3] - var[1]).item()]
+                            det = Detection(box, a['scores'][j], "seesaw", a['clip_feature_vector'][j])
+                            detection_list.append(det)
+                        matches = object_tracking(detection_list, tracker)
+                        a['track_id'] = torch.tensor(matches)
+
                         output.append(a)
                         dbidx.extend([i]*num_boxes)
                         paths.append(data['file_path'])
                     else: 
+                        print(data['file_path'])
                         print("image results were not added")
             
         ans = list(zip(paths, output))
@@ -284,5 +337,12 @@ def preprocess_beit_dataset(
 
         os.rename(output_path, final_output_path)
 
+# Function for object tracking on video
+def object_tracking(detection_list, tracker):
+    
+    
+    # Pass detections to the deepsort object and obtain the track information.
+    tracker.predict()
+    matches = tracker.update(detection_list)
 
-
+    return matches

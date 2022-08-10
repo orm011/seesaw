@@ -84,8 +84,6 @@ class ROITrackIndex(AccessMethod):
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
         coarse_df = get_parquet(vector_path, columns=['dbidx', 'video_id', 'x1', 'y1', 'x2', 'y2', 'clip_feature', 'track_id'])
-        #coarse_df = coarse_df.rename(columns={"clip_feature":"vectors",}) 
-        #assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
         embedded_dataset = coarse_df["clip_feature"].values.to_numpy() 
         return ROITrackIndex(
             embedding=embedding, vectors=embedded_dataset, vector_meta=coarse_df
@@ -145,48 +143,6 @@ class ROITrackIndex(AccessMethod):
             "activations": activations,
             "excluded_dbidxs": excluded_dbidxs, 
         }
-
-        '''
-        fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(included)]
-        nframes = len(included)
-        dbidxs = np.zeros(nframes) * -1
-        dbscores = np.zeros(nframes)
-        activations = []
-        print("starting")
-        for i, (video_id, frame_vec_meta) in enumerate(fullmeta.groupby("video_id")):
-            print(i)
-            idxs = np.zeros(frame_vec_meta.shape[0])
-            boxscs = np.zeros(frame_vec_meta.shape[0])
-            for j in range(frame_vec_meta.shape[0]): 
-                tup = frame_vec_meta.iloc[j : j + 1]
-                # GET BOX
-                # GET IMAGE
-
-                # GET VECTOR
-                image_vector = tup.vectors.values[0]
-                # CROSS VECTOR
-                #print(tup)
-                #print(tup.vectors.values[0])
-                score = image_vector @ vector.reshape(-1)
-                idxs[j] = tup.dbidx.values[0]
-                boxscs[j] = score
-            frame_activations = frame_vec_meta.assign(score=boxscs)
-            frame_activations = frame_activations[frame_activations.score == frame_activations.score.max()][
-                ["x1", "y1", "x2", "y2", "dbidx", "score", "filename"]
-            ]
-            dbidx = frame_activations[frame_activations.score == frame_activations.score.max()]["dbidx"].iloc[0]
-            activations.append(frame_activations)
-            dbidxs[i] = dbidx
-            dbscores[i] = np.max(boxscs)
-        topkidx = np.argsort(-dbscores)[:topk]
-        
-
-        return {
-            "dbidxs": dbidxs[topkidx].astype("int"),
-            "nextstartk": 100, #nextstartk,
-            "activations": [activations[idx] for idx in topkidx],
-        }
-        '''
 
     def new_query(self):
         return ROITrackQuery(self)
