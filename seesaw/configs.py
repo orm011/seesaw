@@ -35,7 +35,7 @@ _method_configs = {
         "label_margin": 0.1,
         "rank_margin": 0.1,
     },
-    "plain": {},
+    "plain": {"dummy":"dummy"},
 }
 
 std_textual_config = _method_configs["textual"]
@@ -46,28 +46,28 @@ _session_modes = {
         index_spec={"d_name": "", "i_name": "coarse"},
         interactive="plain",
         method_config=_method_configs["plain"],
-        agg_method="avg_vector",
+        agg_method="avg_score",
         batch_size=3,
     ),
     "fine": SessionParams(
         index_spec={"d_name": "", "i_name": "multiscale"},
         interactive="plain",
         method_config=_method_configs["plain"],
-        agg_method="avg_vector",
+        agg_method="avg_score",
         batch_size=3,
     ),
     "pytorch": SessionParams(
         index_spec={"d_name": "", "i_name": "multiscale"},  ## seesaw
         interactive="pytorch",
         method_config=_method_configs["pytorch"],
-        agg_method="avg_vector",
+        agg_method="avg_score",
         batch_size=3,
     ),
     "textual": SessionParams(
         index_spec={"d_name": "", "i_name": "multiscale"},
         interactive="textual",
         method_config=std_textual_config,
-        agg_method="avg_vector",
+        agg_method="avg_score",
         batch_size=3,
     ),
 }

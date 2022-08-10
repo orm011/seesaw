@@ -53,7 +53,7 @@ ray.init("auto", namespace="seesaw", log_to_driver=False, ignore_reinit_error=Tr
 gdm = GlobalDataManager(args.root_dir)
 os.chdir(gdm.root)
 
-s0 = dict(batch_size=args.result_batch_size, method_config={}, shortlist_size=100)
+s0 = dict(batch_size=args.result_batch_size, method_config={}, shortlist_size=50)
 # b0 = dict(n_batches=300, max_feedback=None, box_drop_prob=0., max_results=5, provide_textual_feedback=False,
 #   query_template='a picture of a {}')
 if args.positive_result_limit == -1:
@@ -74,27 +74,58 @@ variants = [
     # dict(name='seesaw_avg_vec', interactive='pytorch', index_name='multiscale', agg_method='avg_vector', method_config=std_linear_config),
     # dict(name='multi_avg_score', interactive='plain', index_name='multiscale', agg_method='avg_score'),
     # dict(
-    #     name="multi",
+    #     name="multi_adjacent",
     #     interactive="plain",
     #     index_name="multiscale",
     #     agg_method="avg_score",
+    #     aug_larger='adjacent',
     # ),
     dict(
-        name="seesaw_adjacent",
-        interactive="pytorch",
-        index_name="multiscale",
-        agg_method="avg_score",
-        aug_larger='adjacent',
-        method_config=std_linear_config,
-    ),
-    dict(
-        name="seesaw_all",
-        interactive="pytorch",
+        name="multi_all",
+        interactive="plain",
         index_name="multiscale",
         agg_method="avg_score",
         aug_larger='all',
-        method_config=std_linear_config,
     ),
+    dict(
+        name="multi_greater",
+        interactive="plain",
+        index_name="multiscale",
+        agg_method="avg_score",
+        aug_larger='greater',
+    ),
+    dict(
+        name="multi_plain",
+        interactive="plain",
+        index_name="multiscale",
+        agg_method="plain_score", 
+        aug_larger='greater',
+    ),
+
+    # dict(
+    #     name="seesaw_adjacent",
+    #     interactive="pytorch",
+    #     index_name="multiscale",
+    #     agg_method="avg_score",
+    #     aug_larger='adjacent',
+    #     method_config=std_linear_config,
+    # ),
+    # dict(
+    #     name="seesaw_all",
+    #     interactive="pytorch",
+    #     index_name="multiscale",
+    #     agg_method="avg_score",
+    #     aug_larger='all',
+    #     method_config=std_linear_config,
+    # ),
+    # dict(
+    #     name="seesaw_greater",
+    #     interactive="pytorch",
+    #     index_name="multiscale",
+    #     agg_method="avg_score",
+    #     aug_larger='greater',
+    #     method_config=std_linear_config,
+    # ),
 
     # dict(name='seesaw_avg_score', interactive='pytorch', index_name='multiscale', agg_method='avg_score', method_config=std_linear_config),
     # dict(name="baseline", interactive="plain", index_name="coarse"),

@@ -418,9 +418,10 @@ def parse_batch(batch):
     return acc
 
 
+from ray.data.datasource import FastFileMetadataProvider
 def load_session_data(base_dir):
     summary_paths = glob.glob(base_dir + "/**/summary.json", recursive=True)
-    r = ray.data.read_binary_files(summary_paths, include_paths=True)
+    r = ray.data.read_binary_files(summary_paths, include_paths=True, meta_provider=FastFileMetadataProvider())
     res = r.map_batches(parse_batch)
     return res
 
@@ -431,6 +432,9 @@ def process_dict(obj, mode="benchmark"):
         bs = BenchSummary(**obj)
         b = bs.bench_params
         s = bs.session_params
+        if s.method_config == {}:
+            s.method_config = None
+        
         r = bs.result
         res = {**b.dict(), **s.index_spec.dict(), **s.dict()}
         if bs.result is not None:

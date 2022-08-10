@@ -273,7 +273,7 @@ import torchvision.ops
 # torchvision.ops.box_iou()
 
 
-def box_iou(tup, boxes):
+def box_iou(tup, boxes, return_containment=False):
     b1 = torch.from_numpy(
         np.stack([tup.x1.values, tup.y1.values, tup.x2.values, tup.y2.values], axis=1)
     )
@@ -281,27 +281,41 @@ def box_iou(tup, boxes):
         [boxes.x1.values, boxes.y1.values, boxes.x2.values, boxes.y2.values], axis=1
     )
     b2 = torch.from_numpy(bxdata)
-    ious = torchvision.ops.box_iou(b1, b2)
-    return ious.numpy()
 
+    inter, union = torchvision.ops.boxes._box_inter_union(b1, b2)
+    ious = inter/union
+
+    orig_area = torchvision.ops.boxes.box_area(b1)
+    containment = inter / orig_area
+    if not return_containment:
+        return ious.numpy()
+    else:
+        return ious.numpy(), containment.numpy()
 
 def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method, aug_larger):
     assert callable(rescore_method)
+    if agg_method == "plain_score":
+        return tup.score.values[0]
+
     vec_meta = vec_meta.reset_index(drop=True)
-    ious = box_iou(tup, vec_meta)
-    vec_meta = vec_meta.assign(iou=ious.reshape(-1))    
-    max_boxes = vec_meta.groupby("zoom_level").iou.idxmax()
+    ious, containments = box_iou(tup, vec_meta, return_containment=True)
+    vec_meta = vec_meta.assign(iou=ious.reshape(-1), containment=containments.reshape(-1))
+    max_boxes = vec_meta.groupby("zoom_level").containment.idxmax()
     # largest zoom level means zoomed out max
     relevant_meta = vec_meta.iloc[max_boxes.values]
     relevant_mask = (
         relevant_meta.iou > 0
     )  # there should be at least some overlap for it to be relevant
 
-    if aug_larger == 'larger':
-        relevant_mask = relevant_mask & (relevant_meta.zoom_level >= tup.zoom_level.values[0])
-    elif aug_larger == 'oneplus':
-        zl = tup.zoom_level.values[0]
+    zl = int(tup.zoom_level.values[0])
+    if aug_larger == 'all':
+        pass ## already have rel mask
+    elif aug_larger == 'greater':
+        relevant_mask = relevant_mask & (relevant_meta.zoom_level >= zl)
+    elif aug_larger == 'adjacent':
         relevant_mask = relevant_mask & (relevant_meta.zoom_level.isin([zl, zl+1]))
+    else:
+        assert False, f"unknown aug_larger {aug_larger}"
 
     max_boxes = max_boxes[relevant_mask.values]
     rel_vecs = vecs[max_boxes]
@@ -569,7 +583,7 @@ class MultiscaleIndex(AccessMethod):
         fullmeta = fullmeta.assign(**get_boxes(fullmeta))
 
         scmeta = self.vector_meta.iloc[meta_idx]
-        scmeta = scmeta.assign(**get_boxes(scmeta))
+        scmeta = scmeta.assign(**get_boxes(scmeta), score=db.vectors[meta_idx] @ qvec.reshape(-1))
         nframes = len(candidate_id)
         dbidxs = np.zeros(nframes) * -1
         dbscores = np.zeros(nframes)
