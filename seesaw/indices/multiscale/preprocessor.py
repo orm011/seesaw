@@ -112,7 +112,7 @@ class BatchInferModel:
             return [postprocess_results(res)]
 
 
-from ..util import reset_num_cpus
+from ...util import reset_num_cpus
 
 
 class Preprocessor:
@@ -190,7 +190,7 @@ class Preprocessor:
 
 import ray
 
-from ..dataset import SeesawDatasetManager
+from ...dataset import SeesawDatasetManager
 import math
 import shutil
 
