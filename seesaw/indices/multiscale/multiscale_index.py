@@ -5,21 +5,21 @@ from torchvision import transforms as T
 
 import numpy as np
 import pandas as pd
-from ...dataset_tools import *
+from seesaw.dataset_tools import *
 from torch.utils.data import DataLoader
 import math
 from tqdm.auto import tqdm
 import torch
-from ...query_interface import *
+from seesaw.query_interface import *
 
-from ...models.embeddings import make_clip_transform, ImTransform, XEmbedding
+from seesaw.models.embeddings import make_clip_transform, ImTransform, XEmbedding
 import pyroaring as pr
 from operator import itemgetter
 import PIL
-from ...vector_index import VectorIndex
+from seesaw.vector_index import VectorIndex
 import math
 import annoy
-from ...definitions import resolve_path
+from seesaw.definitions import resolve_path
 import os
 
 

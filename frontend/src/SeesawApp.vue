@@ -735,7 +735,7 @@ export default defineComponent({
       }
     }, 
     toggleActivation(){
-      if (this.front_end_type === 'pytorch'){
+      if (this.front_end_type === 'pytorch' || this.front_end_type === 'textual'){
         this.$refs.highlight_btn.blur(); 
         this.$refs.annotator.activation_press();
       }

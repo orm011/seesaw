@@ -96,6 +96,8 @@ def preprocess_roi_dataset(
     image_limiter = None, 
     box_limiter = 100,
     padding = 5, 
+    start_index = None, 
+    end_index = None, 
 ):
     if (not cpu) and torch.cuda.is_available(): 
         device = torch.device("cuda")
@@ -138,14 +140,22 @@ def preprocess_roi_dataset(
     ims = []
     paths = []
     #excluded = []
+    print("Length of Dataset")
+    print(len(dataset))
     start = 0
+    if start_index != None: 
+        start = start_index
     end = len(dataset)
+    if end_index != None: 
+        end = end_index
+
+    print("Started at: {}, Ending at: {}".format(start_index, end_index))
     last_track_id = None
     tracker = None
     with torch.no_grad():
         #for i in tqdm(range(len(dataset))): 
         for i in tqdm(range(start, end)):
-            if i % 2000 == 0: 
+            if (i - start) % 2000 == 0: 
                 if i != start: 
                     ans = list(zip(paths, output))
                     df = to_dataframe(ans)
@@ -172,6 +182,7 @@ def preprocess_roi_dataset(
                     a['boxes'] = torch.split(a['boxes'],box_limiter)[0]
                     a['scores'] = torch.split(a['scores'],box_limiter)[0]
                     a['features'] = torch.split(a['features'].detach(), box_limiter)[0]
+                #print(a['scores'])
                 dbidx.extend([i]*len(a['scores']))
                 if clip: 
                     clip_array, new_boxes = run_clip_proposal(data['image'], a['boxes'], padding, clip_model, clip_processor, device)

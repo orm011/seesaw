@@ -20,6 +20,8 @@ if __name__ == "__main__":
     parser.add_argument("--cpu", action="store_true", help="use cpu rather than GPU")
     parser.add_argument("--model_path", type=str, required=True, help="path for model")
     parser.add_argument("--clip_model_path", type=str, help="Which clip model to run on images")
+    parser.add_argument("--start", type=int, help="which index to start at")
+    parser.add_argument("--end", type=int, help="which index to end at")
 
     args = parser.parse_args()
 
@@ -31,7 +33,7 @@ if __name__ == "__main__":
 
     ds = SeesawDatasetManager(args.dataset_path)
     preprocess_roi_dataset(
-        ds, clip_model_path=args.model_path, cpu=args.cpu, output_path=args.output_path
+        ds, clip_model_path=args.model_path, cpu=args.cpu, output_path=args.output_path, start_index=args.start, end_index=args.end, 
     )
 
     

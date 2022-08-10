@@ -1,6 +1,6 @@
 import argparse
-from ...definitions import resolve_path
-from ...vector_index import build_annoy_idx
+from seesaw.definitions import resolve_path
+from seesaw.vector_index import build_annoy_idx
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="preprocess dataset for use by Seesaw")
@@ -23,8 +23,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     import ray
-    from ...dataset import SeesawDatasetManager
-    from .preprocessor import preprocess_dataset, load_vecs
+    from seesaw.dataset import SeesawDatasetManager
+    from seesaw.indices.multiscale.preprocessor import preprocess_dataset, load_vecs
 
     ray.init("auto", namespace="seesaw")
 
