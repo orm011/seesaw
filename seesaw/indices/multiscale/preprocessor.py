@@ -259,7 +259,8 @@ def preprocess_dataset(
         ).split(nactors, locality_hints=actors)
         '''
         # Split into 100, make a repetitive list of 100 actors by multiplying the list
-        rep_actors = actors * int(200/nactors)
+        rep_actors = actors * int(math.ceil(200/nactors))
+        assert len(rep_actors) >= len(rds)
         res_iter = []
         for part_id, (actor, shard) in enumerate(zip(rep_actors, rds)):
             of = actor.extract_meta.remote(shard, pyramid_factor, part_id)
