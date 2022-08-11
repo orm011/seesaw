@@ -271,26 +271,26 @@ def augment_score(db, tup, qvec):
 import torchvision.ops
 
 # torchvision.ops.box_iou()
-
-
-def box_iou(tup, boxes, return_containment=False):
+def df2tensor(df1):
     b1 = torch.from_numpy(
-        np.stack([tup.x1.values, tup.y1.values, tup.x2.values, tup.y2.values], axis=1)
+            np.stack([df1.x1.values, df1.y1.values, df1.x2.values, df1.y2.values], axis=1)
     )
-    bxdata = np.stack(
-        [boxes.x1.values, boxes.y1.values, boxes.x2.values, boxes.y2.values], axis=1
-    )
-    b2 = torch.from_numpy(bxdata)
+    return b1
+
+def box_iou(df1, df2, return_containment=False):
+    b1 = df2tensor(df1)
+    b2 = df2tensor(df2)
 
     inter, union = torchvision.ops.boxes._box_inter_union(b1, b2)
-    ious = inter/union
+    b1_area = torchvision.ops.boxes.box_area(b1).reshape(-1, 1) # one per box
 
-    orig_area = torchvision.ops.boxes.box_area(b1)
-    containment = inter / orig_area
+    ious = (inter/union).numpy()
+    containment = (inter / b1_area).numpy() # debug orig_area
+    
     if not return_containment:
-        return ious.numpy()
+        return ious
     else:
-        return ious.numpy(), containment.numpy()
+        return ious, containment
 
 def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method, aug_larger):
     assert callable(rescore_method)
@@ -299,8 +299,11 @@ def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method, aug_large
 
     vec_meta = vec_meta.reset_index(drop=True)
     ious, containments = box_iou(tup, vec_meta, return_containment=True)
-    vec_meta = vec_meta.assign(iou=ious.reshape(-1), containment=containments.reshape(-1))
-    max_boxes = vec_meta.groupby("zoom_level").containment.idxmax()
+
+    ## find largest overlapping boxes
+    assert ious.shape[0] == 1
+    vec_meta = vec_meta.assign(iou=ious.reshape(-1), containments=containments.reshape(-1))
+    max_boxes = vec_meta.groupby("zoom_level").iou.idxmax()
     # largest zoom level means zoomed out max
     relevant_meta = vec_meta.iloc[max_boxes.values]
     relevant_mask = (
@@ -363,6 +366,9 @@ def get_pos_negs_all_v2(dbidxs, label_db: LabelDB, vec_meta: pd.DataFrame):
         acc_boxes = get_boxes(acc_vecs)
         label_boxes = label_db.get(idx, format="df")
         ious = box_iou(label_boxes, acc_boxes)
+
+        ## if there are no labels, the ious are an empty tensor.
+
         total_iou = ious.sum(axis=0)
         negatives = total_iou == 0
         negvec_positions = acc_vecs.index[negatives].values
