@@ -47,6 +47,8 @@ _session_modes = {
         interactive="plain",
         method_config=_method_configs["plain"],
         agg_method="avg_score",
+        aug_larger='all',
+        shortlist_size = 40,
         batch_size=3,
     ),
     "fine": SessionParams(
@@ -54,6 +56,8 @@ _session_modes = {
         interactive="plain",
         method_config=_method_configs["plain"],
         agg_method="avg_score",
+        aug_larger='all',
+        shortlist_size = 40,
         batch_size=3,
     ),
     "pytorch": SessionParams(
@@ -61,6 +65,8 @@ _session_modes = {
         interactive="pytorch",
         method_config=_method_configs["pytorch"],
         agg_method="avg_score",
+        aug_larger='all',
+        shortlist_size = 40,
         batch_size=3,
     ),
     "textual": SessionParams(
@@ -68,6 +74,8 @@ _session_modes = {
         interactive="textual",
         method_config=std_textual_config,
         agg_method="avg_score",
+        aug_larger='all',
+        shortlist_size = 40,
         batch_size=3,
     ),
 }
