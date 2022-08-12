@@ -246,7 +246,7 @@ def preprocess_dataset(
             .remote(jit_path=model_link, output_dir=vector_path, meta_dict=meta_dict)
             for i in range(nactors)
         ]
-        
+
         nsplits = 100 # split the dataset into smaller pieces so each actor does not materialize too many.
         ## each actor will also save each in a separate piece so it helps later when loading data
         num_reps = math.ceil(nsplits/nactors)
@@ -258,7 +258,7 @@ def preprocess_dataset(
         shards = binaries.split(nsplits, locality_hints=rep_actors)
 
         res_iter = []
-        for part_id, (actor, shard) in enumerate(zip(rep_actors, rds)):
+        for part_id, (actor, shard) in enumerate(zip(rep_actors, shards)):
             of = actor.extract_meta.remote(shard, pyramid_factor, part_id)
             res_iter.append(of)
         ray.get(res_iter)
