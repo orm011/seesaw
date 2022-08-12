@@ -17,15 +17,6 @@ from .seesaw_session import SessionParams, Session, Imdata, Box, make_session
 from .basic_types import *
 from .metrics import compute_metrics
 from .dataset_manager import GlobalDataManager
-
-# ignore this comment
-def vls_init_logger():
-    import logging
-
-    logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
-    logging.captureWarnings(True)
-
-
 import numpy as np
 
 

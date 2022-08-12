@@ -216,21 +216,22 @@ class LookupVec(pl.LightningModule):
         d = self._batch_step(batch, batch_idx)
         loss = d["loss"]
         # self.log("loss/train", loss, prog_bar=True, logger=True, on_step=True, on_epoch=False)
+        print(f'step: loss {loss.detach().item()} batch_size {batch[0].shape[0]}')
         return {"loss": loss}
 
     def validation_step(self, batch, batch_idx):
         d = self._batch_step(batch, batch_idx)
         loss = d["loss"]
 
-        # self.log('loss/val', loss, prog_bar=True, logger=True, on_step=False, on_epoch=True)
-        return {"y": d["y"]}
+        self.log('loss', loss, prog_bar=True, logger=True, on_step=False, on_epoch=True)
+        return {"loss": loss}
 
-    def validation_epoch_end(self, validation_step_outputs):
-        apval = self.average_precision.compute()
-        self.log(
-            "AP/val", apval, prog_bar=True, logger=True, on_epoch=True, on_step=False
-        )
-        self.average_precision.reset()
+    # def validation_epoch_end(self, validation_step_outputs):
+    #     apval = self.average_precision.compute()
+    #     self.log(
+    #         "AP/val", apval, prog_bar=True, logger=True, on_epoch=True, on_step=False
+    #     )
+    #     self.average_precision.reset()
 
     def configure_optimizers(self):
         return self.optimizer(self.parameters(), lr=self.hparams.learning_rate)
@@ -347,6 +348,8 @@ def fit_rank2(
     )
     ## want a tensor with pos, neg, 1. ideally the highest scored negatives and lowest scored positives.
 
+
+    print(f'fit_rank2: training with {len(train_ds)=} pairs')
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, shuffle=True, num_workers=0
     )
@@ -362,8 +365,7 @@ def fit_rank2(
         ]
         val_loader = DataLoader(val_ds, batch_size=2000, shuffle=False, num_workers=0)
     else:
-        val_loader = None
-        es = []
+        val_loader = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False, num_workers=0)
 
     trainer = pl.Trainer(
         logger=None,
@@ -375,10 +377,14 @@ def fit_rank2(
         # CustomTqdm()#  ],
         checkpoint_callback=False,
         weights_save_path="/tmp/",
+        enable_model_summary=False,
         progress_bar_refresh_rate=0,  # =10
     )
-    trainer.fit(mod, train_loader, val_loader)
 
+    loss_before = trainer.validate(model=mod, dataloaders=val_loader, verbose=False)[0]['loss']
+    trainer.fit(mod, train_loader, val_loader)
+    loss_after = trainer.validate(model=mod, dataloaders=val_loader, verbose=False)[0]['loss']
+    print(f'losses: {loss_before:.03f} vs. {loss_after:.03f}')
 
 def adjust_vec(vec, Xt, yt, learning_rate, loss_margin, max_examples, minibatch_size):
     ## cosine sim in produce
