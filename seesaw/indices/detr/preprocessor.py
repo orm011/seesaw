@@ -131,6 +131,9 @@ def get_detr_bboxes(image, feature_extractor, detr_model, device):
     ex = feature_extractor.post_process_segmentation(outputs, target, threshold=.35)
     n = ex[0]['masks'].shape[0]
     boxes = torch.zeros((n, 4)).to(device)
+    idx = np.argsort(-ex[0]['scores'].cpu().detach())
+
+
     for index, mask in enumerate(ex[0]['masks']): 
         y, x = torch.where(mask != 0)
 
@@ -148,12 +151,17 @@ def get_detr_bboxes(image, feature_extractor, detr_model, device):
                 boxes[index, 1] = b2
                 boxes[index, 2] = b3
                 boxes[index, 3] = b4
+
+    boxes = boxes[idx]
+    ex[0]['scores'] = ex[0]['scores'][idx]
+    ex[0]['labels'] = ex[0]['labels'][idx]
+    
     filter = boxes[:, 0] != -1
     boxes = boxes[filter]
     ex[0]['boxes'] = boxes    
     ex[0]['scores'] = ex[0]['scores'][filter]
+    ex[0]['labels'] = ex[0]['labels'][filter]
     del ex[0]['masks']
-    del ex[0]['labels']
     del inputs
     return ex
 

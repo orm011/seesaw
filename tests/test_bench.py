@@ -18,7 +18,7 @@ from seesaw.configs import std_linear_config, std_textual_config
 
 TEST_ROOT = "/home/gridsan/groups/fastai/omoll/seesaw_root2/"
 tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
-TEST_SAVE = f"~/tmp/lvis_tests/test_save_{tmp_name}/"
+TEST_SAVE = f"~/tmp/new_bdd_5_feedback_index_seesaw_tests/test_save_{tmp_name}/"
 TEST_SAVE = os.path.expanduser(TEST_SAVE)
 
 
@@ -277,12 +277,12 @@ def make_config():
     new_bdd_cat_list = [("bicycle", "a bike"), ("pedestrian", "a pedestrian"), ("bus", "a bus"), ("train", "a train"), ("traffic light", "a traffic light"), ("traffic sign", "a traffic sign"), ("trailer", "a trailer"), ("rider", "a rider")]
     coco_cat_list = [("bicycle", "a bicycle"), ("boat", "a boat"), ("wine glass", "a glass of wine"), ("kite", "a kite"), ("laptop", "a laptop"), ("zebra", "a zebra"), ("sink", "a sink"),("toaster", "a toaster"),]
     lvis_cat_list = [("apple", "an apple"), ("suitcase", "a suitcase"), ("award", "an award"), ("baseball bat", "a baseball bat"), ("bat (animal)", "a bat animal"), ("blueberry", "a blueberry"), ("bow-tie", "a bow tie"), ("elevator car", "an elevator"), ("card", "a card"), ("computer keyboard", "a keyboard"),]
-    dataset = "lvis"
+    dataset = "bdd"
     batches = 33
     agg_method = "avg_score"
     feedback = False
-    max_feedback = None
-    for pair in lvis_cat_list: 
+    max_feedback = 0#None
+    for pair in new_bdd_cat_list: 
         catt = pair[0]
         qstrr = pair[1]
         config.extend([(
