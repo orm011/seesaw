@@ -2,10 +2,10 @@ from .basic_types import SessionParams
 
 _method_configs = {
     "pytorch": {
-        "minibatch_size": 10,
-        "learning_rate": 0.005,
-        "max_examples": 500,
-        "loss_margin": 0.1,
+        "minibatch_size": 1000,
+        "learning_rate": 0.01,
+        "max_examples": 1000,
+        "loss_margin": 0.02,
         "num_epochs": 4,
         "model_type": "cosine",
         "warm_start": "warm",
