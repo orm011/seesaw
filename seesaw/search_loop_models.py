@@ -411,42 +411,18 @@ def adjust_vec(vec, Xt, yt, learning_rate, loss_margin, max_examples, minibatch_
 
 def max_inversions_given_max_tups(labs, inversions, max_tups):
     orig_df = pd.DataFrame({"labs": labs, "inversions": inversions})
+    orig_df = orig_df[orig_df.inversions > 0]
     ddf = orig_df.sort_values("inversions", ascending=False)
-
+    
     pdf = ddf[ddf.labs]
     ndf = ddf[~ddf.labs]
 
-    ncutoff = pdf.shape[0]
-    pcutoff = ndf.shape[0]
-
-    def total_inversions(ncutoff, pcutoff):
-        if ncutoff <= pcutoff:
-            tot = np.minimum(ndf.inversions.values[:ncutoff], pcutoff).sum()
-        else:
-            tot = np.minimum(pdf.inversions.values[:pcutoff], ncutoff).sum()
-
-        return tot
-
-    curr_inv = total_inversions(ncutoff, pcutoff)
-
-    while (ncutoff * pcutoff > max_tups) and (ncutoff > 1 or pcutoff > 1):
-        tot1 = total_inversions(max(1, ncutoff - 1), pcutoff)
-        tot2 = total_inversions(ncutoff, max(1, pcutoff - 1))
-        if tot2 >= tot1:
-            pcutoff -= 1
-        else:
-            ncutoff -= 1
-
-    ncutoff = max(1, ncutoff)
-    pcutoff = max(1, pcutoff)
-
-    tot_inv = total_inversions(ncutoff, pcutoff)
-    tot_tup = ncutoff * pcutoff
-
+    pcutoff = pdf.shape[0]
+    ncutoff = min(ndf.shape[0], 30)
+    
     pidx = pdf.index.values[:pcutoff]
     nidx = ndf.index.values[:ncutoff]
-    return pidx, nidx, tot_inv, tot_tup
-
+    return pidx, nidx
 
 def hard_neg_tuples_faster(v, Xt, yt, max_tups, margin):
     """returns indices for the 'hardest' ntups"""
@@ -456,14 +432,30 @@ def hard_neg_tuples_faster(v, Xt, yt, max_tups, margin):
     scores = (Xt @ v.reshape(-1, 1)).reshape(-1)
     scores[labs] -= margin
     inversions = compute_inversions(labs, scores)
-    pidx, nidx, _, _ = max_inversions_given_max_tups(labs, inversions, max_tups)
+
+    labels = labs
+    positive=labels > 0
+    total_inversions = inversions[positive].sum()
+    total_positive = positive.sum()
+    total_negative = labels.shape[0] - total_positive
+    print(f'tuple totals: {total_positive=} {total_negative=} {total_inversions=}')
+    print(f'{Xt.shape[0]=} {max_tups=} {margin=}')
+
+    pidx, nidx = max_inversions_given_max_tups(labs, inversions, max_tups)
+    print(f'{pidx.shape=}, {nidx.shape=}')
     pidx, nidx = np.meshgrid(pidx, nidx)
     pidx = pidx.reshape(-1)
     nidx = nidx.reshape(-1)
     assert labs[pidx].all()
     assert ~labs[nidx].any()
 
+
+    sample_idxs = np.random.permutation(pidx.shape[0])[:max_tups]
+    pidx = pidx[sample_idxs]
+    nidx = nidx[sample_idxs]
+    
     dummy = torch.ones(size=(pidx.shape[0], 1))
+    print(f'{Xt[pidx].shape[0]=}')
     return TensorDataset(torch.from_numpy(Xt[pidx]), torch.from_numpy(Xt[nidx]), dummy)
 
 
