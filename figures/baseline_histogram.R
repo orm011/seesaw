@@ -1,7 +1,7 @@
 library(tidyverse)
 library(arrow)
 
-table <- read_parquet('./Desktop/baseline_scores.parquet', as_data_frame=TRUE)
+table <- read_parquet('./baseline_scores.parquet', as_data_frame=TRUE)
 
 baseline_scores  <-  
   table %>% select(!c(method_config, other_params, hit_indices, index_spec) & !starts_with('__')) # %>% names
@@ -20,4 +20,4 @@ plot <- (ggplot(data=baseline_scores)
          )
 )
 
-ggsave(plot = plot, filename='~/Desktop/baseline_histogram.pdf', width=10, height=6, units = 'in')
+ggsave(plot = plot, filename='./baseline_histogram.pdf', width=10, height=6, units = 'in')
