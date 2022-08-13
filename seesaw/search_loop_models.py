@@ -346,8 +346,11 @@ def fit_rank2(
     train_ds = hard_neg_tuples_faster(
         mod.vec.detach().numpy(), X.numpy(), y, max_tups=max_examples, margin=margin
     )
-    ## want a tensor with pos, neg, 1. ideally the highest scored negatives and lowest scored positives.
 
+    ## want a tensor with pos, neg, 1. ideally the highest scored negatives and lowest scored positives.
+    if len(train_ds) == 0: # no reversals left. just return
+        print(f'no need to train... no reversals left')
+        return
 
     print(f'fit_rank2: training with {len(train_ds)=} pairs')
     train_loader = DataLoader(
