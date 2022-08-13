@@ -271,34 +271,56 @@ def augment_score(db, tup, qvec):
 import torchvision.ops
 
 # torchvision.ops.box_iou()
-
-
-def box_iou(tup, boxes):
+def df2tensor(df1):
     b1 = torch.from_numpy(
-        np.stack([tup.x1.values, tup.y1.values, tup.x2.values, tup.y2.values], axis=1)
+            np.stack([df1.x1.values, df1.y1.values, df1.x2.values, df1.y2.values], axis=1)
     )
-    bxdata = np.stack(
-        [boxes.x1.values, boxes.y1.values, boxes.x2.values, boxes.y2.values], axis=1
-    )
-    b2 = torch.from_numpy(bxdata)
-    ious = torchvision.ops.box_iou(b1, b2)
-    return ious.numpy()
+    return b1
 
+def box_iou(df1, df2, return_containment=False):
+    b1 = df2tensor(df1)
+    b2 = df2tensor(df2)
 
-def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method):
+    inter, union = torchvision.ops.boxes._box_inter_union(b1, b2)
+    b1_area = torchvision.ops.boxes.box_area(b1).reshape(-1, 1) # one per box
+
+    ious = (inter/union).numpy()
+    containment = (inter / b1_area).numpy() # debug orig_area
+    
+    if not return_containment:
+        return ious
+    else:
+        return ious, containment
+
+def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method, aug_larger):
     assert callable(rescore_method)
+    if agg_method == "plain_score":
+        return tup.score.values[0]
+
     vec_meta = vec_meta.reset_index(drop=True)
-    ious = box_iou(tup, vec_meta)
-    vec_meta = vec_meta.assign(iou=ious.reshape(-1))
+    ious, containments = box_iou(tup, vec_meta, return_containment=True)
+
+    ## find largest overlapping boxes
+    assert ious.shape[0] == 1
+    vec_meta = vec_meta.assign(iou=ious.reshape(-1), containments=containments.reshape(-1))
     max_boxes = vec_meta.groupby("zoom_level").iou.idxmax()
-    max_boxes = max_boxes.sort_index(
-        ascending=True
-    )  # largest zoom level (zoomed out) goes last
-    relevant_meta = vec_meta.iloc[max_boxes]
-    relevant_iou = (
+    # largest zoom level means zoomed out max
+    relevant_meta = vec_meta.iloc[max_boxes.values]
+    relevant_mask = (
         relevant_meta.iou > 0
     )  # there should be at least some overlap for it to be relevant
-    max_boxes = max_boxes[relevant_iou.values]
+
+    zl = int(tup.zoom_level.values[0])
+    if aug_larger == 'all':
+        pass ## already have rel mask
+    elif aug_larger == 'greater':
+        relevant_mask = relevant_mask & (relevant_meta.zoom_level >= zl)
+    elif aug_larger == 'adjacent':
+        relevant_mask = relevant_mask & (relevant_meta.zoom_level.isin([zl, zl+1]))
+    else:
+        assert False, f"unknown aug_larger {aug_larger}"
+
+    max_boxes = max_boxes[relevant_mask.values]
     rel_vecs = vecs[max_boxes]
 
     if agg_method == "avg_score":
@@ -344,6 +366,9 @@ def get_pos_negs_all_v2(dbidxs, label_db: LabelDB, vec_meta: pd.DataFrame):
         acc_boxes = get_boxes(acc_vecs)
         label_boxes = label_db.get(idx, format="df")
         ious = box_iou(label_boxes, acc_boxes)
+
+        ## if there are no labels, the ious are an empty tensor.
+
         total_iou = ious.sum(axis=0)
         negatives = total_iou == 0
         negvec_positions = acc_vecs.index[negatives].values
@@ -531,6 +556,7 @@ class MultiscaleIndex(AccessMethod):
         shortlist_size,
         agg_method,
         rescore_method,
+        aug_larger,
         exclude=None,
         startk=None,
         **kwargs,
@@ -563,7 +589,7 @@ class MultiscaleIndex(AccessMethod):
         fullmeta = fullmeta.assign(**get_boxes(fullmeta))
 
         scmeta = self.vector_meta.iloc[meta_idx]
-        scmeta = scmeta.assign(**get_boxes(scmeta))
+        scmeta = scmeta.assign(**get_boxes(scmeta), score=db.vectors[meta_idx] @ qvec.reshape(-1))
         nframes = len(candidate_id)
         dbidxs = np.zeros(nframes) * -1
         dbscores = np.zeros(nframes)
@@ -585,6 +611,7 @@ class MultiscaleIndex(AccessMethod):
                     relvecs,
                     agg_method=agg_method,
                     rescore_method=rescore_method,
+                    aug_larger=aug_larger,
                 )
 
             frame_activations = frame_vec_meta.assign(score=boxscs)[

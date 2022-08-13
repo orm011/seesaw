@@ -1,6 +1,12 @@
 import inspect
 import os
 import torch
+import logging
+
+
+def vls_init_logger():
+    logging.getLogger("lightning").setLevel(logging.ERROR)
+    logging.captureWarnings(True)
 
 
 def reset_num_cpus(num_cpus: int):

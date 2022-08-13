@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Callable
 from ..seesaw_session import Session, make_session
-from ..util import reset_num_cpus
+from ..util import reset_num_cpus, vls_init_logger
 import os
 import json
 from ..dataset_manager import GlobalDataManager
@@ -21,6 +21,8 @@ class WebSession:
     ):
         if num_cpus is not None:
             reset_num_cpus(num_cpus)
+
+        vls_init_logger()
 
         self.session_id = session_id
         self.root_dir = root_dir
