@@ -429,11 +429,12 @@ def rel_plot(sbs, variant, jitter=0.01):
 
 
 def plot_compare(
-    stats, variant, variant_baseline, metric, mode="identity", jitter=0.01
+    stats, variant, variant_baseline, metric, mode="identity", jitter=0.01, log_scale=True,
+    reltol=1.1
 ):
     assert mode in ["identity", "ratio", "difference"]
     plotdata = compare_stats(stats, variant, variant_baseline)
-    bsw = bsw_table2(plotdata, metric=metric, reltol=1.0)
+    bsw = bsw_table2(plotdata, metric=metric, reltol=reltol)
     display(bsw)
     baseline_name = f"{metric}_baseline"
     plotdata = plotdata[[metric, baseline_name, "dataset"]].assign(
@@ -445,12 +446,13 @@ def plot_compare(
         return (
             ggplot(data=plotdata)
             + geom_jitter(
-                aes(x=f"{metric}_baseline", y=metric, fill="dataset"),
+                aes(x=f"{metric}_baseline", y=metric, fill="dataset", color='dataset'),
+                alpha=.7,
                 width=jitter,
                 height=jitter,
             )
-            + scale_x_log10()
-            + scale_y_log10()
+            # + scale_x_log10()
+            # + scale_y_log10()
             + geom_abline(aes(slope=1, intercept=0))
         )
     elif mode == "ratio":

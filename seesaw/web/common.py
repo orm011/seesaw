@@ -10,9 +10,7 @@ from ..basic_types import Box, SessionState, SessionParams, IndexSpec
 import time
 
 from ..configs import (
-    _session_modes,
-    std_linear_config,
-    std_textual_config,
+    make_session_params
 )
 
 
@@ -69,12 +67,8 @@ class EndSession(BaseModel):
 
 
 def session_params(mode, dataset, index, **kwargs):
-    assert mode in _session_modes.keys()
-
-    base = _session_modes[mode].copy(deep=True)
-    base.index_spec.d_name = dataset
-    base.index_spec.i_name = index
-    ## base.index_spec.i_name set in template
+    # assert mode in _session_modes.keys()
+    base = make_session_params(mode, dataset, index)
     base.other_params = {"mode": mode, "dataset": dataset, **kwargs}
     return base
 

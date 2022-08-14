@@ -2,10 +2,10 @@ from .basic_types import SessionParams
 
 _method_configs = {
     "pytorch": {
-        "minibatch_size": 10,
-        "learning_rate": 0.005,
-        "max_examples": 500,
-        "loss_margin": 0.1,
+        "minibatch_size": 1000,
+        "learning_rate": 0.01,
+        "max_examples": 1000,
+        "loss_margin": 0.02,
         "num_epochs": 4,
         "model_type": "cosine",
         "warm_start": "warm",
@@ -41,41 +41,20 @@ _method_configs = {
 std_textual_config = _method_configs["textual"]
 std_linear_config = _method_configs["pytorch"]
 
-_session_modes = {
-    "default": SessionParams(
-        index_spec={"d_name": "", "i_name": "coarse"},
-        interactive="plain",
-        method_config=_method_configs["plain"],
-        agg_method="avg_score",
-        aug_larger='all',
-        shortlist_size = 40,
-        batch_size=3,
-    ),
-    "fine": SessionParams(
-        index_spec={"d_name": "", "i_name": "multiscale"},
-        interactive="plain",
-        method_config=_method_configs["plain"],
-        agg_method="avg_score",
-        aug_larger='all',
-        shortlist_size = 40,
-        batch_size=3,
-    ),
-    "pytorch": SessionParams(
-        index_spec={"d_name": "", "i_name": "multiscale"},  ## seesaw
-        interactive="pytorch",
-        method_config=_method_configs["pytorch"],
-        agg_method="avg_score",
-        aug_larger='all',
-        shortlist_size = 40,
-        batch_size=3,
-    ),
-    "textual": SessionParams(
-        index_spec={"d_name": "", "i_name": "multiscale"},
-        interactive="textual",
-        method_config=std_textual_config,
-        agg_method="avg_score",
-        aug_larger='all',
-        shortlist_size = 40,
-        batch_size=3,
-    ),
+modes = { ## change terminology?
+    'default':'plain', # no feedback
+    'pytorch':'pytorch',
 }
+
+
+def make_session_params(mode, dataset, index):
+    _mode = modes[mode]
+    return SessionParams(
+        index_spec={"d_name": dataset, "i_name": index},
+        interactive=_mode,
+        method_config=_method_configs[_mode],
+        agg_method="avg_score",
+        aug_larger='all',
+        shortlist_size = 40,
+        batch_size=3,
+    )
