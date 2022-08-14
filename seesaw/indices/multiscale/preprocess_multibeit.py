@@ -17,10 +17,15 @@ BEIT_LINK = "/home/gridsan/groups/fastai/omoll/seesaw_root2/models/beit-base-fin
 def process_df(df, multiscale_path, feature_extractor, beit_model): 
     files = df.file_path.unique()
     count = 0
+    convert_count = 0
     for path in tqdm(files): 
         temp = 0
         part_df = df[df.file_path == path][['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2', 'max_zoom_level']]
         beit_image = Image.open(multiscale_path + '/dataset/images/' + path)
+        if beit_image.mode == "L": 
+            convert_count += 1
+            print("Converted image. Total is {}".format(convert_count))
+            beit_image = beit_image.convert("RGB")
         inputs = feature_extractor(images=beit_image, return_tensors="pt").to(device)
         outputs = beit_model(**inputs)
         logits = torch.nn.functional.interpolate(outputs.logits,
@@ -55,7 +60,7 @@ def process_df(df, multiscale_path, feature_extractor, beit_model):
                 temp += 1
                 remove.append(index)
         df = df.drop(remove, axis=0)
-        print("Dropped {}".format(temp))
+        print("Dropped {}. {} converted so far".format(temp, convert_count))
 
     return df, count 
 
