@@ -65,6 +65,40 @@ _higher_is_better = [
 ]
 _lower_is_better = ["rank_first", "rank_last"]
 
+def bsw_table_abs(compare, *, metric, abstol):
+    assert abstol >= 0
+
+    if metric in _higher_is_better:
+        higher_is_better = True
+    elif metric in _lower_is_better:
+        higher_is_better = False
+    else:
+        assert False, "need to specify if higher is better for metric"
+
+    metric_col = compare[metric]
+    baseline_col = compare[f"{metric}_baseline"]
+
+    similar = (baseline_col - metric_col).abs() <= abstol
+    lower = (metric_col < baseline_col) & ~similar
+    higher = (baseline_col < metric_col) & ~similar
+
+
+    if higher_is_better:
+        better = higher
+        worse = lower
+    else:
+        better = lower
+        worse = higher
+
+    compare = compare.assign(better=better, same=similar, worse=worse)
+    bydataset = compare.groupby("dataset")[["better", "same", "worse"]].sum()
+    dstot = bydataset.sum(axis=1)
+    bsw = bydataset.assign(total=dstot)
+    tot = bsw.sum()
+    bsw_table = bsw.transpose().assign(total=tot).transpose()
+    return bsw_table
+
+
 
 def bsw_table2(compare, *, metric, reltol):
     invtol = 1 / reltol
@@ -430,14 +464,19 @@ def rel_plot(sbs, variant, jitter=0.01):
 
 def plot_compare(
     stats, variant, variant_baseline, metric, mode="identity", jitter=0.01, log_scale=True,
-    reltol=1.1
+    reltol=1.1, abstol=.01
 ):
     assert mode in ["identity", "ratio", "difference"]
     plotdata = compare_stats(stats, variant, variant_baseline)
-    bsw = bsw_table2(plotdata, metric=metric, reltol=reltol)
+
+    if mode != 'ratio':
+        bsw = bsw_table_abs(plotdata, metric=metric, abstol=abstol)
+    else:
+        bsw = bsw_table2(plotdata, metric=metric, reltol=reltol)
+
     display(bsw)
     baseline_name = f"{metric}_baseline"
-    plotdata = plotdata[[metric, baseline_name, "dataset"]].assign(
+    plotdata = plotdata[[metric, baseline_name, "dataset", 'ground_truth_category']].assign(
         ratio=plotdata[metric] / plotdata[baseline_name],
         difference=plotdata[metric] - plotdata[baseline_name],
     )
