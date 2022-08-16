@@ -21,45 +21,48 @@ def process_df(df, multiscale_path, feature_extractor, beit_model):
     for path in tqdm(files): 
         temp = 0
         part_df = df[df.file_path == path][['file_path', 'zoom_level', 'x1', 'y1', 'x2', 'y2', 'max_zoom_level']]
-        beit_image = Image.open(multiscale_path + '/dataset/images/' + path)
-        if beit_image.mode == "L": 
-            convert_count += 1
-            print("Converted image. Total is {}".format(convert_count))
-            beit_image = beit_image.convert("RGB")
-        inputs = feature_extractor(images=beit_image, return_tensors="pt").to(device)
-        outputs = beit_model(**inputs)
-        logits = torch.nn.functional.interpolate(outputs.logits,
-                        size=beit_image.size[::-1], # (height, width)
-                        mode='bilinear',
-                        align_corners=False)
-        seg = logits.argmax(dim=1)[0].cpu() + 1
-        masks = skimage.measure.label(seg.numpy(), connectivity=1)
-        boxes = skimage.measure.regionprops(masks)
-        masks = []
-        for box in boxes: 
-            l = box.coords.tolist()
-            s = set()
-            for item in l: 
-                s.add(tuple(item))
-            masks.append(s)
+        try: 
+            beit_image = Image.open(multiscale_path + '/dataset/images/' + path)
+            if beit_image.mode == "L": 
+                convert_count += 1
+                print("Converted image. Total is {}".format(convert_count))
+                beit_image = beit_image.convert("RGB")
+            inputs = feature_extractor(images=beit_image, return_tensors="pt").to(device)
+            outputs = beit_model(**inputs)
+            logits = torch.nn.functional.interpolate(outputs.logits,
+                            size=beit_image.size[::-1], # (height, width)
+                            mode='bilinear',
+                            align_corners=False)
+            seg = logits.argmax(dim=1)[0].cpu() + 1
+            masks = skimage.measure.label(seg.numpy(), connectivity=1)
+            boxes = skimage.measure.regionprops(masks)
+            masks = []
+            for box in boxes: 
+                l = box.coords.tolist()
+                s = set()
+                for item in l: 
+                    s.add(tuple(item))
+                masks.append(s)
 
-        remove = []
-        for index, row in part_df.iterrows(): 
-            good = True
-            if row['zoom_level'] != row['max_zoom_level']:
-                points = set()
-                for x in range(int(row['x1']), int(row['x2'])): 
-                    for y in range(int(row['y1']), int(row['y2'])): 
-                        points.add((y, x))
-                for mask in masks: 
-                    if points.issubset(mask): 
-                        good = False    
-                
-            if good != True: 
-                count += 1
-                temp += 1
-                remove.append(index)
-        df = df.drop(remove, axis=0)
+            remove = []
+            for index, row in part_df.iterrows(): 
+                good = True
+                if row['zoom_level'] != row['max_zoom_level']:
+                    points = set()
+                    for x in range(int(row['x1']), int(row['x2'])): 
+                        for y in range(int(row['y1']), int(row['y2'])): 
+                            points.add((y, x))
+                    for mask in masks: 
+                        if points.issubset(mask): 
+                            good = False    
+                    
+                if good != True: 
+                    count += 1
+                    temp += 1
+                    remove.append(index)
+            df = df.drop(remove, axis=0)
+        except: 
+            print("SKIPPED image : " + path)
         print("Dropped {}. {} converted so far".format(temp, convert_count))
 
     return df, count 
