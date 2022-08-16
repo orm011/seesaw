@@ -101,7 +101,6 @@ variants = [
         agg_method="plain_score", 
         aug_larger='greater',
     ),
-
     # dict(
     #     name="seesaw_adjacent",
     #     interactive="pytorch",
@@ -110,14 +109,14 @@ variants = [
     #     aug_larger='adjacent',
     #     method_config=std_linear_config,
     # ),
-    # dict(
-    #     name="seesaw_all",
-    #     interactive="pytorch",
-    #     index_name="multiscale",
-    #     agg_method="avg_score",
-    #     aug_larger='all',
-    #     method_config=std_linear_config,
-    # ),
+    dict(
+        name="seesaw_all",
+        interactive="pytorch",
+        index_name="multiscale",
+        agg_method="avg_score",
+        aug_larger='greater',
+        method_config=std_linear_config,
+    ),
     # dict(
     #     name="seesaw_greater",
     #     interactive="pytorch",
@@ -126,9 +125,13 @@ variants = [
     #     aug_larger='greater',
     #     method_config=std_linear_config,
     # ),
-
     # dict(name='seesaw_avg_score', interactive='pytorch', index_name='multiscale', agg_method='avg_score', method_config=std_linear_config),
-    # dict(name="baseline", interactive="plain", index_name="coarse"),
+
+    dict(name="baseline", interactive="plain", index_name="coarse"),
+    dict(name="refine_coarse", 
+        interactive="pytorch", 
+        index_name="coarse", 
+        method_config=std_linear_config),
     # dict(name='refine', interactive='pytorch', index_name='coarse', method_config=std_linear_config),
     # dict(name='textual_linear_avg_vec', interactive='textual', index_name='multiscale',
     #   agg_method='avg_vector', method_config={**std_textual_config, **{'mode':'linear'}}, provide_textual_feedback=True),
