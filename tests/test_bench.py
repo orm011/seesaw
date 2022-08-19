@@ -20,7 +20,8 @@ TEST_ROOT = "/home/gridsan/groups/fastai/omoll/seesaw_root2/"
 tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 TEST_SAVE = f"~/tmp/new_bdd_5_feedback_index_seesaw_tests/test_save_{tmp_name}/"
 TEST_SAVE = os.path.expanduser(TEST_SAVE)
-
+MANNY_TEST_SAVE = f"~/fastai_shared/mfavela/benchmarks/thesis/lvis_no_feedback_avg_score/test_save_{tmp_name}/"
+MANNY_TEST_SAVE = os.path.expanduser(MANNY_TEST_SAVE)
 
 cat = "bike"
 qstr = "a bike"
@@ -277,12 +278,13 @@ def make_config():
     new_bdd_cat_list = [("bicycle", "a bike"), ("pedestrian", "a pedestrian"), ("bus", "a bus"), ("train", "a train"), ("traffic light", "a traffic light"), ("traffic sign", "a traffic sign"), ("trailer", "a trailer"), ("rider", "a rider")]
     coco_cat_list = [("bicycle", "a bicycle"), ("boat", "a boat"), ("wine glass", "a glass of wine"), ("kite", "a kite"), ("laptop", "a laptop"), ("zebra", "a zebra"), ("sink", "a sink"),("toaster", "a toaster"),]
     lvis_cat_list = [("apple", "an apple"), ("suitcase", "a suitcase"), ("award", "an award"), ("baseball bat", "a baseball bat"), ("bat (animal)", "a bat animal"), ("blueberry", "a blueberry"), ("bow-tie", "a bow tie"), ("elevator car", "an elevator"), ("card", "a card"), ("computer keyboard", "a keyboard"),]
-    dataset = "bdd"
+    dataset = "lvis"
     batches = 33
     agg_method = "avg_score"
     feedback = False
-    max_feedback = 0#None
-    for pair in new_bdd_cat_list: 
+    aug_larger = 'all'
+    max_feedback = 0 # None means unlimited feedback, no feedback is 0
+    for pair in lvis_cat_list: 
         catt = pair[0]
         qstrr = pair[1]
         config.extend([(
@@ -304,6 +306,29 @@ def make_config():
             agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
+            aug_larger=aug_larger,
+        ),
+    ),
+    (
+        BenchParams(
+            name="multibeit",
+            ground_truth_category=catt,
+            qstr=qstrr,
+            provide_textual_feedback=feedback,
+            n_batches=batches,
+            max_feedback=max_feedback,
+            box_drop_prob=0.0,
+            max_results=10000,
+        ),
+        SessionParams(
+            index_spec=IndexSpec(
+                d_name=dataset, i_name="multibeit", c_name=catt
+            ),
+            interactive="pytorch",
+            agg_method=agg_method,
+            method_config=std_linear_config,
+            batch_size=3,
+            aug_larger=aug_larger,
         ),
     ),
     (
@@ -325,6 +350,7 @@ def make_config():
             agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
+            aug_larger=aug_larger,
         ),
     ),
     (
@@ -346,6 +372,7 @@ def make_config():
             agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
+            aug_larger=aug_larger,
         ),
     ),(
         BenchParams(
@@ -366,6 +393,7 @@ def make_config():
             agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
+            aug_larger=aug_larger,
         ),
     ),(
         BenchParams(
@@ -386,6 +414,7 @@ def make_config():
             agg_method=agg_method,
             method_config=std_linear_config,
             batch_size=3,
+            aug_larger=aug_larger,
         ),
     ),])
     return config
@@ -395,11 +424,11 @@ import json
 
 def test_bench():
     ray.init("auto", namespace="seesaw", ignore_reinit_error=True)
-    os.makedirs(TEST_SAVE, exist_ok=False)
+    os.makedirs(MANNY_TEST_SAVE, exist_ok=False)
 
     gdm = GlobalDataManager(TEST_ROOT)
     os.chdir(gdm.root)
-    br = BenchRunner(gdm.root, results_dir=TEST_SAVE, redirect_output=False)
+    br = BenchRunner(gdm.root, results_dir=MANNY_TEST_SAVE, redirect_output=False)
 
     for (i, (b, p)) in enumerate(make_config()):
         print("test case", i)
@@ -427,7 +456,7 @@ def test_bench():
         )
 
     print("testing the rest")
-    a = get_all_session_summaries(TEST_SAVE)
+    a = get_all_session_summaries(MANNY_TEST_SAVE)
     assert a.shape[0] == len(configs)
     assert os.path.isdir(a["session_path"].values[0])  # session path is correct
 

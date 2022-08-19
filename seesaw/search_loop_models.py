@@ -380,7 +380,7 @@ def fit_rank2(
         # CustomTqdm()#  ],
         checkpoint_callback=False,
         weights_save_path="/tmp/",
-        enable_model_summary=False,
+        #enable_model_summary=False,
         progress_bar_refresh_rate=0,  # =10
     )
 
