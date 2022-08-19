@@ -40,6 +40,7 @@ _method_configs = {
 
 std_textual_config = _method_configs["textual"]
 std_linear_config = _method_configs["pytorch"]
+std_plain_config = _method_configs["plain"]
 
 modes = { ## change terminology?
     'default':'plain', # no feedback
