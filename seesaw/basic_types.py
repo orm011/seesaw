@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Literal
 
 
 class Box(BaseModel):
@@ -57,13 +57,13 @@ class IndexSpec(BaseModel):
 
 class SessionParams(BaseModel):
     index_spec: IndexSpec
-    interactive: str
+    interactive: Literal['pytorch', 'plain', 'knn_greedy', 'cosine', 'textual']
     batch_size: int
-    aug_larger: Optional[Union[str, List[str]]] # sad
-    agg_method: Optional[str] = "avg_score"  # | 'avg_vector'
+    aug_larger: Literal['greater', 'all'] = 'all'
+    agg_method: Optional[Literal["avg_score", 'avg_vector']] = 'avg_score'
     shortlist_size: Optional[int] = 30
     method_config: Optional[dict] = {"dummy":"dummy_value"}  # changes from method to method (interactive)
-    image_vector_strategy: str = "matched"  # | 'computed'
+    image_vector_strategy: Optional[Literal[ "matched", 'computed']]
     other_params: dict = {"dummy": "dummy_value"}  # so it can be saved in parquet...
 
 
