@@ -1,9 +1,7 @@
 import ray
 from seesaw.seesaw_bench import *
-from seesaw.configs import std_textual_config, std_linear_config
 import random
 import string
-import sys
 import math
 import yaml
 import argparse
@@ -65,7 +63,6 @@ cfgs = gen_configs(
     b_template=shared_bench_params,
     max_classes_per_dataset=nclasses,
 )
-random.shuffle(cfgs)
 print(f"{len(cfgs)} generated")
 
 key = "".join([random.choice(string.ascii_letters) for _ in range(10)])
@@ -89,6 +86,8 @@ else:
         num_actors=None,
         timeout=args.timeout,
     )
+
+    random.shuffle(cfgs) # randomize task order to decrease stragglers
     print(f"made {len(actors)} actors")
     parallel_run(actors=actors, tups=cfgs)
 
