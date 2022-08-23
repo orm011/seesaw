@@ -2,9 +2,7 @@ import numpy as np
 import pyroaring as pr
 from ray.data.extensions import TensorArray
 import pynndescent 
-import ray.data
 import pandas as pd
-from ..services import get_parquet
 
 
 def extract_knn_ds(df, n=30):
@@ -18,11 +16,13 @@ def extract_knn_ds(df, n=30):
     return knn_df
 
 def save_knn_df(knn_df, index_root):
+    import ray.data
     knn_ds = ray.data.from_pandas(knn_df)
     knn_ds = knn_ds.repartition(50)
     knn_ds.write_parquet(f'{index_root}/knn_ds.parquet')
 
 def load_knn_df(index_root):
+    from ..services import get_parquet
     return get_parquet(f'{index_root}/knn_ds.parquet')
 
 def getRKNN(knndf):
