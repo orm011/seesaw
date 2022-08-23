@@ -30,7 +30,7 @@ from .util import *
 from .pairwise_rank_loss import VecState
 from .query_interface import *
 from .textual_feedback_box import OnlineModel, join_vecs2annotations
-
+from .research.knn_methods import SimpleKNNRanker, load_knn_df
 
 @dataclass
 class LoopState:
@@ -40,6 +40,7 @@ class LoopState:
     latency_profile: list = field(default_factory=list)
     vec_state: VecState = None
     model: OnlineModel = None
+    knn_model : SimpleKNNRanker = None
 
 
 class SeesawLoop:
@@ -53,13 +54,18 @@ class SeesawLoop:
         self.params = params
         self.state = LoopState()
         self.q = q
+        s = self.state
+        p = self.params
 
         if self.params.interactive in ["textual"]:
             param_dict = gdm.global_cache.read_state_dict(
                 "/home/gridsan/groups/fastai/omoll/seesaw_root/models/clip/ViT-B-32.pt",
                 jit=True,
             )
-            self.state.model = OnlineModel(param_dict, self.params.method_config)
+            s.model = OnlineModel(param_dict, p.method_config)
+        elif p.interactive == 'knn_greedy':
+            knn_df = self.q.index.get_knn_df()
+            s.knn_model = SimpleKNNRanker(knn_df, init_scores=None)
 
         lp = {
             "n_images": None,
@@ -70,7 +76,8 @@ class SeesawLoop:
             "refine": None,
         }
 
-        s = self.state
+
+
         ## ensure non-empty
         s.latency_profile.append(lp)
 
@@ -92,6 +99,15 @@ class SeesawLoop:
         }
         s.latency_profile.append(lp)
 
+        if p.interactive == 'knn_greedy':
+            idxs, scores = s.knn_model.top_k(p.batch_size)
+            b  = {'dbidxs':idxs, 'scores':scores, 
+                    'activations':None}
+
+            lp['n_images']= idxs.shape[0]
+            lp["lookup"] = time.time() - start_lookup
+            return b
+        
         if p.interactive == "textual":
             if p.method_config["mode"] == "finetune":
                 vec = s.model.encode_string(s.curr_str)
@@ -197,6 +213,13 @@ class SeesawLoop:
 
             losses = s.model.update(all_vecs, marked_accepted, all_strs, s.curr_str)
             print("done with update", losses)
+        elif p.interactive == 'knn_greedy':
+            # labels already added.
+            # go over labels here since it takes time
+            seen_ids = np.array(self.q.label_db.get_seen())
+            for _,id in enumerate(seen_ids):
+                label = self.q.label_db.get(id, format='binary')
+                s.knn_model.update(id, label=label)
         else:
             Xt, yt = self.q.getXy()
             lp["n_posvecs"] = (yt == 1).sum()  # .shape[0]
@@ -362,13 +385,23 @@ class Session:
         s.curr_str = key
         s.tvec = self.index.string2vec(string=key)
         s.tmode = "dot"
-        if p.method_config.get("model_type", None) == "multirank2":
+
+        if p.interactive == 'knn_greedy':
+            ### need to add score method to index
+            ## need to add base score method to knn
+            scores = self.index.score(s.tvec)            
+            s.knn_model.set_base_scores(scores)
+        elif p.method_config.get("model_type", None) == "multirank2":
             s.vec_state = VecState(
                 s.tvec,
                 margin=p.loss_margin,
                 opt_class=torch.optim.SGD,
                 opt_params={"lr": p.learning_rate},
             )
+        else:
+            pass
+
+        
 
     def update_state(self, state: SessionState):
         self._update_labeldb(state)

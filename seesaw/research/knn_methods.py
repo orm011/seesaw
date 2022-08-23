@@ -42,32 +42,41 @@ def make_rknn_lookup(rkNN):
         rev_edge_list[d] = grp['orig'].values
     return rev_edge_list
 
+from scipy.special import expit as sigmoid
 
 class SimpleKNNRanker:
-    def __init__(self, knn_df, init_scores):
+    def __init__(self, knn_df, init_scores=None):
         nnindices = knn_df['positions'].to_numpy()
-        assert nnindices.shape[0] == init_scores.shape[0]
         self.nnindices = nnindices
 
         rknndf= getRKNN(knn_df)
         self.rev_indices = make_rknn_lookup(rknndf)
 
-        self.init_numerators = (init_scores + 1.)/2. # make them be between 0 and 1 just like labels, 
-        self.init_denominators = np.ones_like(init_scores)
+        if init_scores is None:
+            self.init_numerators = np.ones(nnindices.shape[0])*.1 # base if nothing is given
+        else:
+            self.set_base_scores(init_scores)
+
+        self.pscount = 1.
         
         self.numerators = np.zeros_like(self.init_numerators)
-        self.denominators = np.zeros_like(self.init_denominators)
-        
+        self.denominators = np.zeros_like(self.init_numerators)
+
+        self.labels = np.zeros_like(self.init_numerators)
         self.is_labeled = np.zeros_like(self.init_numerators)
         
         self.all_indices = pr.FrozenBitMap(range(nnindices.shape[0]))
         
     def current_scores(self):
-        mask = 1. - self.is_labeled
-        num = self.init_numerators + mask*self.numerators
-        denom = self.init_denominators + mask*self.denominators
-        return num/denom
+        num = self.pscount*self.init_numerators + self.numerators
+        denom = self.pscount + self.denominators
+        estimates = num/denom
+        return self.labels*self.is_labeled + estimates*(1-self.is_labeled)
         
+    def set_base_scores(self, scores):
+        assert self.nnindices.shape[0] == scores.shape[0]
+        self.init_numerators = sigmoid(2*scores)
+
     def update(self, idx, label):
         idx = int(idx)
         label = float(label)
@@ -75,16 +84,15 @@ class SimpleKNNRanker:
         assert np.isclose(label,0) or np.isclose(label,1)
         
         if self.is_labeled[idx] > 0: # if new label for old 
-            old_label = self.init_numerators[idx]
+            old_label = self.labels[idx]
             delta_denom = 0
             delta_num = label - old_label # erase old label and add new label
         else:
             delta_num = label
             delta_denom = 1
         
-        self.init_numerators[idx] = label
-        self.init_denominators[idx] = 1.
-        self.is_labeled[idx] = 1.
+        self.labels[idx] = label
+        self.is_labeled[idx] = 1
                 
         ## update scores for all v such that idx \in knn(v)
         rev_neighbors = self.rev_indices[idx]

@@ -32,10 +32,15 @@ class LabelDB:
                 return pd.DataFrame([b.dict() for b in boxes])[
                     ["x1", "x2", "y1", "y2"]
                 ].astype("float32")
-
         elif format == "box":
             return boxes
-
+        elif format == 'binary':
+            if len(boxes) == 0:
+                return 0
+            else:
+                return 1
+        else:
+            assert False, 'unknown format'
 
 class InteractiveQuery(object):
     """

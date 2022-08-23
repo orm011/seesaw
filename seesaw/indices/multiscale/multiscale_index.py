@@ -421,8 +421,10 @@ class MultiscaleIndex(AccessMethod):
         vector_meta: pd.DataFrame,
         vec_index=None,
         min_zoom_level=1,
+        path : str = None,
     ):
         self.embedding = embedding
+        self.path = path
 
         if min_zoom_level == 1:
             self.vectors = vectors
@@ -470,12 +472,21 @@ class MultiscaleIndex(AccessMethod):
             vectors=fine_grained_embedding,
             vector_meta=fine_grained_meta,
             vec_index=vec_index,
+            path = index_path
         )
+
+    def get_knn_df(self):
+        from ...research.knn_methods import load_knn_df
+        df = load_knn_df(self.path)
+        return df
 
     def string2vec(self, string: str):
         init_vec = self.embedding.from_string(string=string)
         init_vec = init_vec / np.linalg.norm(init_vec)
         return init_vec
+
+    def score(self, vec):
+        return self.vectors @ vec.reshape(-1)
 
     def __len__(self):
         return len(self.all_indices)
