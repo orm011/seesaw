@@ -46,7 +46,6 @@ def is_image_accepted(imdata: Imdata):
         else False
     )
 
-
 class IndexSpec(BaseModel):
     d_name: str
     i_name: str
@@ -54,21 +53,24 @@ class IndexSpec(BaseModel):
         str
     ]  # ground truth category (needed to specify subset for lvis benchmark)
 
+class MultiscaleParams: #TODO switch session params
+    aug_larger: Literal['greater', 'all'] = 'all'
+    agg_method: Literal["avg_score", 'avg_vector'] = 'avg_score'
+    shortlist_size: int
 
 class SessionParams(BaseModel):
     index_spec: IndexSpec
-    interactive: Literal['pytorch', 'plain', 'knn_greedy', 'cosine', 'textual']
+    interactive: Literal['pytorch', 'plain', 'knn_greedy', 'textual']
     batch_size: int
     aug_larger: Literal['greater', 'all'] = 'all'
     agg_method: Optional[Literal["avg_score", 'avg_vector']] = 'avg_score'
-    shortlist_size: Optional[int] = 30
-    method_config: Optional[dict] = {"dummy":"dummy_value"}  # changes from method to method (interactive)
+    shortlist_size: Optional[int]
+    method_config: Optional[dict] 
     image_vector_strategy: Optional[Literal[ "matched", 'computed']]
-    other_params: dict = {"dummy": "dummy_value"}  # so it can be saved in parquet...
-
+    other_params: Optional[dict]
 
 class LogEntry(BaseModel):
-    logger: str = "server"  # client | server
+    logger: Literal["server", 'client']
     message: str
     time: float
     seen: int
@@ -94,7 +96,7 @@ class BenchParams(BaseModel):
     max_results: Optional[int] = None  # stop when this numbrer of results is found
     max_feedback: Optional[int] = None
     box_drop_prob: float = 0.0
-    query_template: str = "{}"  # clip needs this
+    query_template: str = "a {}"  # clip needs this
 
 
 class BenchResult(BaseModel):

@@ -391,16 +391,16 @@ class Session:
             ## need to add base score method to knn
             scores = self.index.score(s.tvec)            
             s.knn_model.set_base_scores(scores)
-        elif p.method_config.get("model_type", None) == "multirank2":
-            s.vec_state = VecState(
-                s.tvec,
-                margin=p.loss_margin,
-                opt_class=torch.optim.SGD,
-                opt_params={"lr": p.learning_rate},
-            )
+        elif p.interactive == 'pytorch':
+            if p.method_config.get("model_type", None) == "multirank2":
+                s.vec_state = VecState(
+                    s.tvec,
+                    margin=p.loss_margin,
+                    opt_class=torch.optim.SGD,
+                    opt_params={"lr": p.learning_rate},
+                )
         else:
             pass
-
         
 
     def update_state(self, state: SessionState):

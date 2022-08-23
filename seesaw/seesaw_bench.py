@@ -480,7 +480,7 @@ def compute_stats(summ):
 
 from .basic_types import IndexSpec
 from .dataset_search_terms import category2query
-
+from .configs import get_default_config
 
 def gen_configs(
     gdm: GlobalDataManager,
@@ -516,12 +516,18 @@ def gen_configs(
                         },
                     }
                 )
+                if 'method_config' in var:
+                    config = var['method_config']
+                else:
+                    config = get_default_config(var['interactive'])
 
                 update_s = {
                     "index_spec": IndexSpec(
                         d_name=d, i_name=var["index_name"], c_name=c
-                    )
+                    ),
+                    "method_config": config
                 }
+
                 s = SessionParams(
                     **{
                         **s_template,

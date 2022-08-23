@@ -35,8 +35,10 @@ _method_configs = {
         "label_margin": 0.1,
         "rank_margin": 0.1,
     },
-    "plain": {"dummy":"dummy"},
 }
+
+def get_default_config(method):
+    return _method_configs.get(method)
 
 std_textual_config = _method_configs["textual"]
 std_linear_config = _method_configs["pytorch"]
