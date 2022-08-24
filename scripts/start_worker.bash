@@ -18,8 +18,7 @@ else
     if [[ $USER == omoll ]]; # im using virtual env rather than default evnv.
     then 
         # copy environment first
-        mkdir -p /state/partition1/user/omoll/venvs
-        rsync -rlug $HEAD_NODE:/state/partition1/user/omoll/venvs/ /state/partition1/user/omoll/venvs/
+        rsync -rlugvR  $HEAD_NODE:/state/partition1/user/omoll/venvs/seesaw/ /
     
         set +x
         source /state/partition1/user/omoll/venvs/seesaw/bin/activate
