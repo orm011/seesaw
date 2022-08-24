@@ -22,6 +22,7 @@ from plotnine import (
     element_blank,
     xlab,
     ylab,
+    labs,
     geom_text,
 )
 
@@ -63,7 +64,7 @@ _higher_is_better = [
     "reciprocal_rank_first",
     "reciprocal_rank_last",
 ]
-_lower_is_better = ["rank_first", "rank_last"]
+_lower_is_better = ["rank_first", "rank_last", "nseen"]
 
 def bsw_table_abs(compare, *, metric, abstol):
     assert abstol >= 0
@@ -669,3 +670,66 @@ def interactive_scatterplot(
 
     p.add_tools(url_tool("session_path", "base_session_path"))
     show(p)
+
+
+def manny_plot_compare(
+    stats, variant, variant_baseline, metric, mode="identity", jitter=0.01, log_scale=True,
+    reltol=1.1, abstol=.01, x_name=None, y_name=None, title=None
+):
+    assert mode in ["identity", "ratio", "difference"]
+    plotdata = compare_stats(stats, variant, variant_baseline)
+
+    if mode != 'ratio':
+        bsw = bsw_table_abs(plotdata, metric=metric, abstol=abstol)
+    else:
+        bsw = bsw_table2(plotdata, metric=metric, reltol=reltol)
+
+    display(bsw)
+    baseline_name = f"{metric}_baseline"
+    plotdata = plotdata[[metric, baseline_name, "dataset", 'ground_truth_category']].assign(
+        ratio=plotdata[metric] / plotdata[baseline_name],
+        difference=plotdata[metric] - plotdata[baseline_name],
+    )
+
+    if mode == "identity":
+        return (
+            ggplot(data=plotdata)
+            + geom_jitter(
+                aes(x=f"{metric}_baseline", y=metric, fill="dataset", color='dataset'),
+                alpha=.7,
+                width=jitter,
+                height=jitter,
+            )
+            # + scale_x_log10()
+            # + scale_y_log10()
+            + geom_abline(aes(slope=1, intercept=0))
+            + labs(x = x_name, y = y_name, title=title)
+        )
+    elif mode == "ratio":
+        return (
+            ggplot(data=plotdata)
+            + geom_jitter(
+                aes(x=f"{metric}_baseline", y="ratio", fill="dataset"),
+                width=jitter,
+                height=jitter,
+            )
+            + scale_x_log10()
+            + scale_y_log10()
+            ## ablines are drawn wrt the already log-transformed axes. hence 0 = log(1) in scale
+            + geom_abline(aes(slope=0, intercept=0.0))
+            + geom_abline(aes(slope=-1, intercept=0.0))  # max
+        )
+    elif mode == "difference":
+        return (
+            ggplot(data=plotdata)
+            + geom_jitter(
+                aes(x=f"{metric}_baseline", y="difference", fill="dataset"),
+                width=jitter,
+                height=jitter,
+            )
+            + scale_x_log10()
+            + scale_y_log10()
+            + geom_abline(aes(slope=0, intercept=0))
+        )
+    else:
+        assert False, "unknown mode"
