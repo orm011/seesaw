@@ -5,7 +5,10 @@ import logging
 
 
 def vls_init_logger():
+    import pytorch_lightning as pl
+    pl.utilities.distributed.log.setLevel(logging.ERROR)
     logging.getLogger("lightning").setLevel(logging.ERROR)
+    logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)  
     logging.captureWarnings(True)
 
 
