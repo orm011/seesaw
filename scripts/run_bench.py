@@ -5,6 +5,8 @@ import string
 import math
 import yaml
 import argparse
+import ray.data
+from ray.data import ActorPoolStrategy
 
 parser = argparse.ArgumentParser("runs benchmark tests and stores metrics in folder")
 
@@ -16,7 +18,6 @@ parser.add_argument("--num_cpus", type=int, default=2, help="number of cpus per 
 parser.add_argument(
     "--timeout", type=int, default=20, help="how long to wait for actor creation"
 )
-
 parser.add_argument(
     "--output_dir", type=str, help="dir where experiment results dir will be created"
 )
@@ -71,26 +72,26 @@ results_dir = f"{args.output_dir}/bench_{exp_name}/"
 os.makedirs(results_dir, exist_ok=True)
 print(f"outputting benchmark results to file:/{results_dir}")
 
+class BatchRunner:
+    def __init__(self, redirect_output=True):
+        self.br = BenchRunner(gdm.root, results_dir=results_dir, 
+                        num_cpus=args.num_cpus, redirect_output=redirect_output)
+        
+    def __call__(self, cfgs):
+        for cfg in cfgs:
+            self.br.run_loop(*cfg)
+
+        return cfgs
+
 if args.dryrun:
-    br = BenchRunner(gdm.root, results_dir=results_dir, redirect_output=False)
-    for cfg in cfgs:
-        br.run_loop(*cfg)
+    br = BatchRunner(redirect_output=False)
+    br(cfgs)
 else:
-    actors = make_bench_actors(
-        actor_options=dict(
-            name=exp_name, num_cpus=args.num_cpus, memory=10 * (2**30)
-        ),
-        bench_constructor_args=dict(
-            seesaw_root=gdm.root, results_dir=results_dir, num_cpus=args.num_cpus
-        ),
-        num_actors=None,
-        timeout=args.timeout,
-    )
+    random.shuffle(cfgs) # randomize task order to kind-of balance work
+    ds = ray.data.from_items(cfgs, parallelism=800)
+    actor_options = dict(num_cpus=args.num_cpus, memory=5 * (2**30))
+    _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(10,200), **actor_options).take_all()
 
-    random.shuffle(cfgs) # randomize task order to decrease stragglers
-    print(f"made {len(actors)} actors")
-    parallel_run(actors=actors, tups=cfgs)
-
-print("computing session summary for completed benchmark....")
+print("done with benchmark. computing summary")
 get_all_session_summaries(results_dir, force_recompute=True)
-print("done")
+print("done with summary.")
