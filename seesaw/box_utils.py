@@ -174,6 +174,20 @@ class BoxBatch:
         return BoxBatch(new_xseg, new_yseg)
 
 
+def _polygon_col(df, as_array=False):
+    box_polygons = _as_polygons(df) # box polygons
+    container_polygons = _as_polygons(pd.DataFrame({'x1':0, 'y1':0, 'x2':df['im_width'], 'y2':df['im_height']}))
+    
+    outarr = np.empty(len(box_polygons), dtype='object')
+    for i, (bx,cont) in enumerate(zip(box_polygons, container_polygons)):
+        outarr[i] = shapely.geometry.GeometryCollection([bx, cont.boundary])
+
+    if as_array:
+        return outarr
+
+    geoms = pd.Series(data=outarr, index=df.index, dtype='object')
+    return geoms
+
 class BoundingBoxBatch(BoxBatch):
     """represents box batch in the context of a larger image  of size  w, h
     """
@@ -195,15 +209,50 @@ class BoundingBoxBatch(BoxBatch):
         df = super().to_dataframe()
         return df.assign(im_width=self.im_width, im_height=self.im_height)
 
+
     def _repr_html_(self) -> str:
         df =  self.to_dataframe()
-        box_polygons = _as_polygons(df) # box polygons
-        container_polygons = _as_polygons(pd.DataFrame({'x1':0, 'y1':0, 'x2':df['im_width'], 'y2':df['im_height']}))
-        geoms = [shapely.geometry.GeometryCollection([bx, cont.boundary]) for (bx,cont) in zip(box_polygons, container_polygons)]
-        df = df.assign(shape=geoms)
+        df = df.assign(shape=_polygon_col(df))
         styled = df.style.format({'shape':lambda shp: shp._repr_svg_()} , escape="html")
         return styled._repr_html_()
 
     def best_square_box(self) -> 'BoundingBoxBatch':
         bb = super().best_square_box(xmax=self.im_width, ymax=self.im_height)
         return BoundingBoxBatch(bb.xseg, bb.yseg, self.im_width, self.im_height)
+
+
+class BoxOverlay:
+    ''' overlays box information on image.
+    '''
+    def __init__(self, x1, y1, x2, y2, im_width, im_height, im_url=None):
+        box = shapely.geometry.box(x1, y1, x2, y2) 
+        
+        self.im_width = im_width
+        self.im_height = im_height
+        
+        container = shapely.geometry.box(0, 0, im_width, im_height)
+        self.shape = shapely.geometry.GeometryCollection([box, container.boundary])
+        self.im_url = im_url
+        
+    def _repr_html_(self):
+        bxsvg = self.shape.svg()
+        image_str = f'<img src="{self.im_url}"/>' if self.im_url else ''
+        
+        style_str = 'position:absolute;top:0;left:0' if self.im_url else '' # will show strangely in nb
+        
+        svg_str = f'''<svg style="{style_str}"
+                        width="{self.im_width}" height="{self.im_height}" 
+                        viewBox="0 0 {self.im_width} {self.im_height}">
+                            <g transform="matrix(1,0,0,1,0,0)">
+                                {bxsvg}
+                            </g>
+                    </svg>
+                  '''
+        
+        overlay = f'''<div style="position:relative;">
+                        {image_str}
+                        {svg_str}
+                      </div>
+                    '''
+        
+        return overlay
