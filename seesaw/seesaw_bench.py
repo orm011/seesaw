@@ -412,8 +412,9 @@ def parse_batch(batch):
 from ray.data.datasource import FastFileMetadataProvider
 def load_session_data(base_dir):
     summary_paths = glob.glob(base_dir + "/**/summary.json", recursive=True)
-    r = ray.data.read_binary_files(summary_paths, include_paths=True, meta_provider=FastFileMetadataProvider())
-    res = r.map_batches(parse_batch)
+    r = ray.data.read_binary_files(summary_paths, include_paths=True, 
+                meta_provider=FastFileMetadataProvider(), parallelism=200)
+    res = r.map_batches(parse_batch, batch_size=20)
     return res
 
 
@@ -437,21 +438,26 @@ def process_dict(obj, mode="benchmark"):
     res["session_path"] = obj["session_path"]
     return res
 
+from .util import as_batch_function
 
-def _summarize(res):
-    acc = []
-    for obj in tqdm(res.iter_rows()):
-        obj2 = process_dict(obj)
-        acc.append(obj2)
+
+def _summarize(res, parallel):
+    if parallel:
+        acc = res.map_batches(as_batch_function(process_dict), batch_size=20).take_all()
+    else:
+        acc = []
+        for obj in tqdm(res.iter_rows()):
+            obj2 = process_dict(obj)
+            acc.append(obj2)
 
     return pd.DataFrame.from_records(acc)
 
 
-def get_all_session_summaries(base_dir, force_recompute=False):
+def get_all_session_summaries(base_dir, force_recompute=False, parallel=True):
     sumpath = base_dir + "/summary.parquet"
     if not os.path.exists(sumpath) or force_recompute:
         res = load_session_data(base_dir)
-        df = _summarize(res)
+        df = _summarize(res, parallel=parallel)
         df.to_parquet(sumpath)
 
     return pd.read_parquet(sumpath)

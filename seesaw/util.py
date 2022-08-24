@@ -3,6 +3,23 @@ import os
 import torch
 import logging
 
+import pandas as pd
+import pyarrow as pa
+
+def as_batch_function(fun):
+    def bfun(batch):
+        res = []
+        if isinstance(batch, pd.DataFrame):
+            for b in batch.itertuples(index=False):
+                res.append(fun(b._asdict()))
+        elif isinstance(batch, pa.Table):
+            assert False, 'not sure how to iterate here'
+        else: # try just iterating
+            for b in batch:
+                res.append(fun(b))
+        return res
+
+    return bfun
 
 def vls_init_logger():
     import pytorch_lightning as pl
