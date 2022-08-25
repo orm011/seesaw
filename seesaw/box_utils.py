@@ -64,6 +64,12 @@ class Segment:
         
     def length(self):
         return 2*self.rad()
+
+    def pad(self, padding, minx, maxx):
+        padding = np.array(padding)
+        assert (padding >= 0).all()
+
+        return Segment.from_midrad(self.mid(), self.rad() + padding).clip(minx, maxx)
     
     def best_seg(self, new_len, minx, maxx) -> 'Segment':
         """ forms a new segment `newseg` with following properties
@@ -121,7 +127,7 @@ class BoxBatch:
         return BoxBatch(xseg, yseg)
 
     @staticmethod
-    def from_dataframe(df : pd.DataFrame, xyxy_columns=['x1', 'y1', 'x2', 'y2']):
+    def from_dataframe(df : pd.DataFrame, xyxy_columns=['x1', 'y1', 'x2', 'y2']) -> 'BoxBatch':
         std_xyxy = ['x1', 'y1', 'x2', 'y2']
         tdict= dict(zip(xyxy_columns, std_xyxy))
         boxcols = df[xyxy_columns].rename(tdict, axis=1)
@@ -162,13 +168,25 @@ class BoxBatch:
     def width(self):
         return self.xseg.length()
     
-    def best_square_box(self, xmax=math.inf, ymax=math.inf):
+    def pad(self, padding, xmax, ymax):
+        return BoxBatch(xseg=self.xseg.pad(padding, 0, xmax), 
+                        yseg=self.yseg.pad(padding, 0, ymax))
+
+    def best_square_box(self, xmax=math.inf, ymax=math.inf, min_side=0):
         """ gets the square box that fits within bounds, overlaps as much as possible with box, 
+
             and is as near the center as possible"""
+
+        xmax = np.array(xmax)
+        ymax = np.array(ymax)
+        min_side = np.array(min_side)
+        assert (min_side <= xmax).all()
+        assert (min_side <= ymax).all()
 
         max_container = np.minimum(xmax, ymax)
         max_side = np.maximum(self.height(), self.width())
-        target_size = np.minimum(max_side, max_container)
+        target_size = np.maximum(np.minimum(max_side, max_container), min_side)
+
         new_yseg = self.yseg.best_seg(target_size, minx=0, maxx=ymax)
         new_xseg = self.xseg.best_seg(target_size, minx=0, maxx=xmax)
         return BoxBatch(new_xseg, new_yseg)
@@ -197,6 +215,10 @@ class BoundingBoxBatch(BoxBatch):
         self.im_height : np.ndarray = np.array(im_height)
 
     @staticmethod
+    def from_boxbatch(bx, im_width, im_height):
+        return BoundingBoxBatch(bx.xseg, bx.yseg, im_width, im_height)
+
+    @staticmethod
     def from_dataframe(df, xyxy_columns=['x1', 'y1', 'x2', 'y2', 'im_height', 'im_width']) -> 'BoundingBoxBatch':
         std_xyxy = ['x1', 'y1', 'x2', 'y2', 'im_height', 'im_width']
         tdict= dict(zip(xyxy_columns, std_xyxy))
@@ -209,6 +231,9 @@ class BoundingBoxBatch(BoxBatch):
         df = super().to_dataframe()
         return df.assign(im_width=self.im_width, im_height=self.im_height)
 
+    def pad(self, padding):
+        bbx = super().pad(padding=padding, xmax=self.im_width, ymax=self.im_height)
+        return BoundingBoxBatch.from_boxbatch(bbx, self.im_width, self.im_height)
 
     def _repr_html_(self) -> str:
         df =  self.to_dataframe()
@@ -216,10 +241,9 @@ class BoundingBoxBatch(BoxBatch):
         styled = df.style.format({'shape':lambda shp: shp._repr_svg_()} , escape="html")
         return styled._repr_html_()
 
-    def best_square_box(self) -> 'BoundingBoxBatch':
-        bb = super().best_square_box(xmax=self.im_width, ymax=self.im_height)
-        return BoundingBoxBatch(bb.xseg, bb.yseg, self.im_width, self.im_height)
-
+    def best_square_box(self, min_side=0) -> 'BoundingBoxBatch':
+        bb = super().best_square_box(xmax=self.im_width, ymax=self.im_height, min_side=min_side)
+        return BoundingBoxBatch(bb.xseg, bb.yseg, self.im_width, self.im_height)        
 
 class BoxOverlay:
     ''' overlays box information on image.
