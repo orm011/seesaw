@@ -224,26 +224,41 @@ class BoundingBoxBatch(BoxBatch):
 class BoxOverlay:
     ''' overlays box information on image.
     '''
-    def __init__(self, x1, y1, x2, y2, im_width, im_height, im_url=None):
+    def __init__(self, x1, y1, x2, y2, im_width, im_height, im_url=None, max_display_size=None):
         box = shapely.geometry.box(x1, y1, x2, y2) 
         
         self.im_width = im_width
         self.im_height = im_height
+
+        if max_display_size is None:
+            self.scale_factor = 1.
+        else:
+            self.scale_factor = round(min(max(im_width, im_height), max_display_size)/max(im_width, im_height), 2)
         
         container = shapely.geometry.box(0, 0, im_width, im_height)
         self.shape = shapely.geometry.GeometryCollection([box, container.boundary])
         self.im_url = im_url
         
+    @staticmethod
+    def from_dfrow(dfrow, im_url=None, max_display_size=None):
+        return BoxOverlay(dfrow.x1, dfrow.y1, dfrow.x2, dfrow.y2, dfrow.im_width, 
+                            dfrow.im_height, im_url=im_url, max_display_size=max_display_size)
+    
     def _repr_html_(self):
         bxsvg = self.shape.svg()
-        image_str = f'<img src="{self.im_url}"/>' if self.im_url else ''
+
+        height = round(self.scale_factor*self.im_height)
+        width = round(self.scale_factor*self.im_width)
+
+
+        image_str = f'<img width="{width}" height="{height}" src="{self.im_url}"/>' if self.im_url else ''
         
         style_str = 'position:absolute;top:0;left:0' if self.im_url else '' # will show strangely in nb
         
         svg_str = f'''<svg style="{style_str}"
-                        width="{self.im_width}" height="{self.im_height}" 
-                        viewBox="0 0 {self.im_width} {self.im_height}">
-                            <g transform="matrix(1,0,0,1,0,0)">
+                        width="{width}" height="{height}" 
+                        viewBox="0 0 {width} {height}">
+                            <g transform="matrix({self.scale_factor:.02f},0,0,{self.scale_factor:.02f},0,0)">
                                 {bxsvg}
                             </g>
                     </svg>
