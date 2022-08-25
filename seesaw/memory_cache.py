@@ -121,14 +121,12 @@ class CacheStub:
 
         return obj
 
-    def read_parquet(self, path: str, columns=None):
+    def read_parquet(self, path: str, columns=None, ignore_metadata=True):
         def _init_fun():
-            ds = None
-            if columns is not None:
-                ds = ray.data.read_parquet(path, columns=columns)
-            else:
-                ds = ray.data.read_parquet(path)
-            df = pd.concat(ray.get(ds.to_pandas_refs()))
+            ds = ray.data.read_parquet(path, columns=columns)
+            tabs = ray.get(ds.to_arrow_refs())
+            dfs = [tab.to_pandas(ignore_metadata=ignore_metadata) for tab in tabs]
+            df = pd.concat(dfs, ignore_index=True)
             return df
 
         return self._with_lock(path, _init_fun)

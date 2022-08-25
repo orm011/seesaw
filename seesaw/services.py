@@ -12,8 +12,8 @@ def get_cache() -> CacheStub:
 g_cache = get_cache()
 
 
-def get_parquet(parquet_path: str, columns = None) -> pd.DataFrame:
-    return g_cache.read_parquet(parquet_path, columns)
+def get_parquet(parquet_path: str, columns = None, ignore_metadata=True) -> pd.DataFrame:
+    return g_cache.read_parquet(parquet_path, columns, ignore_metadata=ignore_metadata)
 
 
 def get_model_actor(model_path: str) -> ModelStub:

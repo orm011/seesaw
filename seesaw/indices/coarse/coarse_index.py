@@ -41,7 +41,7 @@ class CoarseIndex(AccessMethod):
         model_path = os.readlink(f"{index_path}/model")
         embedding = get_model_actor(model_path)
         vector_path = f"{index_path}/vectors"
-        coarse_df = pd.read_parquet(vector_path)
+        coarse_df = get_parquet(vector_path)
         assert coarse_df.dbidx.is_monotonic_increasing, "sanity check"
         embedded_dataset = coarse_df["vectors"].values.to_numpy()
         vector_meta = coarse_df.drop("vectors", axis=1)
