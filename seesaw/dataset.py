@@ -45,6 +45,8 @@ def prep_ground_truth(paths, box_data, qgt):
     assert len(paths) == qgt.shape[0], "every path should be in the ground truth"
     return box_data, qgt
 
+import ray.data
+from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 
 class SeesawDatasetManager:
     def __init__(self, dataset_path, cache=None):
@@ -62,6 +64,29 @@ class SeesawDatasetManager:
         return ExplicitPathDataset(
             root_dir=self.image_root, relative_path_list=self.paths
         )
+
+    def as_ray_dataset(ds, limit=None, parallelism=1000) -> ray.data.Dataset:
+        """ with schema {dbidx: int64, binary: object}
+        """
+        path_array = (ds.image_root + '/') + ds.paths
+        path_array = path_array[:limit]
+        read_paths = list(path_array)
+        
+        def tup_fixer(tup):
+            tup = tup[0]
+            path, binary = tup
+            dbidx = inv_paths[path]
+            return (dbidx, binary)
+
+        inv_paths = {p:dbidx for dbidx,p in enumerate(read_paths)}
+        
+        def fix_batch(batch):
+            return batch.apply(tup_fixer, axis=1, result_type='expand').rename({0:'dbidx', 1:'binary'}, axis=1)
+    
+        binaries = ray.data.read_binary_files(paths=read_paths, include_paths=True, 
+                    parallelism=parallelism, meta_provider=FastFileMetadataProvider())
+    
+        return binaries.lazy().map_batches(fix_batch, batch_format='pandas')
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.dataset_name})"
