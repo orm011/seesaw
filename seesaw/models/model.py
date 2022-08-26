@@ -54,8 +54,8 @@ class HGFaceWrapper(nn.Module):
         self.model = model
 
     def forward(self, images):
-        return self.model.get_image_features(images)
-
+        feats = self.model.get_image_features(images)
+        return F.normalize(feats, dim=1).type(feats.dtype)
 
 def huggingface_loader(variant):
     ## output must be extracted and then normalized
