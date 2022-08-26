@@ -64,6 +64,9 @@ class SeesawDatasetManager:
         return ExplicitPathDataset(
             root_dir=self.image_root, relative_path_list=self.paths
         )
+    
+    def get_url(self, dbidx, host='localhost.localdomain:10000'):
+        return f"http://{host}/{self.image_root}/{self.paths[dbidx]}"
 
     def as_ray_dataset(ds, limit=None, parallelism=1000) -> ray.data.Dataset:
         """ with schema {dbidx: int64, binary: object}
