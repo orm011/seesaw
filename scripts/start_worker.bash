@@ -5,8 +5,9 @@ TMPNAME=/state/partition1/user/$USER/raytmp/
 
 ## different nodes have differnt amounts available.
 ## leave some
-SHM_AVAILABLE=`df /dev/shm | grep -v Available | awk '{print $4}'`
-OBJ_MEM_BYTES=$(( $SHM_AVAILABLE - 10*1024 ))
+SHM_AVAILABLE_KB=`df /dev/shm | grep -v Available | awk '{print $4}'`
+OBJ_MEM_BYTES=$(( SHM_AVAILABLE_KB*1024 - 1024*1024  )) # for some reason I get very small numbers with this
+#OBJ_MEM_BYTES=$(( 50*1024*1024 )) 
 
 COMMON_ARGS="--temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES --num-cpus=$((2*SLURM_CPUS_ON_NODE))"
 
