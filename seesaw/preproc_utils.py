@@ -25,12 +25,16 @@ def decode_image_batch(input_col, output_col, drop=True):
 
 
 import ray
-def gt_patch_preprocessor(gt_ref):
+def gt_patch_preprocessor(gt_ref, padding, min_side=160):
     def fun(image_df):
-        gt_df = ray.get(gt_ref)
+        gt = ray.get(gt_ref)
+        gt.index = gt.index.rename('box_id')
+        gt = gt.reset_index()
+        gt_df = gt[['box_id', 'category', 'x1', 'y1', 'x2', 'y2', 'im_height', 'im_width', 'dbidx']]
+
         out_batch = pd.merge(image_df, gt_df, left_on='dbidx', right_on='dbidx')
         bbox = BoundingBoxBatch.from_dataframe(out_batch)
-        padded_bbox = bbox.pad(padding=20).best_square_box(min_side=160)
+        padded_bbox = bbox.pad(padding=padding).best_square_box(min_side=min_side)
 
         crops = []
         for box,im in zip(padded_bbox.to_xyxy(), out_batch.image.values):
@@ -51,7 +55,7 @@ import numpy as np
 import transformers
 
 class Processor:
-    def __init__(self, model_path, input_col, output_col, num_cpus=None):
+    def __init__(self, config, weight_ref, input_col, output_col, num_cpus=None):
         import ray
 
         print(
@@ -64,7 +68,12 @@ class Processor:
                 
         self.input_col = input_col
         self.output_col = output_col
-        self.model = HGFaceWrapper(transformers.CLIPModel.from_pretrained(model_path)).to(self.device)
+
+        mod = transformers.CLIPModel(config=config)
+        # weight_dict = ray.get(weight_ref)
+        mod.load_state_dict(weight_ref)
+
+        self.model = HGFaceWrapper(mod).to(self.device)
 
     def process_dataset(self, ds, part_id):
         dl = ds.window(blocks_per_window=20).map_batches(self.preproc_fun, batch_size=100)
@@ -96,7 +105,7 @@ class Processor:
         torch_batch = torch.stack(batch).to(self.device)
     
         ### could do some sync preproc here if want guaranteed locality at the cost of synchronous
-        with torch.no_grad():
+        with torch.inference_mode():
             # vecs = np.ones((batch_df.shape[0], 2))
             vecs = self.model(torch_batch).cpu().numpy().astype('single')
 
