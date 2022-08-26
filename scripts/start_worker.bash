@@ -2,11 +2,13 @@
 
 set -x # print to output 
 TMPNAME=/state/partition1/user/$USER/raytmp/
-OBJ_MEM_GB=64 # cpu work nodes have around 94, gpu nodes have 79  
-OBJ_MEM_BYTES=$(( $OBJ_MEM_GB*(2**30) ))
+
+## different nodes have differnt amounts available.
+## leave some
+SHM_AVAILABLE=`df /dev/shm | grep -v Available | awk '{print $4}'`
+OBJ_MEM_BYTES=$(( $SHM_AVAILABLE - 10*1024 ))
 
 COMMON_ARGS="--temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES --num-cpus=$((2*SLURM_CPUS_ON_NODE))"
-
 
 if [[ $1 == "--head" ]];
 then
