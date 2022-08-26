@@ -37,7 +37,8 @@ def gt_patch_preprocessor(gt_ref):
             crop = im.resize((224,244), box=tuple(box), resample=PIL.Image.Resampling.BILINEAR)
             crops.append(crop)
 
-        return out_batch.drop('image', axis=1).assign(crop=crops)
+        ## record the used box bounds
+        return out_batch.assign(**padded_bbox.to_dataframe(), crop=crops).drop('image', axis=1)
     
     return fun
 
