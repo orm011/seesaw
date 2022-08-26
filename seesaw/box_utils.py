@@ -1,4 +1,8 @@
 import numpy as np
+import shapely
+import shapely.geometry
+import pandas as pd
+import math
 
 class Segment:
     """represents a batch of line 1-D segments"""
@@ -70,6 +74,12 @@ class Segment:
         assert (padding >= 0).all()
 
         return Segment.from_midrad(self.mid(), self.rad() + padding).clip(minx, maxx)
+
+    def clip(self, minx, maxx) -> 'Segment':
+        minx = np.array(minx)
+        maxx = np.array(maxx)
+        return Segment.from_x1x2(x1=np.clip(self.x1(), minx, maxx), 
+                                x2=np.clip(self.x2(), minx, maxx))
     
     def best_seg(self, new_len, minx, maxx) -> 'Segment':
         """ forms a new segment `newseg` with following properties
@@ -93,7 +103,7 @@ class Segment:
         new_len = np.array(new_len)
 
         assert self.fits(minx, maxx)
-        assert (new_len <= (maxx - minx)).all()
+        new_len = np.minimum(new_len, maxx - minx)
         
         raw_seg = Segment.from_midrad(self.mid(), new_len/2.)
         left_excess = np.clip(minx - raw_seg.x1(), 0, None)
@@ -102,17 +112,12 @@ class Segment:
         assert (~((left_excess > 0) & (right_excess > 0))).all() # no excess could be both sides
         
         best_seg = Segment.from_midrad(mid=raw_seg.mid() + left_excess - right_excess, rad=raw_seg.rad())
-        return best_seg
-
-import pandas as pd
-# from IPython.display import HTML, SVG
-import shapely
+        return best_seg.clip(minx, maxx) # sometimes there are small excesses, get rid of them.
 
 def _as_polygons(df):
     df = df.assign(y1=-df.y1, y2=-df.y2) # reflect y-direction bc. svg 0,0 is bottom right
     return df[['x1', 'y1', 'x2', 'y2']].apply(lambda x : shapely.geometry.box(*tuple(x)), axis=1)
 
-import math
 
 class BoxBatch:
     """represents a batch of rectangular boxes within a w x h image"""
@@ -173,19 +178,17 @@ class BoxBatch:
                         yseg=self.yseg.pad(padding, 0, ymax))
 
     def best_square_box(self, xmax=math.inf, ymax=math.inf, min_side=0):
-        """ gets the square box that fits within bounds, overlaps as much as possible with box, 
-
+        """ gets the square box that fits within bounds, overlaps as much as possible with box,
             and is as near the center as possible"""
 
         xmax = np.array(xmax)
         ymax = np.array(ymax)
         min_side = np.array(min_side)
-        assert (min_side <= xmax).all()
-        assert (min_side <= ymax).all()
-
         max_container = np.minimum(xmax, ymax)
-        max_side = np.maximum(self.height(), self.width())
-        target_size = np.maximum(np.minimum(max_side, max_container), min_side)
+        box_side = np.maximum(self.height(), self.width())
+
+        target_size = np.maximum(np.minimum(box_side, max_container), 
+                                 np.minimum(min_side, max_container))
 
         new_yseg = self.yseg.best_seg(target_size, minx=0, maxx=ymax)
         new_xseg = self.xseg.best_seg(target_size, minx=0, maxx=xmax)

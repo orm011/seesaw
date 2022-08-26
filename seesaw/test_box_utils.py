@@ -37,3 +37,15 @@ def test_square_box():
     bbdf = BoundingBoxBatch.from_dataframe(test_df)
     sqbx = bbdf.best_square_box()
     assert np.isclose(sqbx.to_xyxy(),  soln_df[['x1', 'y1', 'x2', 'y2']].values).all()
+
+def test_square_box_min_size(): 
+    ''' test case where desired min size is too large for image (eg small images) '''
+    test_df, soln_df = get_test_cases()
+    bbdf = BoundingBoxBatch.from_dataframe(test_df)
+    sqbx = bbdf.best_square_box(min_side=2) # small side should have no effect on boxes already larger
+    assert np.isclose(sqbx.to_xyxy(),  soln_df[['x1', 'y1', 'x2', 'y2']].values).all()
+
+    sqbx_large = bbdf.best_square_box(min_side=1000) # very large min_side should work and make boxes be the minimum side
+    assert np.isclose(sqbx_large.width(), np.minimum(soln_df.im_width, soln_df.im_height)).all()
+    assert np.isclose(sqbx_large.height(), np.minimum(soln_df.im_width, soln_df.im_height)).all()
+
