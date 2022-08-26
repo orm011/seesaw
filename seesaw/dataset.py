@@ -65,25 +65,25 @@ class SeesawDatasetManager:
             root_dir=self.image_root, relative_path_list=self.paths
         )
     
-    def get_url(self, dbidx, host='localhost.localdomain:10000'):
+    def get_url(self, dbidx, host='localhost.localdomain:10000') -> str:
         return f"http://{host}/{self.image_root}/{self.paths[dbidx]}"
 
-    def as_ray_dataset(ds, limit=None, parallelism=1000) -> ray.data.Dataset:
+    def as_ray_dataset(ds, limit=None, parallelism=-1) -> ray.data.Dataset:
         """ with schema {dbidx: int64, binary: object}
         """
         path_array = (ds.image_root + '/') + ds.paths
         path_array = path_array[:limit]
         read_paths = list(path_array)
         
-        def tup_fixer(tup):
-            tup = tup[0]
-            path, binary = tup
-            dbidx = inv_paths[path]
-            return (dbidx, binary)
-
-        inv_paths = {p:dbidx for dbidx,p in enumerate(read_paths)}
-        
         def fix_batch(batch):
+            inv_paths = {p:dbidx for dbidx,p in enumerate(read_paths)}
+
+            def tup_fixer(tup):
+                tup = tup[0]
+                path, binary = tup
+                dbidx = inv_paths[path]
+                return (dbidx, binary)
+
             return batch.apply(tup_fixer, axis=1, result_type='expand').rename({0:'dbidx', 1:'binary'}, axis=1)
     
         binaries = ray.data.read_binary_files(paths=read_paths, include_paths=True, 
