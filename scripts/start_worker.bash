@@ -7,34 +7,43 @@ TMPNAME=/state/partition1/user/$USER/raytmp/
 ## leave some
 SHM_AVAILABLE_KB=`df /dev/shm | grep -v Available | awk '{print $4}'`
 OBJ_MEM_BYTES=$(( SHM_AVAILABLE_KB*1024 - 1024*1024  )) # for some reason I get very small numbers with this
-#OBJ_MEM_BYTES=$(( 50*1024*1024 )) 
 
 COMMON_ARGS="--temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES --num-cpus=$((2*SLURM_CPUS_ON_NODE))"
 
-if [[ $1 == "--head" ]];
+SIGFILE="$HOME/init_spc.head_node"
+
+if [[ $1 == "--head" ]]
 then
-    echo $HOSTNAME > $HOME/init_spc.head_node
     ray start $COMMON_ARGS --head
+
+    echo $HOSTNAME > $SIGFILE # signal change after done starting
 else 
-    HEAD_NODE=`cat $HOME/init_spc.head_node`
+    HEAD_NODE=`cat $SIGFILE`
+    PREV=
 
-    if [[ $USER == omoll ]]; # im using virtual env rather than default evnv.
-    then 
-        # copy environment first
-        rsync -rlugvR  $HEAD_NODE:/state/partition1/user/omoll/venvs/seesaw/ /
-    
-        set +x
-        source /state/partition1/user/omoll/venvs/seesaw/bin/activate
-        set -x
-    else
-        echo 'using default env'
-    fi
-
-    ## just a test that these things work in the current environment
-    python -c 'import torch; import ray; import transformers; import seesaw'
-    which python
-    which ray
-
-    ray start $COMMON_ARGS --address=$HEAD_NODE:6379 --redis-password=5241590000000000 
-    sleep infinity # script needs to keep running
+    while true
+    do
+        CURRENT=`stat -c '%y' $SIGFILE`
+        if [[ $PREV != $CURRENT ]]
+        then
+            echo 'file changed... restarting node'
+            PREV=$CURRENT
+            if [[ $USER == omoll ]]; # im using virtual env rather than default evnv.
+            then 
+                # copy environment first
+                rsync -rlugvR  $HEAD_NODE:/state/partition1/user/omoll/venvs/seesaw/ /
+        
+                set +x
+                source /state/partition1/user/omoll/venvs/seesaw/bin/activate
+                set -x
+            fi
+            ## just a test that these things work in the current environment
+            # python -c 'import torch; import ray; import transformers; import seesaw'
+            ray stop
+            ray start $COMMON_ARGS --address=$HEAD_NODE:6379 --redis-password=5241590000000000 
+        else
+            echo 'no change'
+        fi
+        sleep 5
+    done    
 fi
