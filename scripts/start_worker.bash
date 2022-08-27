@@ -40,7 +40,7 @@ else
             ## just a test that these things work in the current environment
             # python -c 'import torch; import ray; import transformers; import seesaw'
             ray stop
-            ray start $COMMON_ARGS --address=$HEAD_NODE:6379 --redis-password=5241590000000000
+            ray start $COMMON_ARGS --address=$HEAD_NODE:6379
         else
             echo 'no change'
         fi
