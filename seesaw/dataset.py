@@ -48,6 +48,21 @@ def prep_ground_truth(paths, box_data, qgt):
 import ray.data
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 
+def get_default_qgt(dataset, box_data):
+    """ """
+    import scipy.sparse
+    row_ind = box_data.dbidx.values
+    col_ind = box_data.category.values.codes
+    values = np.ones_like(row_ind)
+
+    height = dataset.file_meta.shape[0]
+    width =  box_data.category.dtype.categories.shape[0]
+    mat = scipy.sparse.csc_matrix((values, (row_ind, col_ind)),  shape = (height, width))
+    
+    qgt = pd.DataFrame.sparse.from_spmatrix(mat, index=dataset.file_meta.index.values, columns=box_data.category.dtype.categories)
+    return qgt
+
+
 class SeesawDatasetManager:
     def __init__(self, dataset_path, cache=None):
         """Assumes layout created by create_dataset"""
@@ -116,15 +131,22 @@ class SeesawDatasetManager:
         return json.load(open(f"{self.dataset_root}/ground_truth/categories.json"))
 
     def load_ground_truth(self):
-        print(self.dataset_root)
         assert os.path.exists(f"{self.dataset_root}/ground_truth")
-        qgt = self.cache.read_parquet(f"{self.dataset_root}/ground_truth/qgt.parquet")
+            
         box_data = self.cache.read_parquet(
             f"{self.dataset_root}/ground_truth/box_data.parquet"
         )
-        box_data, qgt = prep_ground_truth(self.paths, box_data, qgt)
-        return box_data, qgt
 
+        qgt_path = f"{self.dataset_root}/ground_truth/qgt.parquet"
+        if os.path.exists(qgt_path):
+            qgt = self.cache.read_parquet(qgt_path)
+            box_data, qgt = prep_ground_truth(self.paths, box_data, qgt)
+            return box_data, qgt
+        else: ## note: this will be wrong for subsets. TODO fix this.
+            return box_data, get_default_qgt(self, box_data)
+
+    ## TODO: add subset method that takes care of ground truth, and URLS, and that 
+    ### can be used by indices over the subset?
 
 def create_dataset(image_src, output_path, paths=[]) -> SeesawDatasetManager:
     """
