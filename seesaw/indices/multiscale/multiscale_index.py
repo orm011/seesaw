@@ -271,10 +271,6 @@ def augment_score(db, tup, qvec):
 import torchvision.ops
 
 from ...box_utils import box_iou
-    if not return_containment:
-        return ious
-    else:
-        return ious, containment1
 
 def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method, aug_larger):
     assert callable(rescore_method)
