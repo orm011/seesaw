@@ -30,10 +30,10 @@ _clean_function = {
     "objectnet": clean_objectnet_name,
     "lvis": clean_lvis_name,
     "dota": clean_dota_name,
+    'lvispatch' : clean_lvis_name,
 }
 
 _special_cases = {
-    "objectnet": {},
     "bdd": {
         "motor": "motorcycle",
         "rider": "bike rider",
@@ -49,13 +49,11 @@ _special_cases = {
         "foggy weather": "foggy weather",
     },
     "coco": {"mouse": "computer mouse"},
-    "dota": {},
-    "lvis": {},
 }
 
 
 def category2query(dataset, cat):
-    if cat in _special_cases[dataset]:
+    if cat in _special_cases.get(dataset, {}):
         return _special_cases[dataset][cat]
     else:
         clnfn = _clean_function.get(dataset, lambda x: x)
