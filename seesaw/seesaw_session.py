@@ -30,7 +30,7 @@ from .util import *
 from .pairwise_rank_loss import VecState
 from .query_interface import *
 from .textual_feedback_box import OnlineModel, join_vecs2annotations
-from .research.knn_methods import SimpleKNNRanker, load_knn_df
+from .research.knn_methods import SimpleKNNRanker
 
 @dataclass
 class LoopState:
@@ -64,8 +64,8 @@ class SeesawLoop:
             )
             s.model = OnlineModel(param_dict, p.method_config)
         elif p.interactive == 'knn_greedy':
-            knn_df = self.q.index.get_knn_df()
-            s.knn_model = SimpleKNNRanker(knn_df, init_scores=None)
+            knng = self.q.index.get_knng()
+            s.knn_model = SimpleKNNRanker(knng, init_scores=None)
 
         lp = {
             "n_images": None,

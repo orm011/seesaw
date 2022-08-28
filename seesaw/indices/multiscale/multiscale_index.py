@@ -457,10 +457,10 @@ class MultiscaleIndex(AccessMethod):
             path = index_path
         )
 
-    def get_knn_df(self):
-        from ...research.knn_methods import load_knn_df
-        df = load_knn_df(self.path)
-        return df
+    def get_knng(self):
+        from ...research.knn_methods import KNNGraph
+        knng = KNNGraph.from_file(f'{self.path}/knn_graph')
+        return knng
 
     def string2vec(self, string: str):
         init_vec = self.embedding.from_string(string=string)
