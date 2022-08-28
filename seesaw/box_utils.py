@@ -52,7 +52,19 @@ class Segment:
         newx1 = np.clip(self.x1(), minx, None)
         newx2 = np.clip(self.x2(), None, maxx)
         return Segment.from_x1x2(x1=newx1, x2=newx2)
-        
+
+    def intersection(self, other : 'Segment') -> 'Segment':
+        ## elementwise
+        assert self.num_segments() == other.num_segments()
+        x1tmp = np.maximum(self.x1(), other.x1())
+        x2tmp = np.minimum(self.x2(), other.x2())
+
+        x1 = np.clip(x1tmp, x1tmp, x2tmp) # make x1 <= x2
+        return Segment.from_x1x2(x1=x1, x2=x2tmp)
+
+    def num_segments(self) -> int:
+        return self.middle.shape[0]
+
     def fits(self, minx=None, maxx=None):
         if minx is not None:
             c1 = self.x1() >= minx
@@ -66,7 +78,8 @@ class Segment:
         
         return (c1 & c2).all()
         
-    def length(self):
+    def length(self) -> np.ndarray: 
+        """ length of each segment """
         return 2*self.rad()
 
     def pad(self, padding, minx, maxx):
@@ -172,8 +185,16 @@ class BoxBatch:
     
     def width(self):
         return self.xseg.length()
+
+    def area(self):
+        return self.height() * self.width()
+
+    def intersection(self, other : 'BoxBatch') -> 'BoxBatch':
+        return BoxBatch(xseg=self.xseg.intersection(other.xseg),
+                        yseg=self.yseg.intersection(other.yseg))
+
     
-    def pad(self, padding, xmax, ymax):
+    def pad(self, padding, xmax, ymax) -> 'BoxBatch':
         return BoxBatch(xseg=self.xseg.pad(padding, 0, xmax), 
                         yseg=self.yseg.pad(padding, 0, ymax))
 

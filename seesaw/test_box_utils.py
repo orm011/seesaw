@@ -1,4 +1,4 @@
-from .box_utils import BoundingBoxBatch
+from .box_utils import BoundingBoxBatch, Segment
 import pandas as pd
 import numpy as np
 
@@ -49,3 +49,24 @@ def test_square_box_min_size():
     assert np.isclose(sqbx_large.width(), np.minimum(soln_df.im_width, soln_df.im_height)).all()
     assert np.isclose(sqbx_large.height(), np.minimum(soln_df.im_width, soln_df.im_height)).all()
 
+def test_segment_intersect():
+    base_cases = [ # a , b, intersection, disjoint
+        [(0, 10), (5, 15), (5, 10), False], # partial
+        [(0, 20), (5, 15), (5, 15), False], # contained
+        [(0, 5), (10, 15), (0, 0), True], # disjoint, limit values do not matter
+    ]
+
+    flipped_cases = [ (b,a, c,d) for (a,b,c,d) in base_cases]
+
+    test_cases = base_cases + flipped_cases
+
+    segsA = Segment.from_x1x2(x1x2=np.array([ a for (a,_,_,_) in test_cases]))
+    segsB = Segment.from_x1x2(x1x2=np.array([ b for (_,b,_,_) in test_cases]))
+    expected = Segment.from_x1x2(x1x2=np.array([ c for (_,_,c, _) in test_cases]))
+    is_disjoint = np.array([c for (_,_,_,c) in test_cases])
+    intersect = segsA.intersection(segsB)
+
+    zeros = np.isclose(intersect.length(), 0) 
+    assert (zeros == is_disjoint).all()
+
+    assert (intersect.to_x1x2()[~is_disjoint] == expected.to_x1x2()[~is_disjoint]).all()

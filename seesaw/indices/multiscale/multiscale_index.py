@@ -285,12 +285,12 @@ def box_iou(df1, df2, return_containment=False):
     b1_area = torchvision.ops.boxes.box_area(b1).reshape(-1, 1) # one per box
 
     ious = (inter/union).numpy()
-    containment = (inter / b1_area).numpy() # debug orig_area
+    containment1 = (inter / b1_area).numpy() # debug orig_area
     
     if not return_containment:
         return ious
     else:
-        return ious, containment
+        return ious, containment1
 
 def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method, aug_larger):
     assert callable(rescore_method)
