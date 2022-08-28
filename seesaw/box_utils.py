@@ -319,3 +319,70 @@ class BoxOverlay:
                     '''
         
         return overlay
+
+
+### some older methods we may want to fold above
+def df2tensor(df1):
+    import torch
+    b1 = torch.from_numpy(
+            np.stack([df1.x1.values, df1.y1.values, df1.x2.values, df1.y2.values], axis=1)
+    )
+    return b1
+
+def box_iou(df1, df2, return_containment=False):
+    import torchvision.ops
+    b1 = df2tensor(df1)
+    b2 = df2tensor(df2)
+
+    inter, union = torchvision.ops.boxes._box_inter_union(b1, b2)
+    b1_area = torchvision.ops.boxes.box_area(b1).reshape(-1, 1) # one per box
+
+    ious = (inter/union).numpy()
+    containment1 = (inter / b1_area).numpy() # debug orig_area
+    
+    if not return_containment:
+        return ious
+    else:
+        return ious, containment1
+
+def iou_df(df1, df2):
+    ious, cont  = box_iou(df1, df2, return_containment=True)
+    iis,jjs = np.meshgrid(np.arange(df1.shape[0]), np.arange(df2.shape[0]), indexing='ij')
+    return pd.DataFrame({'df1_iloc':iis.reshape(-1),
+                         'df2_iloc':jjs.reshape(-1),
+                         'iou':ious.reshape(-1),
+                         'cont':cont.reshape(-1)})
+
+
+def join_labels_single_frame(boxdf, labeldf, min_gt_contained):
+    """ assigns labels from labeldf boxes to boxes in boxdf 
+        based on whether the label box is substantially contained within the box.
+        assumes all boxes and labels are for the same image
+    """
+    boxdf = boxdf[['box_id', 'x1', 'y1', 'x2', 'y2']]
+    labeldf = labeldf[['category', 'box_id', 'x1', 'y1', 'x2', 'y2']]
+    
+    ious = iou_df(labeldf, boxdf)
+    ious = ious.query('cont > @min_gt_contained')
+    labeldf = labeldf.assign(df1_iloc=np.arange(labeldf.shape[0]))
+    boxdf = boxdf.assign(df2_iloc=np.arange(boxdf.shape[0]))
+
+    mg1 = labeldf.merge(ious, on='df1_iloc')
+    mg2 = mg1.merge(boxdf[['box_id', 'df2_iloc']], on='df2_iloc', suffixes=['', '_square'])
+    mg2 = mg2.drop(['df1_iloc', 'df2_iloc'], axis=1)
+    
+    return mg2
+
+def join_labels(boxdf, labeldf, min_gt_contained, sample_size=1):
+    from tqdm.auto import tqdm
+    gts = []
+    boxgrps = boxdf.groupby('dbidx')
+    for dbidx, gtgrp in tqdm(labeldf.groupby('dbidx')):
+        boxgrp = boxgrps.get_group(dbidx)
+        repbox = boxgrp.sample(n=sample_size)
+        ngt = join_labels_single_frame(repbox, gtgrp, 
+                                min_gt_contained=min_gt_contained)
+        gts.append(ngt.assign(dbidx_square=dbidx))
+        
+    all_labels= pd.concat(gts, ignore_index=True)
+    return all_labels
