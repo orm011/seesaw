@@ -270,23 +270,7 @@ def augment_score(db, tup, qvec):
 
 import torchvision.ops
 
-# torchvision.ops.box_iou()
-def df2tensor(df1):
-    b1 = torch.from_numpy(
-            np.stack([df1.x1.values, df1.y1.values, df1.x2.values, df1.y2.values], axis=1)
-    )
-    return b1
-
-def box_iou(df1, df2, return_containment=False):
-    b1 = df2tensor(df1)
-    b2 = df2tensor(df2)
-
-    inter, union = torchvision.ops.boxes._box_inter_union(b1, b2)
-    b1_area = torchvision.ops.boxes.box_area(b1).reshape(-1, 1) # one per box
-
-    ious = (inter/union).numpy()
-    containment1 = (inter / b1_area).numpy() # debug orig_area
-    
+from ...box_utils import box_iou
     if not return_containment:
         return ious
     else:
