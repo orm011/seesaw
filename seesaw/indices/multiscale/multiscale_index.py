@@ -389,6 +389,7 @@ def filter_mask(meta, min_level_inclusive):
     mask = is_max | is_larger
     return mask.values
 
+import json
 
 class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup"""
@@ -425,7 +426,8 @@ class MultiscaleIndex(AccessMethod):
         from ...services import get_parquet, get_model_actor
 
         index_path = resolve_path(index_path)
-        model_path = os.readlink(f"{index_path}/model")
+        options = json.load(open(f'{index_path}/info.json'))
+        model_path = options['model'] #os.readlink(f"{index_path}/model")
         embedding = get_model_actor(model_path)
         cached_meta_path = f"{index_path}/vectors.sorted.cached"
         fullpath = f"{index_path}/vectors.annoy"
@@ -440,10 +442,10 @@ class MultiscaleIndex(AccessMethod):
 
         assert os.path.exists(cached_meta_path)
         df: pd.DataFrame = get_parquet(cached_meta_path)
-        assert df["order_col"].is_monotonic_increasing, "sanity check"
+        # assert df["order_col"].is_monotonic_increasing, "sanity check"
 
         fine_grained_meta = df[
-            ["dbidx", "order_col", "zoom_level", "x1", "y1", "x2", "y2"]
+            ["dbidx", "zoom_level", "x1", "y1", "x2", "y2"]
         ]
         fine_grained_embedding = df["vectors"].values.to_numpy()
 
