@@ -498,7 +498,9 @@ def make_session(gdm: GlobalDataManager, p: SessionParams):
     if p.index_spec.c_name is not None:
         print("prepping  data....")
         box_data, subset, positive = prep_data(ds, p)
-        assert len(positive) != 0
+        if len(positive) != 0:
+            print('warning: no positive elements in this benchmark')
+
         hdb = hdb.subset(subset)
 
     print("about to construct session...")

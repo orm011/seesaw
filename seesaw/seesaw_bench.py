@@ -238,7 +238,6 @@ def benchmark_loop(
 
     if b.max_results is not None:
         max_results = min(len(positives), b.max_results)
-        assert max_results > 0
     else:
         max_results = len(positives)
 
