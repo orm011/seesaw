@@ -54,7 +54,6 @@ class InteractiveQuery(object):
             pr.BitMap()
         )  # images returned from index (not necessarily seen yet)
         self.label_db = LabelDB()
-        self.startk = 0
 
     def query_stateful(self, *args, **kwargs):
         """
@@ -67,16 +66,14 @@ class InteractiveQuery(object):
         del kwargs["batch_size"]
 
         res = self.index.query(
-            *args, topk=batch_size, **kwargs, exclude=self.returned, startk=self.startk
+            *args, topk=batch_size, **kwargs, exclude=self.returned
         )
+        
         if 'excluded_dbidxs' in res.keys(): 
             self.returned.update(res['excluded_dbidxs'])
             del res['excluded_dbidxs']
         else: 
             self.returned.update(res["dbidxs"])
-        # assert nextstartk >= self.startk nor really true: if vector changes a lot,
-        self.startk = res["nextstartk"]
-        del res["nextstartk"]
         return res
 
     def getXy(self):
