@@ -317,6 +317,7 @@ def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method, aug_large
         assert False, f"unknown agg_method {agg_method}"
 
 
+
 def get_boxes(vec_meta):
     if "x1" in vec_meta.columns:
         return vec_meta[["x1", "x2", "y1", "y2"]]
@@ -390,6 +391,65 @@ def filter_mask(meta, min_level_inclusive):
     return mask.values
 
 import json
+
+def score_frame(*, frame_meta, agg_method, rescore_method, aug_larger):
+    topscore = frame_meta.score.max()
+    tup = frame_meta[frame_meta.score == topscore]
+    score = augment_score2(tup, frame_meta, vecs=frame_meta.vectors.to_numpy(), 
+                               agg_method=agg_method, rescore_method=rescore_method, aug_larger=aug_larger)
+
+    return tup.assign(score=score)
+
+
+
+def _get_top_approx(vector, *, vector_meta, vec_index, exclude, topk):
+    i = 0
+    deltak = topk * 10
+    while True:
+        if i > 1:
+            print("warning, we are looping too much. adjust initial params?")
+
+        vec_idxs, vec_scores = vec_index.query(vector, top_k=deltak)
+        found_idxs = pr.BitMap(vector_meta['dbidx'].values[vec_idxs])
+        newidxs = found_idxs.difference(exclude)
+        if len(newidxs) >= topk:
+            break
+        else:
+            deltak = deltak * 2
+            i += 1
+
+    return vec_idxs, vec_scores
+
+def _get_top_exact(vector, *, vectors):
+    scores = vectors @ vector.reshape(-1)
+    vec_idxs = np.argsort(-scores)
+    vec_scores = scores[vec_idxs]
+
+    return vec_idxs, vec_scores
+
+def distinct_topk_positions(dbidxs, topk): 
+    """returns the position of the topk distinct dbidxs within the array."""
+    _, index = np.unique(dbidxs, return_index=True)
+    return np.sort(index)[:topk]
+
+def test_distinct_topk_positions():
+    ex_dbidx = np.array([10,11,11,12,12,12,13,13])
+    expect = np.array([0,1,3,6])
+    k = 2
+    ans = distinct_topk_positions(ex_dbidx, k)
+    assert (ans == expect[:k]).all()
+
+def _get_top_dbidxs(*, vec_idxs, scores, vector_meta, exclude, topk):
+    """ return the topk non-excluded dbidxs 
+    """
+    dbidx = vector_meta.dbidx.iloc[vec_idxs]
+    mask = (~dbidx.isin(exclude)).values
+    new_dbidx = dbidx[mask].values
+    new_scores = scores[mask]
+
+    pos = distinct_topk_positions(new_dbidx, topk=topk)
+    df = pd.DataFrame({'dbidx':new_dbidx[pos], 'max_score':new_scores[pos]})    
+    return df
 
 class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup"""
@@ -473,73 +533,29 @@ class MultiscaleIndex(AccessMethod):
     def __len__(self):
         return len(self.all_indices)
 
-    def _query_prelim(self, *, vector, topk, zoom_level, exclude=None, startk=None):
-        if exclude is None:
-            exclude = pr.BitMap([])
 
-        included_dbidx = pr.BitMap(self.all_indices).difference(exclude)
-        vec_meta = self.vector_meta
+    def _query_prelim(self, *, vector, topk_dbidx, exclude_dbidx=None, force_exact=False):
+        if exclude_dbidx is None:
+            exclude_dbidx = pr.BitMap([])
 
-        if len(included_dbidx) == 0:
+        included_dbidx = pr.BitMap(self.all_indices).difference(exclude_dbidx)
+        
+        if len(included_dbidx) <= topk_dbidx:
+            topk_dbidx = len(included_dbidx)
+
+        if topk_dbidx == 0:
             print("no dbidx included")
             return [], [], []
 
-        if len(included_dbidx) <= topk:
-            topk = len(included_dbidx)
-
-        ## want to return proposals only for images we have not seen yet...
-        ## but library does not allow this...
-        ## guess how much we need... and check
-        def get_nns(startk, topk):
-            i = 0
-            deltak = topk * 100
-            while True:
-                if i > 1:
-                    print("warning, we are looping too much. adjust initial params?")
-
-                vec_idxs, scores = self.vec_index.query(vector, top_k=startk + deltak)
-                found_idxs = pr.BitMap(vec_meta.dbidx.values[vec_idxs])
-
-                newidxs = found_idxs.difference(exclude)
-                if len(newidxs) >= topk:
-                    break
-
-                deltak = deltak * 2
-                i += 1
-
-            return vec_idxs, scores
-
-        def get_nns_by_vector_exact():
-            scores = self.vectors @ vector.reshape(-1)
-            vec_idxs = np.argsort(-scores)
-            return vec_idxs, scores[vec_idxs]
-
-        if self.vec_index is not None:
-            idxs, scores = get_nns(startk, topk)
+        if self.vec_index is None or force_exact:
+            vec_idxs, vec_scores = _get_top_exact(vector, vectors=self.vectors)
         else:
-            idxs, scores = get_nns_by_vector_exact()
+            vec_idxs, vec_scores = _get_top_approx(vector, vector_meta=self.vector_meta, 
+                                    vec_index=self.vec_index, exclude=exclude_dbidx, topk=topk_dbidx)
 
-        # work only with the two columns here bc dataframe can be large
-        topscores = vec_meta[["dbidx"]].iloc[idxs]
-        topscores = topscores.assign(score=scores)
-        allscores = topscores
-
-        newtopscores = topscores[~topscores.dbidx.isin(exclude)]
-        scoresbydbidx = (
-            newtopscores.groupby("dbidx").score.max().sort_values(ascending=False)
-        )
-        score_cutoff = scoresbydbidx.iloc[topk - 1]  # kth largest score
-        newtopscores = newtopscores[newtopscores.score >= score_cutoff]
-
-        # newtopscores = newtopscores.sort_values(ascending=False)
-        nextstartk = (allscores.score >= score_cutoff).sum()
-        nextstartk = math.ceil(
-            startk * 0.8 + nextstartk * 0.2
-        )  # average to estimate next
-        candidates = pr.BitMap(newtopscores.dbidx)
-        assert len(candidates) >= topk
-        assert candidates.intersection_cardinality(exclude) == 0
-        return newtopscores.index.values, candidates, allscores, nextstartk
+        dbidxs = _get_top_dbidxs(vec_idxs=vec_idxs, scores=vec_scores, vector_meta=self.vector_meta, 
+                                exclude=exclude_dbidx, topk=topk_dbidx)
+        return dbidxs
 
     def query(
         self,
@@ -551,7 +567,7 @@ class MultiscaleIndex(AccessMethod):
         rescore_method,
         aug_larger,
         exclude=None,
-        startk=None,
+        force_exact=False,
         **kwargs,
     ):
         if shortlist_size is None:
@@ -562,62 +578,45 @@ class MultiscaleIndex(AccessMethod):
                 f"Warning: shortlist_size parameter {shortlist_size} is small compared to topk param {topk}, you may consider increasing it"
             )
 
-        if startk is None:
-            if exclude is not None:
-                startk = len(exclude) * 10
-            else:
-                startk = 0
-
-        db = self
         qvec = vector
-        meta_idx, candidate_id, allscores, nextstartk = self._query_prelim(
+        candidate_df = self._query_prelim(
             vector=qvec,
-            topk=shortlist_size,
-            zoom_level=None,
-            exclude=exclude,
-            startk=startk,
+            topk_dbidx=shortlist_size,
+            exclude_dbidx=exclude,
+            force_exact = force_exact
         )
 
-        fullmeta = self.vector_meta[self.vector_meta.dbidx.isin(candidate_id)]
-        fullmeta = fullmeta.assign(**get_boxes(fullmeta))
 
-        scmeta = self.vector_meta.iloc[meta_idx]
-        scmeta = scmeta.assign(**get_boxes(scmeta), score=db.vectors[meta_idx] @ qvec.reshape(-1))
+        candidate_id = pr.BitMap(candidate_df['dbidx'].values)
+        ilocs = np.where(self.vector_meta.dbidx.isin(candidate_id))[0]
+        fullmeta : pd.DataFrame = self.vector_meta.iloc[ilocs]
+        vectors = self.vectors[ilocs]
+        scores = vectors @ qvec.reshape(-1)
+        fullmeta = fullmeta.assign(score=scores, vectors=TensorArray(vectors))
+
+        
         nframes = len(candidate_id)
         dbidxs = np.zeros(nframes) * -1
         dbscores = np.zeros(nframes)
         activations = []
 
         ## for each frame, compute augmented scores for each tile and record max
-        for i, (dbidx, frame_vec_meta) in enumerate(scmeta.groupby("dbidx")):
+        for i, (dbidx, frame_meta) in enumerate(fullmeta.groupby("dbidx")):
             dbidxs[i] = dbidx
-            relmeta = fullmeta[
-                fullmeta.dbidx == dbidx
-            ]  # get metadata for all boxes in frame.
-            relvecs = db.vectors[relmeta.index.values]
-            boxscs = np.zeros(frame_vec_meta.shape[0])
-            for j in range(frame_vec_meta.shape[0]):
-                tup = frame_vec_meta.iloc[j : j + 1]
-                boxscs[j] = augment_score2(
-                    tup,
-                    relmeta,
-                    relvecs,
-                    agg_method=agg_method,
-                    rescore_method=rescore_method,
-                    aug_larger=aug_larger,
-                )
+            tup = score_frame(frame_meta=frame_meta, agg_method=agg_method, 
+                rescore_method=rescore_method, aug_larger=aug_larger)
 
-            frame_activations = frame_vec_meta.assign(score=boxscs)[
+            frame_activations = tup[
                 ["x1", "y1", "x2", "y2", "dbidx", "score"]
             ]
+
+            dbscores[i] = tup.score.iloc[0]
             activations.append(frame_activations)
-            dbscores[i] = np.max(boxscs)
 
         topkidx = np.argsort(-dbscores)[:topk]
         return {
             "dbidxs": dbidxs[topkidx].astype("int"),
-            "nextstartk": nextstartk,
-            "activations": None
+            "activations": activations
         }
 
     def new_query(self):
