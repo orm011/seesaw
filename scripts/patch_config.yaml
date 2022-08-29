@@ -1,0 +1,31 @@
+datasets:
+  # - bdd
+  # - lvis
+  # - coco
+  - lvispatch
+shared_session_params: # see SessionParams
+  batch_size: 1
+  shortlist_size: 50
+shared_bench_params: # see BenchParams
+  max_feedback: null
+  box_drop_prob: 0. 
+  max_results: 10 # max positive results
+  n_batches : 30 # max batches
+  provide_textual_feedback: False
+  query_template : "a {}"
+variants:
+    # - name: seesaw_all
+    #   interactive: pytorch
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: greater
+    # - name: seesaw_knn
+    #   interactive: knn_greedy
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: greater
+    - name: baseline
+      interactive: plain
+      index_name: multiscale
+      agg_method: avg_score
+      aug_larger: greater

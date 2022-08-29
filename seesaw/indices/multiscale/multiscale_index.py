@@ -617,7 +617,7 @@ class MultiscaleIndex(AccessMethod):
         return {
             "dbidxs": dbidxs[topkidx].astype("int"),
             "nextstartk": nextstartk,
-            "activations": [activations[idx] for idx in topkidx],
+            "activations": None
         }
 
     def new_query(self):
