@@ -43,16 +43,17 @@ class KNNGraph:
         self.ind_ptr = get_rev_lookup_ranges(rev_df, self.nvecs)
 
     @staticmethod
-    def from_vectors(vectors, n):
-        index2 = pynndescent.NNDescent(vectors, n_neighbors=n+1, metric='dot', n_jobs=-1)
+    def from_vectors(vectors, n_neighbors):
+        """ returns a graph and also the index """
+        index2 = pynndescent.NNDescent(vectors, n_neighbors=n_neighbors+1, metric='dot', n_jobs=-1, low_memory=False)
         positions, distances = index2.neighbor_graph
         identity = (positions == np.arange(positions.shape[0]).reshape(-1,1))
         any_identity = identity.sum(axis=1) > 0
         exclude = identity
         exclude[~any_identity, -1] = 1 # if there is no identity in the top k+1, exclude the k+1
         assert (exclude.sum(axis=1) == 1).all()
-        positions1 = positions[~exclude].reshape(-1,n   )
-        distances1 = distances[~exclude].reshape(-1,n)
+        positions1 = positions[~exclude].reshape(-1,n_neighbors   )
+        distances1 = distances[~exclude].reshape(-1,n_neighbors)
 
         nvec, nneigh = positions1.shape
         iis, jjs = np.meshgrid(np.arange(nvec), np.arange(nneigh), indexing='ij')
@@ -62,7 +63,7 @@ class KNNGraph:
                                 'distance':distances1.reshape(-1),
                                 'dst_rank':jjs.reshape(-1)})
         
-        return KNNGraph(knn_df)
+        return KNNGraph(knn_df), index2
                 
     def save(self, path, overwrite=False):
         import ray.data

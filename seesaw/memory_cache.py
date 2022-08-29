@@ -63,42 +63,8 @@ import time
 import copy
 import json
 import numpy as np
-import ray.data
-import ray.data.extensions
+from .util import parallel_read_parquet
 
-def _get_fixed_metadata(schema):
-    new_meta = copy.deepcopy(schema.metadata)
-    new_pandas = json.loads(new_meta[b'pandas'].decode())
-    column_info = new_pandas['columns']
-
-    for i,field in enumerate(schema):
-        typ = field.type
-
-        if (isinstance(typ,ray.data.extensions.ArrowTensorType) and 
-                column_info[i]['numpy_type'] == 'TensorDtype'): # old style metadata format
-
-                pd_dtype = typ.to_pandas_dtype()
-                typestr = str(np.dtype(pd_dtype._dtype))
-
-                # new style format
-                column_info[i]['numpy_type'] = f'TensorDtype(shape={pd_dtype._shape}, dtype={typestr})'
-
-    new_meta[b'pandas'] = json.dumps(new_pandas).encode()
-    return new_meta
-
-
-def _read_parquet(path, columns=None) -> pd.DataFrame:
-    """uncached version"""
-    ds = ray.data.read_parquet(path, columns=columns)
-    tabs = ray.get(ds.to_arrow_refs())
-
-    if len(tabs) > 0:
-        fixed_meta = _get_fixed_metadata(tabs[0].schema) # 
-        tabs = [tab.replace_schema_metadata(fixed_meta) for tab in tabs]
-
-    dfs = [tab.to_pandas() for tab in tabs]
-    df = pd.concat(dfs)
-    return df
 
 class CacheStub:
     handle: ray.actor.ActorHandle
@@ -161,7 +127,7 @@ class CacheStub:
 
     def read_parquet(self, path: str, columns=None):
         def _init_fun():
-            return _read_parquet(path, columns)
+            return parallel_read_parquet(path, columns)
 
         return self._with_lock(path, _init_fun)
 

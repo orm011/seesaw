@@ -6,6 +6,48 @@ import logging
 import pandas as pd
 import pyarrow as pa
 
+import copy
+import json
+import numpy as np
+
+def _get_fixed_metadata(schema):
+    import ray.data
+    import ray.data.extensions
+
+    new_meta = copy.deepcopy(schema.metadata)
+    new_pandas = json.loads(new_meta[b'pandas'].decode())
+    column_info = new_pandas['columns']
+
+    for i,field in enumerate(schema):
+        typ = field.type
+
+        if (isinstance(typ,ray.data.extensions.ArrowTensorType) and 
+                column_info[i]['numpy_type'] == 'TensorDtype'): # old style metadata format
+
+                pd_dtype = typ.to_pandas_dtype()
+                typestr = str(np.dtype(pd_dtype._dtype))
+
+                # new style format
+                column_info[i]['numpy_type'] = f'TensorDtype(shape={pd_dtype._shape}, dtype={typestr})'
+
+    new_meta[b'pandas'] = json.dumps(new_pandas).encode()
+    return new_meta
+
+def parallel_read_parquet(path, columns=None) -> pd.DataFrame:
+    import ray.data
+    """uncached version"""
+    ds = ray.data.read_parquet(path, columns=columns)
+    tabs = ray.get(ds.to_arrow_refs())
+
+    if len(tabs) > 0:
+        fixed_meta = _get_fixed_metadata(tabs[0].schema) # 
+        tabs = [tab.replace_schema_metadata(fixed_meta) for tab in tabs]
+
+    dfs = [tab.to_pandas() for tab in tabs]
+    df = pd.concat(dfs)
+    return df
+
+
 def as_batch_function(fun):
     def bfun(batch):
         res = []
