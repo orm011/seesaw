@@ -55,7 +55,7 @@ class IndexSpec(BaseModel):
 
 class MultiscaleParams: #TODO switch session params
     aug_larger: Literal['greater', 'all'] = 'all'
-    agg_method: Literal["avg_score", 'avg_vector'] = 'avg_score'
+    agg_method: Literal["avg_score", 'avg_vector', 'plain_score'] = 'avg_score'
     shortlist_size: int
 
 class SessionParams(BaseModel):
@@ -63,7 +63,7 @@ class SessionParams(BaseModel):
     interactive: Literal['pytorch', 'plain', 'knn_greedy', 'textual']
     batch_size: int
     aug_larger: Literal['greater', 'all'] = 'all'
-    agg_method: Optional[Literal["avg_score", 'avg_vector']] = 'avg_score'
+    agg_method: Optional[Literal["avg_score", 'avg_vector', 'plain_score']] = 'avg_score'
     shortlist_size: Optional[int]
     method_config: Optional[dict] 
     image_vector_strategy: Optional[Literal[ "matched", 'computed']]

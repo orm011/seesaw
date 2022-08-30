@@ -273,15 +273,15 @@ import torchvision.ops
 from ...box_utils import box_iou
 
 def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method, aug_larger):
+    assert tup.shape[0] == 1
     assert callable(rescore_method)
+
     if agg_method == "plain_score":
         return tup.score.values[0]
 
     vec_meta = vec_meta.reset_index(drop=True)
     ious, containments = box_iou(tup, vec_meta, return_containment=True)
 
-    ## find largest overlapping boxes
-    assert ious.shape[0] == 1
     vec_meta = vec_meta.assign(iou=ious.reshape(-1), containments=containments.reshape(-1))
     max_boxes = vec_meta.groupby("zoom_level").iou.idxmax()
     # largest zoom level means zoomed out max
@@ -394,7 +394,7 @@ import json
 
 def score_frame(*, frame_meta, agg_method, rescore_method, aug_larger):
     topscore = frame_meta.score.max()
-    tup = frame_meta[frame_meta.score == topscore]
+    tup = frame_meta[frame_meta.score == topscore].head(n=1) # sometimes there are more than one
     score = augment_score2(tup, frame_meta, vecs=frame_meta.vectors.to_numpy(), 
                                agg_method=agg_method, rescore_method=rescore_method, aug_larger=aug_larger)
 
