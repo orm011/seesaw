@@ -400,7 +400,49 @@ def score_frame(*, frame_meta, agg_method, rescore_method, aug_larger):
 
     return tup.assign(score=score)
 
+from seesaw.box_utils import box_join
+from scipy.special import softmax
 
+def score_frame2(meta_df, **aug_options):
+    aug_larger=aug_options['aug_larger']
+    aug_weight=aug_options['aug_weight']
+    agg_method=aug_options['agg_method']
+    
+    if agg_method == 'plain_score':
+        return meta_df.query('score == score.max()').head(n=1)
+    
+
+    meta_df = meta_df.reset_index(drop=True)
+    mdf = meta_df[['x1', 'x2', 'y1', 'y2', 'zoom_level', 'score']]
+    joined = box_join(mdf, mdf)
+    
+    if aug_larger == 'greater':
+        joined = joined.query('zoom_level_right >= zoom_level_left')
+    elif aug_larger == 'adjacent':
+        joined = joined.query('zoom_level_right == zoom_level_left')
+    elif aug_larger == 'all':
+        pass
+    else:
+        assert False
+        
+    def weighted_score(gp):
+        weights = softmax(gp.cont.values)
+        score = weights @ gp.score_right.values
+        return score
+    
+    joined = joined.reset_index(drop=True)
+    
+    if aug_weight == 'level_max':
+        idxmaxes = joined.groupby(['df1_iloc', 'zoom_level_right']).iou.idxmax()
+        max_only = joined.iloc[idxmaxes.values]
+        all_scores = max_only.groupby('df1_iloc').score_right.mean()
+    elif aug_weight == 'cont_weighted':
+        all_scores = joined.groupby('df1_iloc').apply(weighted_score)
+    else:
+        assert False
+        
+    meta_df = meta_df.assign(unadjusted_score=meta_df.score, score=all_scores)
+    return meta_df.query('score=score.max()').head(n=1)
 
 def _get_top_approx(vector, *, vector_meta, vec_index, exclude, topk):
     i = 0
@@ -563,9 +605,6 @@ class MultiscaleIndex(AccessMethod):
         vector,
         topk,
         shortlist_size,
-        agg_method,
-        rescore_method,
-        aug_larger,
         exclude=None,
         force_exact=False,
         **kwargs,
@@ -603,8 +642,7 @@ class MultiscaleIndex(AccessMethod):
         ## for each frame, compute augmented scores for each tile and record max
         for i, (dbidx, frame_meta) in enumerate(fullmeta.groupby("dbidx")):
             dbidxs[i] = dbidx
-            tup = score_frame(frame_meta=frame_meta, agg_method=agg_method, 
-                rescore_method=rescore_method, aug_larger=aug_larger)
+            tup = score_frame2(frame_meta=frame_meta, **kwargs)
 
             frame_activations = tup[
                 ["x1", "y1", "x2", "y2", "dbidx", "score"]
