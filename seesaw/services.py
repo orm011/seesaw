@@ -47,7 +47,7 @@ def get_model_actor(model_path: str) -> ModelStub:
                 num_cpus=num_cpus,
                 lifetime="detached",
             )
-            .remote(path=full_path, device=device)
+            .remote(path=full_path, device=device, num_cpus=num_cpus)
         )
 
         # wait for it to be ready

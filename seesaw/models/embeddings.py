@@ -424,15 +424,18 @@ def make_clip_transform(n_px, square_crop=False):
 #                                        lambda x : x.type(torch.float16)])
 import transformers
 
+from seesaw.util import reset_num_cpus
 
 class HGWrapper(XEmbedding):
-    def __init__(self, path, device):
+    def __init__(self, path, device, num_cpus=1):
         if device.startswith("cuda") and not torch.cuda.is_available():
             print("HGWrapper warning: cuda not available, using cpu instead")
             device = "cpu"
+        reset_num_cpus(num_cpus)
         model = transformers.CLIPModel.from_pretrained(path).to(device)
         self.tokenizer = transformers.CLIPTokenizer.from_pretrained(path)
         self.model = model.eval()
+        self.string_cache = {}
 
     def ready(self):
         return True
@@ -441,10 +444,17 @@ class HGWrapper(XEmbedding):
         if str_vec is not None:
             return str_vec
         else:
-            with torch.no_grad():
+            if string in self.string_cache:
+                return self.string_cache[string]
+
+            with torch.inference_mode():
                 toks = self.tokenizer(string, return_tensors="pt").to(self.model.device)
                 features = self.model.get_text_features(**toks)
-                return features.detach().cpu().numpy().reshape(1, -1)
+                result = features.detach().cpu().numpy().reshape(1, -1)
+            
+            # print(f'"{string}" added to cache')
+            self.string_cache[string] = result
+            return result
 
     def from_image(
         self,
