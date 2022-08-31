@@ -345,14 +345,27 @@ def box_iou(df1, df2, return_containment=False):
     else:
         return ious, containment1
 
-def iou_df(df1, df2):
+def _iou_df(df1, df2, iou_min = 0):
+    """ assumes df1 and df2 have boxes in them.
+    """
     ious, cont  = box_iou(df1, df2, return_containment=True)
-    iis,jjs = np.meshgrid(np.arange(df1.shape[0]), np.arange(df2.shape[0]), indexing='ij')
-    return pd.DataFrame({'df1_iloc':iis.reshape(-1),
-                         'df2_iloc':jjs.reshape(-1),
-                         'iou':ious.reshape(-1),
-                         'cont':cont.reshape(-1)})
+    # iis,jjs = np.meshgrid(np.arange(df1.shape[0]), np.arange(df2.shape[0]), indexing='ij')
+    iis,jjs = np.where(ious > iou_min) # only return iou > 0
+    #np.meshgrid(np.arange(df1.shape[0]), np.arange(df2.shape[0]), indexing='ij')
+    return pd.DataFrame({'iloc_left':iis.reshape(-1),
+                         'iloc_right':jjs.reshape(-1),
+                         'iou':ious[iis,jjs],
+                         'cont':cont[iis,jjs]})
 
+def box_join(df1, df2, iou_gt=0):
+    """ assumes df1 and df2 have box columns x1 x2 y1 y2. 
+    """
+    mg2 = _iou_df(df1, df2, iou_gt)
+    suffixes = ['_left', '_right']
+    z1 = df1.iloc[mg2.iloc_left.values].reset_index(drop=True).rename(lambda n : n + suffixes[0], axis=1)
+    z2 = df2.iloc[mg2.iloc_right.values].reset_index(drop=True).rename(lambda n : n + suffixes[1], axis=1)
+    joined = mg2.assign(**z1, **z2)
+    return joined
 
 def join_labels_single_frame(boxdf, labeldf, min_gt_contained):
     """ assigns labels from labeldf boxes to boxes in boxdf 
@@ -362,8 +375,7 @@ def join_labels_single_frame(boxdf, labeldf, min_gt_contained):
     boxdf = boxdf[['box_id', 'x1', 'y1', 'x2', 'y2']]
     labeldf = labeldf[['category', 'box_id', 'x1', 'y1', 'x2', 'y2']]
     
-    ious = iou_df(labeldf, boxdf)
-    ious = ious.query('cont > @min_gt_contained')
+    ious = _iou_df(labeldf, boxdf, min_gt_contained)
     labeldf = labeldf.assign(df1_iloc=np.arange(labeldf.shape[0]))
     boxdf = boxdf.assign(df2_iloc=np.arange(boxdf.shape[0]))
 
