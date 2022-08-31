@@ -405,7 +405,7 @@ from scipy.special import softmax
 
 def score_frame2(meta_df, **aug_options):
     aug_larger=aug_options['aug_larger']
-    aug_weight=aug_options['aug_weight']
+    aug_weight=aug_options.get('aug_weight', 'level_max')
     agg_method=aug_options['agg_method']
     
     if agg_method == 'plain_score':
@@ -433,16 +433,16 @@ def score_frame2(meta_df, **aug_options):
     joined = joined.reset_index(drop=True)
     
     if aug_weight == 'level_max':
-        idxmaxes = joined.groupby(['df1_iloc', 'zoom_level_right']).iou.idxmax()
+        idxmaxes = joined.groupby(['iloc_left', 'zoom_level_right']).iou.idxmax()
         max_only = joined.iloc[idxmaxes.values]
-        all_scores = max_only.groupby('df1_iloc').score_right.mean()
+        all_scores = max_only.groupby('iloc_left').score_right.mean()
     elif aug_weight == 'cont_weighted':
-        all_scores = joined.groupby('df1_iloc').apply(weighted_score)
+        all_scores = joined.groupby('iloc_left').apply(weighted_score)
     else:
         assert False
         
     meta_df = meta_df.assign(unadjusted_score=meta_df.score, score=all_scores)
-    return meta_df.query('score=score.max()').head(n=1)
+    return meta_df.query('score == score.max()').head(n=1)
 
 def _get_top_approx(vector, *, vector_meta, vec_index, exclude, topk):
     i = 0
@@ -642,7 +642,7 @@ class MultiscaleIndex(AccessMethod):
         ## for each frame, compute augmented scores for each tile and record max
         for i, (dbidx, frame_meta) in enumerate(fullmeta.groupby("dbidx")):
             dbidxs[i] = dbidx
-            tup = score_frame2(frame_meta=frame_meta, **kwargs)
+            tup = score_frame2(frame_meta, **kwargs)
 
             frame_activations = tup[
                 ["x1", "y1", "x2", "y2", "dbidx", "score"]

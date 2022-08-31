@@ -376,11 +376,11 @@ def join_labels_single_frame(boxdf, labeldf, min_gt_contained):
     labeldf = labeldf[['category', 'box_id', 'x1', 'y1', 'x2', 'y2']]
     
     ious = _iou_df(labeldf, boxdf, min_gt_contained)
-    labeldf = labeldf.assign(df1_iloc=np.arange(labeldf.shape[0]))
-    boxdf = boxdf.assign(df2_iloc=np.arange(boxdf.shape[0]))
+    labeldf = labeldf.assign(iloc_left=np.arange(labeldf.shape[0]))
+    boxdf = boxdf.assign(iloc_right=np.arange(boxdf.shape[0]))
 
-    mg1 = labeldf.merge(ious, on='df1_iloc')
-    mg2 = mg1.merge(boxdf[['box_id', 'df2_iloc']], on='df2_iloc', suffixes=['', '_square'])
+    mg1 = labeldf.merge(ious, on='iloc_left')
+    mg2 = mg1.merge(boxdf[['box_id', 'iloc_right']], on='df2_iloc', suffixes=['', '_square'])
     mg2 = mg2.drop(['df1_iloc', 'df2_iloc'], axis=1)
     
     return mg2
