@@ -43,9 +43,9 @@ class KNNGraph:
         self.ind_ptr = get_rev_lookup_ranges(rev_df, self.nvecs)
 
     @staticmethod
-    def from_vectors(vectors, n_neighbors):
+    def from_vectors(vectors, *, n_neighbors, n_jobs=-1):
         """ returns a graph and also the index """
-        index2 = pynndescent.NNDescent(vectors, n_neighbors=n_neighbors+1, metric='dot', n_jobs=-1, low_memory=False)
+        index2 = pynndescent.NNDescent(vectors, n_neighbors=n_neighbors+1, metric='dot', n_jobs=n_jobs, low_memory=False)
         positions, distances = index2.neighbor_graph
         identity = (positions == np.arange(positions.shape[0]).reshape(-1,1))
         any_identity = identity.sum(axis=1) > 0
@@ -61,9 +61,13 @@ class KNNGraph:
         knn_df = pd.DataFrame({ 'src_vertex':iis.reshape(-1),
                                 'dst_vertex':positions1.reshape(-1), 
                                 'distance':distances1.reshape(-1),
-                                'dst_rank':jjs.reshape(-1)})
+                                'dst_rank':jjs.reshape(-1)
+                                
+                                })
         
-        return KNNGraph(knn_df), index2
+        knn_graph = KNNGraph(knn_df)
+        return knn_graph, index2
+
                 
     def save(self, path, overwrite=False):
         import ray.data
@@ -90,24 +94,6 @@ class KNNGraph:
 
     def rev_lookup(self, dst_vertex) -> pd.DataFrame:
         return self.rev_df.iloc[self.ind_ptr[dst_vertex]:self.ind_ptr[dst_vertex+1]]
-
-
-# def getRKNN(knndf):
-#     posn = knndf['positions'].to_numpy()
-#     dist = knndf['distances'].to_numpy()
-#     indices = np.arange(posn.shape[0])
-#     indices = indices.reshape(-1,1).repeat(posn.shape[1], axis=1)
-    
-#     idf = pd.DataFrame({'dest':posn.reshape(-1), 'orig':indices.reshape(-1), 'dist':dist.reshape(-1)})
-#     rkNN = idf.sort_values(['dest', 'dist']).reset_index(drop=True)
-#     return rkNN
-
-# from collections import defaultdict
-# def make_rknn_lookup(rkNN):
-#     rev_edge_list = defaultdict(lambda : np.array([], dtype=np.int64))
-#     for d,grp in rkNN.groupby('dest'):
-#         rev_edge_list[d] = grp['orig'].values
-#     return rev_edge_list
 
 from scipy.special import expit as sigmoid
 
