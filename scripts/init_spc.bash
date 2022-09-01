@@ -10,9 +10,15 @@ DIR=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 nginx -s stop || echo 'starting nginx....'
 nginx -c conf/seesaw.spc.conf # refers to conf/ folder relative to nginx root
 
-# echo 'starting head node'
-ray stop || echo 'starting ray head node...'
-bash +x $DIR/start_worker.bash --head 
+
+SIGFILE="$HOME/ray.head"
+echo 'stopping previous ray if any'
+ray stop
+echo '' > $SIGFILE
+sleep 10
+
+echo 'starting ray head node...'
+bash +x $DIR/start_worker.bash $SIGFILE --head 
 
 # start frame server
 uvicorn frameserver.server:app --host localhost.localdomain --port 8600  --workers=5  >> frameserver.log  2>&1 &

@@ -6,13 +6,13 @@ TMPNAME=/state/partition1/user/$USER/raytmp/
 ## different nodes have differnt amounts available.
 ## leave some
 SHM_AVAILABLE_KB=`df /dev/shm | grep -v Available | awk '{print $4}'`
-OBJ_MEM_BYTES=$(( SHM_AVAILABLE_KB*1024 - 1024*1024  ))
+OBJ_MEM_BYTES=$(( SHM_AVAILABLE_KB*1024 - 1024*1024*1024  )) # leave 1GB off
 
 COMMON_ARGS="--temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES --num-cpus=$((2*SLURM_CPUS_ON_NODE))"
 
-SIGFILE="$HOME/ray.head"
+SIGFILE=$HOME/ray.head
 
-if [[ $1 == "--head" ]]
+if [[ $2 == "--head" ]]
 then
     ray start $COMMON_ARGS --head
     echo $HOSTNAME > $SIGFILE # signal change after done starting
@@ -37,10 +37,14 @@ else
                 source /state/partition1/user/omoll/venvs/seesaw/bin/activate
                 set -x
             fi
+
+            ray stop
             ## just a test that these things work in the current environment
             # python -c 'import torch; import ray; import transformers; import seesaw'
-            ray stop
-            ray start $COMMON_ARGS --address=$HEAD_NODE:6379
+            if [[ $HEAD_NODE != '' ]]
+            then
+                ray start $COMMON_ARGS --address=$HEAD_NODE:6379
+            fi
         else
             echo 'no change'
         fi
