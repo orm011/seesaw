@@ -524,7 +524,7 @@ class MultiscaleIndex(AccessMethod):
             self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
 
     @staticmethod
-    def from_path(index_path: str):
+    def from_path(index_path: str, **options):
         from ...services import get_parquet, get_model_actor
 
         index_path = resolve_path(index_path)
@@ -535,11 +535,11 @@ class MultiscaleIndex(AccessMethod):
         fullpath = f"{index_path}/vectors.annoy"
 
         print(f"looking for vector index in {fullpath}")
-        if os.path.exists(fullpath):
+        if os.path.exists(fullpath) and options.get('use_index',True):
             print("using optimized index...")
             vec_index = VectorIndex(load_path=fullpath, prefault=True)
         else:
-            print("index file not found... using vectors")
+            print("index file not found (or not used).. using vectors")
             vec_index = None
 
         assert os.path.exists(cached_meta_path)

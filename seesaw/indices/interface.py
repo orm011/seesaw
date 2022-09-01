@@ -32,9 +32,9 @@ class AccessMethod:
         raise NotImplementedError("implement me")
 
     @staticmethod
-    def load(index_path: str):
+    def load(index_path: str, **options):
         index_path = resolve_path(index_path)
         meta = json.load(open(f"{index_path}/info.json", "r"))
         constructor_name = meta["constructor"]
         c = get_constructor(constructor_name)
-        return c.from_path(index_path)
+        return c.from_path(index_path, **options)
