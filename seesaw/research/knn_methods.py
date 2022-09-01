@@ -43,9 +43,9 @@ class KNNGraph:
         self.ind_ptr = get_rev_lookup_ranges(rev_df, self.nvecs)
 
     @staticmethod
-    def from_vectors(vectors, *, n_neighbors, n_jobs=-1):
+    def from_vectors(vectors, *, n_neighbors, n_jobs=-1, low_memory=False, **kwargs):
         """ returns a graph and also the index """
-        index2 = pynndescent.NNDescent(vectors, n_neighbors=n_neighbors+1, metric='dot', n_jobs=n_jobs, low_memory=False)
+        index2 = pynndescent.NNDescent(vectors, n_neighbors=n_neighbors+1, metric='dot', n_jobs=n_jobs, low_memory=low_memory, **kwargs)
         positions, distances = index2.neighbor_graph
         identity = (positions == np.arange(positions.shape[0]).reshape(-1,1))
         any_identity = identity.sum(axis=1) > 0
@@ -69,7 +69,7 @@ class KNNGraph:
         return knn_graph, index2
 
                 
-    def save(self, path, overwrite=False):
+    def save(self, path, num_blocks=10, overwrite=False):
         import ray.data
         import shutil
 
@@ -79,10 +79,10 @@ class KNNGraph:
         os.makedirs(path, exist_ok=False)
 
         ds = ray.data.from_pandas(self.knn_df).lazy()
-        ds.repartition(num_blocks=100).write_parquet(f'{path}/forward.parquet')
+        ds.repartition(num_blocks=num_blocks).write_parquet(f'{path}/forward.parquet')
 
         ds2 = ray.data.from_pandas(self.rev_df).lazy()
-        ds2.repartition(num_blocks=100).write_parquet(f'{path}/backward.parquet')
+        ds2.repartition(num_blocks=num_blocks).write_parquet(f'{path}/backward.parquet')
 
     
     @staticmethod
