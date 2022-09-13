@@ -108,10 +108,14 @@ class CoarseQuery(InteractiveQuery):
     def __init__(self, db: CoarseIndex):
         super().__init__(db)
 
-    def getXy(self):
+    def getXy(self, get_positions=False):
         positions = np.array(
             [self.index.all_indices.rank(idx) - 1 for idx in self.label_db.get_seen()]
         )
+
+        if get_positions:
+            assert False, 'implement me'
+
         Xt = self.index.vectors[positions]
         yt = np.array(
             [

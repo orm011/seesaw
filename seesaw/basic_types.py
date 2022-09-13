@@ -62,6 +62,7 @@ class SessionParams(BaseModel):
     index_spec: IndexSpec
     interactive: Literal['pytorch', 'plain', 'knn_greedy', 'textual']
     batch_size: int
+    knn_k : Optional[int] = None
     aug_larger: Literal['greater', 'all'] = 'all'
     agg_method: Optional[Literal["avg_score", 'avg_vector', 'plain_score']] = 'avg_score'
     shortlist_size: Optional[int]

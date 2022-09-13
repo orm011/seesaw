@@ -33,18 +33,26 @@ def _get_fixed_metadata(schema):
     new_meta[b'pandas'] = json.dumps(new_pandas).encode()
     return new_meta
 
-def parallel_read_parquet(path, columns=None) -> pd.DataFrame:
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+def parallel_read_parquet(path, columns=None, parallelism=-1) -> pd.DataFrame:
     import ray.data
     """uncached version"""
-    ds = ray.data.read_parquet(path, columns=columns)
-    tabs = ray.get(ds.to_arrow_refs())
+    if parallelism != 0:
+        ds = ray.data.read_parquet(path, columns=columns, parallelism=parallelism)
+        tabs = ray.get(ds.to_arrow_refs())
 
-    if len(tabs) > 0:
-        fixed_meta = _get_fixed_metadata(tabs[0].schema) # 
-        tabs = [tab.replace_schema_metadata(fixed_meta) for tab in tabs]
+        if len(tabs) > 0:
+            fixed_meta = _get_fixed_metadata(tabs[0].schema) # 
+            tabs = [tab.replace_schema_metadata(fixed_meta) for tab in tabs]
 
-    dfs = [tab.to_pandas() for tab in tabs]
-    df = pd.concat(dfs)
+        dfs = [tab.to_pandas() for tab in tabs]
+        df = pd.concat(dfs)
+    else:
+        tab = pq.read_table(path, columns=columns)
+        df = tab.to_pandas()
+
     return df
 
 

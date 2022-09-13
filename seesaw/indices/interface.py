@@ -28,7 +28,7 @@ class AccessMethod:
         raise NotImplementedError("implement me")
 
     @staticmethod
-    def from_path(index_path: str):
+    def from_path(index_path: str, **options):
         raise NotImplementedError("implement me")
 
     @staticmethod

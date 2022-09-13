@@ -2,7 +2,7 @@ from .memory_cache import CacheStub
 from .query_interface import AccessMethod
 import os
 from .dataset import SeesawDatasetManager
-
+from .basic_types import IndexSpec
 
 class GlobalDataManager:
     global_cache: CacheStub
@@ -38,5 +38,13 @@ class GlobalDataManager:
         dataset_path = f"{self.root}/data/{dataset_name}"
         return SeesawDatasetManager(dataset_path, cache=self.global_cache)
 
+    def _get_knng_path(self, ispec: IndexSpec):
+        base =   f'{self.root}/data/{ispec.d_name}/indices/{ispec.i_name}'
+
+        if ispec.c_name is None or ispec.d_name != 'lvis': # HACK. lvis treat lvis separately since each category has a subset
+            return f'{base}/knn_graph'
+        else:
+            return f'{base}/subsets/{ispec.c_name}'
+        
     def __repr__(self):
         return f"{self.__class__.__name__}({self.root})"

@@ -30,7 +30,8 @@ from .util import *
 from .pairwise_rank_loss import VecState
 from .query_interface import *
 from .textual_feedback_box import OnlineModel, join_vecs2annotations
-from .research.knn_methods import SimpleKNNRanker
+from .research.knn_methods import KNNGraph, SimpleKNNRanker
+from .indices.multiscale.multiscale_index import _get_top_dbidxs, score_frame, score_frame2
 
 @dataclass
 class LoopState:
@@ -64,7 +65,8 @@ class SeesawLoop:
             )
             s.model = OnlineModel(param_dict, p.method_config)
         elif p.interactive == 'knn_greedy':
-            knng = self.q.index.get_knng()
+            knng_path = gdm._get_knng_path(p.index_spec)
+            knng = KNNGraph.from_file(knng_path, parallelism=0, n_neighbors=p.knn_k)
             s.knn_model = SimpleKNNRanker(knng, init_scores=None)
 
         lp = {
@@ -98,11 +100,29 @@ class SeesawLoop:
             "refine": None,
         }
         s.latency_profile.append(lp)
-
         if p.interactive == 'knn_greedy':
-            idxs, scores = s.knn_model.top_k(p.batch_size)
-            b  = {'dbidxs':idxs, 'scores':scores, 
-                    'activations':None}
+            q = self.q
+            sorted_idxs, sorted_scores = s.knn_model.top_k(k=None, unlabeled_only=False)
+            candidates = _get_top_dbidxs(vec_idxs=sorted_idxs, scores=sorted_scores, vector_meta=q.index.vector_meta, exclude=q.returned, topk=p.shortlist_size)
+            raw_scores = s.knn_model.current_scores()
+
+            frame_scores = np.zeros(candidates.shape[0])
+            activations = []
+            for (i,dbidx) in enumerate(candidates.dbidx.values):
+                meta_df = q.index.vector_meta.query(f'dbidx == {dbidx}')
+                meta_df = meta_df.assign(score=raw_scores[meta_df.index.values])
+                tup = score_frame2(meta_df, aug_larger=p.aug_larger, agg_method=p.agg_method)                
+                frame_scores[i] = tup.score.iloc[0]
+                activations.append(tup)
+
+            candidates = candidates.assign(frame_scores=frame_scores)
+            c = candidates.sort_values('frame_scores', ascending=False)
+
+            idxs = c.dbidx.iloc[:p.batch_size]
+            b  = {'dbidxs':idxs, 
+                    'scores':c.frame_scores.iloc[:p.batch_size], 
+                    'activations':None,
+                }
 
             lp['n_images']= idxs.shape[0]
             lp["lookup"] = time.time() - start_lookup
@@ -216,10 +236,18 @@ class SeesawLoop:
         elif p.interactive == 'knn_greedy':
             # labels already added.
             # go over labels here since it takes time
-            seen_ids = np.array(self.q.label_db.get_seen())
-            for _,id in enumerate(seen_ids):
-                label = self.q.label_db.get(id, format='binary')
-                s.knn_model.update(id, label=label)
+            ## translating box labels to labels over the vector index.
+            #### for each frame in a box label. box join with the vector index for that box.
+            # seen_ids = np.array(self.q.label_db.get_seen())
+            pos, neg = self.q.getXy(get_positions=True)
+
+            for _,id in enumerate(pos):
+                # label = self.q.label_db.get(id, format='binary')
+                s.knn_model.update(id, label=1)
+            
+            for _,id in enumerate(neg):
+                s.knn_model.update(id, label=0)
+
         else:
             Xt, yt = self.q.getXy()
             lp["n_posvecs"] = (yt == 1).sum()  # .shape[0]
@@ -495,13 +523,12 @@ def make_session(gdm: GlobalDataManager, p: SessionParams):
     subset = None
     positive = None
 
-    if p.index_spec.c_name is not None:
-        print("prepping  data....")
-        box_data, subset, positive = prep_data(ds, p)
-        if len(positive) != 0:
-            print('warning: no positive elements in this benchmark')
-
-        hdb = hdb.subset(subset)
+    assert p.index_spec.c_name is not None
+    print("prepping  data....")
+    box_data, subset, positive = prep_data(ds, p)
+    if len(positive) == 0:
+        print('warning: no positive elements in this benchmark')
+    hdb = hdb.subset(subset)
 
     print("about to construct session...")
     session = Session(gdm, ds, hdb, p)

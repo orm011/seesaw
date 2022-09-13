@@ -76,5 +76,5 @@ class InteractiveQuery(object):
             self.returned.update(res["dbidxs"])
         return res
 
-    def getXy(self):
+    def getXy(self, **options):
         raise NotImplementedError("abstract")

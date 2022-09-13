@@ -1,3 +1,4 @@
+from seesaw.util import parallel_read_parquet
 import numpy as np
 import pyroaring as pr
 from ray.data.extensions import TensorArray
@@ -31,13 +32,28 @@ def get_rev_lookup_ranges(rev_df, nvecs):
     return ind_ptr
 
 class KNNGraph:
-    def __init__(self, knn_df, rev_df=None):
-        self.knn_df = knn_df
-        self.k = knn_df.dst_rank.max() + 1
-        self.nvecs = knn_df.src_vertex.max() + 1
+    def __init__(self, knn_df, rev_df=None, k=None):
+        actual_nvecs = knn_df.src_vertex.max() + 1
+        self.nvecs = actual_nvecs
 
         if rev_df is None:
             rev_df = self.knn_df.sort_values('dst_vertex')
+
+        actual_k = knn_df.dst_rank.max() + 1
+        
+        if k is None:
+            k = actual_k
+
+        self.k = k
+
+        if k < actual_k:
+            knn_df = knn_df.query(f'dst_rank < {k}').reset_index(drop=False)
+            rev_df = rev_df.query(f'dst_rank < {k}').reset_index(drop=False)
+            self.knn_df = knn_df
+            self.k = knn_df.dst_rank.max() + 1
+            assert self.k == k
+        elif k > actual_k:
+            assert False, f'can only do up to k={actual_k} neighbors based on input df'
         
         self.rev_df = rev_df
         self.ind_ptr = get_rev_lookup_ranges(rev_df, self.nvecs)
@@ -86,11 +102,13 @@ class KNNGraph:
 
     
     @staticmethod
-    def from_file(path):
-        from ..services import get_parquet
-        df = get_parquet(f'{path}/forward.parquet')
-        rev_df = get_parquet(f'{path}/backward.parquet')
-        return KNNGraph(df, rev_df=rev_df)
+    def from_file(path, n_neighbors=None, parallelism=0):
+        # if not cache:
+        df = parallel_read_parquet(f'{path}/forward.parquet', parallelism=parallelism)
+        # from ..services import get_parquet
+        # df = get_parquet()
+        rev_df = parallel_read_parquet(f'{path}/backward.parquet', parallelism=parallelism)
+        return KNNGraph(df, rev_df=rev_df, k=n_neighbors)
 
     def rev_lookup(self, dst_vertex) -> pd.DataFrame:
         return self.rev_df.iloc[self.ind_ptr[dst_vertex]:self.ind_ptr[dst_vertex+1]]

@@ -19,7 +19,31 @@ variants:
       index_name: multiscale
       agg_method: avg_score
       aug_larger: greater
-    - name: seesaw_knn
+    # - name: seesaw_multi
+    #   interactive: plain
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: greater
+    - name: seesaw_knn5
+      knn_k : 5
+      interactive: knn_greedy
+      index_name: multiscale
+      agg_method: avg_score
+      aug_larger: greater
+    - name: seesaw_knn3
+      knn_k : 3
+      interactive: knn_greedy
+      index_name: multiscale
+      agg_method: avg_score
+      aug_larger: greater
+    - name: seesaw_knn10
+      knn_k : 10
+      interactive: knn_greedy
+      index_name: multiscale
+      agg_method: avg_score
+      aug_larger: greater
+    - name: seesaw_knn20
+      knn_k : 20
       interactive: knn_greedy
       index_name: multiscale
       agg_method: avg_score

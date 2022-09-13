@@ -338,7 +338,7 @@ class BenchRunner(object):
                 output_path = f"{output_dir}/summary.json"
                 json.dump(summary.dict(), open(output_path, "w"))
 
-                assert p.index_spec.c_name is not None, "need category for benchmark"
+                #assert p.index_spec.c_name is not None, "need category for benchmark"
 
                 ret = make_session(self.gdm, p)
                 print("session done... now runnning loop")
@@ -412,7 +412,7 @@ from ray.data.datasource import FastFileMetadataProvider
 def load_session_data(base_dir):
     summary_paths = glob.glob(base_dir + "/**/summary.json", recursive=True)
     r = ray.data.read_binary_files(summary_paths, include_paths=True, 
-                meta_provider=FastFileMetadataProvider(), parallelism=200)
+                meta_provider=FastFileMetadataProvider(), parallelism=50)
     res = r.map_batches(parse_batch, batch_size=20)
     return res
 
@@ -526,9 +526,14 @@ def gen_configs(
                 else:
                     config = get_default_config(var['interactive'])
 
+                # if d != 'lvis':
+                #     c_name = None
+                # else:
+                c_name = c
+
                 update_s = {
                     "index_spec": IndexSpec(
-                        d_name=d, i_name=var["index_name"], c_name=c
+                        d_name=d, i_name=var["index_name"], c_name=c_name
                     ),
                     "method_config": config
                 }

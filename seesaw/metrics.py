@@ -32,7 +32,10 @@ def dcg_score(hit_indices):
     return dcg_score
 
 
-def rank_of_kth(hit_indices, *, k):
+def rank_of_kth(hit_indices, *, ntotal, k):
+    if k > ntotal: # not valid for this
+        return None
+
     if hit_indices.shape[0] < k:
         return math.inf
     else:
@@ -91,14 +94,12 @@ def compute_metrics(*, hit_indices, batch_size, nseen, ntotal, max_results):
         hit_indices, nseen=nseen, npositive=ntotal, max_results=max_results
     )
     ndcg = ndcg_score(hit_indices, nseen=nseen, npositive=ntotal)
-    rank_first = rank_of_kth(hit_indices, k=1)
-    nfound = hit_indices.shape[0]
-    if max_results is not None:
-        k = min(ntotal, max_results)
-    else:
-        k = ntotal
+    rank_first = rank_of_kth(hit_indices, ntotal=ntotal, k=1)
+    rank_second = rank_of_kth(hit_indices, ntotal=ntotal, k=2)
+    rank_third = rank_of_kth(hit_indices, ntotal=ntotal, k=3)
+    rank_tenth = rank_of_kth(hit_indices, ntotal=ntotal, k=10)
 
-    rank_last = rank_of_kth(hit_indices, k=k)
+    nfound = hit_indices.shape[0]
 
     # only return things not given as input
     return dict(
@@ -107,7 +108,7 @@ def compute_metrics(*, hit_indices, batch_size, nseen, ntotal, max_results):
         AP=AP,
         nAP=nAP,
         rank_first=rank_first,
-        rank_last=rank_last,
-        reciprocal_rank_first=1.0 / rank_first,
-        reciprocal_rank_last=1.0 / rank_last,
+        rank_second=rank_second,
+        rank_third=rank_third,
+        rank_tenth = rank_tenth,
     )
