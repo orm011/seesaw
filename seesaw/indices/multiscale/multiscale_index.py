@@ -525,6 +525,7 @@ class MultiscaleIndex(AccessMethod):
 
     @staticmethod
     def from_path(index_path: str, **options):
+        print(options)
         from ...services import get_parquet, get_model_actor
 
         index_path = resolve_path(index_path)
@@ -535,7 +536,7 @@ class MultiscaleIndex(AccessMethod):
         fullpath = f"{index_path}/vectors.annoy"
 
         print(f"looking for vector index in {fullpath}")
-        if os.path.exists(fullpath) and options.get('use_index',True):
+        if False: #os.path.exists(fullpath) and options.get('use_index',True):
             print("using optimized index...")
             vec_index = VectorIndex(load_path=fullpath, prefault=True)
         else:
@@ -702,10 +703,12 @@ class BoxFeedbackQuery(InteractiveQuery):
         # self.acc_pos = []
         # self.acc_neg = []
 
-    def getXy(self):
+    def getXy(self, get_positions=False):
         pos, neg = get_pos_negs_all_v2(
             self.label_db.get_seen(), self.label_db, self.index.vector_meta
         )
+        if get_positions:
+            return pos, neg
 
         ## we are currently ignoring these positives
         # self.acc_pos.append(batchpos)
