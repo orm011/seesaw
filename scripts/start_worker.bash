@@ -21,6 +21,15 @@ else
     echo 'starting worker node'
     PREV=
 
+    if [[ $USER == omoll ]];
+    then
+        set +x
+        source ~/.bashrc
+        set -x
+
+        which python
+    fi
+
     while true
     do
         CURRENT=`stat -c '%y' $SIGFILE`
@@ -34,12 +43,10 @@ else
             if [[ $USER == omoll && $HEAD_NODE != '' ]]; # im using virtual env rather than default evnv.
             then 
                 # copy environment first
-
-                rsync -rlugvR --delete $HEAD_NODE:/state/partition1/user/omoll/venvs/seesaw/ /
-        
-                set +x
-                source /state/partition1/user/omoll/venvs/seesaw/bin/activate
-                set -x
+                rsync -rlugvR --exclude="pkgs/*" --delete $HEAD_NODE:/state/partition1/user/omoll/miniconda3/
+                # set +x
+                # source /state/partition1/user/omoll/venvs/seesaw/bin/activate
+                # set -x
             fi
 
             ray stop
