@@ -11,14 +11,18 @@ nginx -s stop || echo 'starting nginx....'
 nginx -c conf/seesaw.spc.conf # refers to conf/ folder relative to nginx root
 
 
-SIGFILE="$HOME/ray.head"
+SIGFILE="$HOME/ray2.head"
 echo 'stopping previous ray if any'
 ray stop
 echo '' > $SIGFILE
-sleep 10
+sleep 5
 
-echo 'starting ray head node...'
-bash +x $DIR/start_worker.bash $SIGFILE --head 
+bash +x $DIR/start_worker.bash --head &
+
+sleep 5
+
+python -c 'import ray; ray.init("auto", namespace="seesaw"); print(ray.available_resources());'
+ray status
 
 # start frame server
 uvicorn frameserver.server:app --host localhost.localdomain --port 8600  --workers=5  >> frameserver.log  2>&1 &

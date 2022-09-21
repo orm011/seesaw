@@ -10,13 +10,15 @@ OBJ_MEM_BYTES=$(( SHM_AVAILABLE_KB*1024 - 1024*1024*1024  )) # leave 1GB off
 
 COMMON_ARGS="--temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES --num-cpus=$((2*SLURM_CPUS_ON_NODE))"
 
-SIGFILE=$HOME/ray.head
+SIGFILE=$HOME/ray2.head
 
-if [[ $2 == "--head" ]]
+if [[ $1 == "--head" ]]
 then
+    echo 'starting head node'
     ray start $COMMON_ARGS --head
     echo $HOSTNAME > $SIGFILE # signal change after done starting
 else 
+    echo 'starting worker node'
     PREV=
 
     while true
@@ -28,9 +30,11 @@ else
         then
             echo 'file changed... restarting node'
             PREV=$CURRENT
-            if [[ $USER == omoll ]]; # im using virtual env rather than default evnv.
+            
+            if [[ $USER == omoll && $HEAD_NODE != '' ]]; # im using virtual env rather than default evnv.
             then 
                 # copy environment first
+
                 rsync -rlugvR --delete $HEAD_NODE:/state/partition1/user/omoll/venvs/seesaw/ /
         
                 set +x
@@ -39,8 +43,12 @@ else
             fi
 
             ray stop
-            ## just a test that these things work in the current environment
-            # python -c 'import torch; import ray; import transformers; import seesaw'
+
+            if [[$HEAD_NODE == '-1']] # message to exit
+            then 
+                break
+            fi
+
             if [[ $HEAD_NODE != '' ]]
             then
                 ray start $COMMON_ARGS --address=$HEAD_NODE:6379
