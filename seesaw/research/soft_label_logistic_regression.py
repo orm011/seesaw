@@ -98,47 +98,56 @@ _default_pca_args=dict(n_components=128, whiten=True)
 _default_prop_args=dict(calib_a=10., calib_b=-5, prior_weight=1., edist=.1, num_iters=5)
 
 class LinearScorer:
-    def __init__(self, idx, knng_sym, init_scores, *,  sample_size, 
+    def __init__(self, idx, knng_sym, *, init_scores=None, sample_size, 
                     label_prop_kwargs=_default_prop_args, 
                     pca_kwargs=_default_pca_args, linear_kwargs=_default_linear_args):
         self.idx = idx
+        self.knng_sym = knng_sym
         self.sample_size = sample_size
-        self.lr = LabelPropagationRanker(knng=knng_sym, init_scores=init_scores, **label_prop_kwargs)
-        pca = PCA(**pca_kwargs)
-        samp = np.random.permutation(idx.vectors.shape[0])[:10000]
-        Xsamp = idx.vectors[samp]
+        self.label_prop_kwargs = label_prop_kwargs
+        self.pca_kwargs= pca_kwargs
+        self.linear_kwargs = linear_kwargs
+
+        if init_scores is not None:
+            self._finish_init(init_scores)
+
+    def _finish_init(self, init_scores):
+        self.lr = LabelPropagationRanker(knng=self.knng_sym, init_scores=init_scores, **self.label_prop_kwargs)
+        pca = PCA(**self.pca_kwargs)
+        samp = np.random.permutation(self.idx.vectors.shape[0])[:10000]
+        Xsamp = self.idx.vectors[samp]
         pca.fit(Xsamp)
+        self.all_indices = pr.BitMap(range(self.idx.vectors.shape[0]))
         self.seen = pr.BitMap()
         self.pca = pca
-        self.Xtransformed = pca.transform(idx.vectors)
-        self.lm = LinearModelCE(**linear_kwargs)
+        self.Xtransformed = pca.transform(self.idx.vectors)
+        self.lm = LinearModelCE(**self.linear_kwargs)
         self._update_lm()
-        
+
+    def set_base_scores(self, init_scores):
+        self._finish_init(init_scores)
+
     def _update_lm(self):
         X, y = makeXy(self.idx, self.lr, sample_size=self.sample_size, pseudoLabel=True)
         Xtrans = self.pca.transform(X)
         self.lm.fit(Xtrans, y)
         
-    def update(self, idx, label):
-        self.lr.update(idx, label)
+    def update(self, idxs, labels):
+        self.lr.update(idxs, labels)
         self._update_lm()
-        self.seen.add(idx)
+        for idx in idxs:
+            self.seen.add(idx)
 
     def current_scores(self):
         return self.lm.predict_proba(self.Xtransformed).reshape(-1)
     
     def top_k(self, k, unlabeled_only=True):
-        assert unlabeled_only
-        scores = self.current_scores()
-        desc_scores = np.argsort(-scores)
-        
-        idxs = []
-        for idx in desc_scores:
-            if len(idxs) >= k:
-                break
+        if unlabeled_only:
+            subset = np.array(self.all_indices - self.seen)
+        else: 
+            subset = np.array(self.all_indices)
             
-            if idx not in self.seen:
-                idxs.append(idx)
-                
-        dbidxs = np.array(idxs).astype('int')
-        return dbidxs, scores[dbidxs]
+        raw_scores = self.current_scores()
+        topk_positions = np.argsort(-raw_scores[subset])[:k]
+        topk_indices = subset[topk_positions]
+        return topk_indices, raw_scores[topk_indices]

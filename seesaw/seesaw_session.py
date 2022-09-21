@@ -29,8 +29,9 @@ from .search_loop_models import adjust_vec, adjust_vec2
 from .util import *
 from .pairwise_rank_loss import VecState
 from .query_interface import *
-from .textual_feedback_box import OnlineModel, join_vecs2annotations
-from .research.knn_methods import KNNGraph, SimpleKNNRanker
+# from .textual_feedback_box import OnlineModel, join_vecs2annotations
+from .research.knn_methods import KNNGraph, LabelPropagationRanker, SimpleKNNRanker
+from .research.soft_label_logistic_regression import LinearScorer
 from .indices.multiscale.multiscale_index import _get_top_dbidxs, score_frame, score_frame2
 
 @dataclass
@@ -40,7 +41,7 @@ class LoopState:
     tmod: str = None
     latency_profile: list = field(default_factory=list)
     vec_state: VecState = None
-    model: OnlineModel = None
+    # model: OnlineModel = None
     knn_model : SimpleKNNRanker = None
 
 
@@ -59,15 +60,29 @@ class SeesawLoop:
         p = self.params
 
         if self.params.interactive in ["textual"]:
-            param_dict = gdm.global_cache.read_state_dict(
-                "/home/gridsan/groups/fastai/omoll/seesaw_root/models/clip/ViT-B-32.pt",
-                jit=True,
-            )
-            s.model = OnlineModel(param_dict, p.method_config)
+            assert False
+            # param_dict = gdm.global_cache.read_state_dict(
+            #     "/home/gridsan/groups/fastai/omoll/seesaw_root/models/clip/ViT-B-32.pt",
+            #     jit=True,
+            # )
+            # s.model = OnlineModel(param_dict, p.method_config)
         elif p.interactive == 'knn_greedy':
             knng_path = gdm._get_knng_path(p.index_spec)
-            knng = KNNGraph.from_file(knng_path, parallelism=0, n_neighbors=p.knn_k)
+            knng = KNNGraph.from_file(knng_path, parallelism=0)
+            knng = knng.restrict_k(k=p.knn_k)
             s.knn_model = SimpleKNNRanker(knng, init_scores=None)
+        elif p.interactive == 'knn_prop':
+            knng_path = gdm._get_knng_path(p.index_spec)
+            knng = KNNGraph.from_file(knng_path, parallelism=0)
+            knng = knng.restrict_k(k=p.knn_k).make_symmetric()
+            s.knn_model = LabelPropagationRanker(knng, init_scores=None, **p.interactive_options)
+        elif p.interactive == 'linear_prop':
+            knng_path = gdm._get_knng_path(p.index_spec)
+            knng = KNNGraph.from_file(knng_path, parallelism=0)
+            knng = knng.restrict_k(k=p.knn_k).make_symmetric()
+            s.knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
+        else:
+            assert False
 
         lp = {
             "n_images": None,
@@ -100,7 +115,7 @@ class SeesawLoop:
             "refine": None,
         }
         s.latency_profile.append(lp)
-        if p.interactive == 'knn_greedy':
+        if p.interactive in ['knn_greedy', 'knn_prop', 'linear_prop']:
             q = self.q
             sorted_idxs, sorted_scores = s.knn_model.top_k(k=None, unlabeled_only=False)
             candidates = _get_top_dbidxs(vec_idxs=sorted_idxs, scores=sorted_scores, vector_meta=q.index.vector_meta, exclude=q.returned, topk=p.shortlist_size)
@@ -233,20 +248,16 @@ class SeesawLoop:
 
             losses = s.model.update(all_vecs, marked_accepted, all_strs, s.curr_str)
             print("done with update", losses)
-        elif p.interactive == 'knn_greedy':
+        elif p.interactive in ['knn_greedy', 'knn_prop', 'linear_prop']:
             # labels already added.
             # go over labels here since it takes time
             ## translating box labels to labels over the vector index.
             #### for each frame in a box label. box join with the vector index for that box.
             # seen_ids = np.array(self.q.label_db.get_seen())
             pos, neg = self.q.getXy(get_positions=True)
-
-            for _,id in enumerate(pos):
-                # label = self.q.label_db.get(id, format='binary')
-                s.knn_model.update(id, label=1)
-            
-            for _,id in enumerate(neg):
-                s.knn_model.update(id, label=0)
+            idxs = np.concatenate([pos,neg])
+            labels = np.concatenate([np.ones_like(pos), np.zeros_like(neg)])
+            s.knn_model.update(idxs, labels)
 
         else:
             Xt, yt = self.q.getXy()
@@ -340,6 +351,7 @@ class SeesawLoop:
                 pass
 
 
+
 class Session:
     current_dataset: str
     current_index: str
@@ -414,7 +426,7 @@ class Session:
         s.tvec = self.index.string2vec(string=key)
         s.tmode = "dot"
 
-        if p.interactive == 'knn_greedy':
+        if p.interactive in ['knn_greedy', 'knn_prop', 'linear_prop'] :
             ### need to add score method to index
             ## need to add base score method to knn
             scores = self.index.score(s.tvec)            

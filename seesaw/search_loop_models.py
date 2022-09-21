@@ -22,22 +22,21 @@ class CustomInterrupt(pl.callbacks.Callback):
     def on_keyboard_interrupt(self, trainer, pl_module):
         raise InterruptedError("custom")
 
-
-class CustomTqdm(pl.callbacks.progress.ProgressBar):
-    def init_train_tqdm(self):
-        """Override this to customize the tqdm bar for training."""
-        bar = tqdm(
-            desc="Training",
-            initial=self.train_batch_idx,
-            position=(2 * self.process_position),
-            disable=self.is_disabled,
-            leave=False,
-            dynamic_ncols=True,
-            file=sys.stdout,
-            smoothing=0,
-            miniters=40,
-        )
-        return bar
+# class CustomTqdm(pl.callbacks.progress.ProgressBar):
+#     def init_train_tqdm(self):
+#         """Override this to customize the tqdm bar for training."""
+#         bar = tqdm(
+#             desc="Training",
+#             initial=self.train_batch_idx,
+#             position=(2 * self.process_position),
+#             disable=self.is_disabled,
+#             leave=False,
+#             dynamic_ncols=True,
+#             file=sys.stdout,
+#             smoothing=0,
+#             miniters=40,
+#         )
+#         return bar
 
 
 class PTLogisiticRegression(pl.LightningModule):

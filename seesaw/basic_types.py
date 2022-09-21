@@ -60,7 +60,8 @@ class MultiscaleParams: #TODO switch session params
 
 class SessionParams(BaseModel):
     index_spec: IndexSpec
-    interactive: Literal['pytorch', 'plain', 'knn_greedy', 'textual']
+    interactive: Literal['pytorch', 'plain', 'knn_greedy', 'textual', 'knn_prop', 'linear_prop']
+    interactive_options: Optional[dict] = None
     batch_size: int
     knn_k : Optional[int] = None
     aug_larger: Literal['greater', 'all'] = 'all'

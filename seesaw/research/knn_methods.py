@@ -148,28 +148,29 @@ class SimpleKNNRanker:
         assert self.knng.nvecs == scores.shape[0]
         self.init_numerators = sigmoid(2*scores)
 
-    def update(self, idx, label):
-        idx = int(idx)
-        label = float(label)
-        
-        assert np.isclose(label,0) or np.isclose(label,1)
-        
-        if self.is_labeled[idx] > 0: # if new label for old 
-            old_label = self.labels[idx]
-            delta_denom = 0
-            delta_num = label - old_label # erase old label and add new label
-        else:
-            delta_num = label
-            delta_denom = 1
-        
-        self.labels[idx] = label
-        self.is_labeled[idx] = 1
-                
-        ## update scores for all v such that idx \in knn(v)
-        rev_neighbors = self.knng.rev_lookup(idx).src_vertex.values
-        # rev_weights = 
-        self.numerators[rev_neighbors] += delta_num
-        self.denominators[rev_neighbors] += delta_denom
+    def update(self, idxs, labels):
+        for idx, label in zip(idxs, labels):
+            idx = int(idx)
+            label = float(label)
+            
+            assert np.isclose(label,0) or np.isclose(label,1)
+            
+            if self.is_labeled[idx] > 0: # if new label for old 
+                old_label = self.labels[idx]
+                delta_denom = 0
+                delta_num = label - old_label # erase old label and add new label
+            else:
+                delta_num = label
+                delta_denom = 1
+            
+            self.labels[idx] = label
+            self.is_labeled[idx] = 1
+                    
+            ## update scores for all v such that idx \in knn(v)
+            rev_neighbors = self.knng.rev_lookup(idx).src_vertex.values
+            # rev_weights = 
+            self.numerators[rev_neighbors] += delta_num
+            self.denominators[rev_neighbors] += delta_denom
         
     def top_k(self, k, unlabeled_only=True):
         if unlabeled_only:
@@ -200,7 +201,7 @@ def kernel(cosine_distance, edist):
 def prepare(knng : KNNGraph, *, edist, prior_weight):
     knndf = knng.knn_df 
     symknn = knndf.assign(weight = kernel(knndf.distance, edist=edist))
-    wmatrix = sp.coo_matrix((symknn.weight.values, (symknn.src_vertex.values, symknn.dst_vertex.values)))
+    wmatrix = sp.coo_matrix( (symknn.weight.values, (symknn.src_vertex.values, symknn.dst_vertex.values)))
 
     n = wmatrix.shape[0]
     diagw = sp.coo_matrix((np.ones(n)*prior_weight, (np.arange(n), np.arange(n))))
@@ -239,22 +240,25 @@ class LabelPropagationRanker:
     def __init__(self, knng : KNNGraph, init_scores=None, calib_a=2., calib_b=-1., prior_weight=1., kval=5, edist=.1, num_iters=2):
         self.knng : KNNGraph = knng
 
-        if init_scores is None:
-            self.prior_scores = np.ones(self.knng.nvecs)*.1 # base if nothing is given
-        else:
-            self.prior_scores = sigmoid(calib_a*init_scores + calib_b)
-
+        self.calib_a = calib_a
+        self.calib_b = calib_b
         self.prior_weight = prior_weight
         self.edist = edist
         self.kval = kval
         self.num_iters = num_iters
 
-        self.adj_mat, self.norm_w = prepare(self.knng, prior_weight=prior_weight, edist=edist)
-        
-        self.labels = np.zeros_like(self.prior_scores)
-        self.is_labeled = np.zeros_like(self.prior_scores)        
         self.all_indices = pr.FrozenBitMap(range(self.knng.nvecs))
+        self.adj_mat, self.norm_w = prepare(self.knng, prior_weight=prior_weight, edist=edist)
 
+        if init_scores is not None:
+            self.set_base_scores(init_scores)
+
+
+    def set_base_scores(self, init_scores):
+        assert self.knng.nvecs == init_scores.shape[0]
+        self.prior_scores = sigmoid(self.calib_a*init_scores + self.calib_b)
+        self.is_labeled = np.zeros_like(self.prior_scores)        
+        self.labels = np.zeros_like(self.prior_scores)
         self._scores = self.prior_scores.copy()
         self._propagate(num_iters=self.num_iters)
 
@@ -273,14 +277,14 @@ class LabelPropagationRanker:
 
         return scores
                 
-    def update(self, idx, label):
-        idx = int(idx)
-        label = float(label)
-        
-        assert np.isclose(label,0) or np.isclose(label,1)
-                
-        self.labels[idx] = label
-        self.is_labeled[idx] = 1
+    def update(self, idxs, labels):
+
+        for idx, label in zip(idxs, labels):
+            idx = int(idx)
+            label = float(label)
+            assert np.isclose(label,0) or np.isclose(label,1)
+            self.labels[idx] = label
+            self.is_labeled[idx] = 1
                 
         pscores = self._propagate(self.num_iters)
         self._scores = pscores
