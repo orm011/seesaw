@@ -1,0 +1,144 @@
+import cvxpy as cp
+from scipy.special import expit
+
+def bce_loss(p, q): # p is 'true' prob
+    # - p log (q) - (1-p) log(1-q)
+    return cp.multiply(p,cp.log(q)) + cp.multiply(1-p, cp.log(1-q))
+
+def bce_loss_with_logits(p, logits):
+    # NB. 
+    ## sigmoid(score) = 1/(1 + exp(-score)). 
+    ### as score -> infty , this goes to 1.
+    # if q = sigmoid(score)
+    # then 1 - q = sigmoid(-score)
+    # hence,
+    # log(q) = log(sigmoid(score)) = -log(1+exp(-score))
+    # log(1-q) = -log(1+exp(score))
+    # p log(1+exp(-score)) + (1-p) log(1+exp(score))
+    return cp.multiply(p, cp.logistic(-logits)) + cp.multiply(1-p, cp.logistic(logits))
+
+class LinearModelCE:
+    def __init__(self, *, solver_flags, C=1.):
+        self.theta = None 
+        self.bias = None 
+        self.problem = None
+        self.C = C
+        self.solver_flags = solver_flags
+        
+    def _loss(self, scores, ps):
+        loss = cp.sum(
+            bce_loss_with_logits(ps.reshape(-1,1), scores)
+        )
+        return loss
+        
+    def _init_problem(self, X, ps):
+        self.theta = cp.Variable((X.shape[1],1))
+        self.bias = cp.Variable((1,))
+        
+        scores = self._scores(X)  
+        loss = self._loss(scores, ps)
+        rloss =  self.C*loss/X.shape[0] + cp.norm(self.theta)
+        self.problem = cp.Problem(cp.Minimize(rloss))
+
+        
+    def _scores(self, X, eval_mode=False):
+        if eval_mode:
+            theta = self.theta.value
+            bias = self.bias.value
+        else:
+            theta = self.theta
+            bias = self.bias
+            
+        return X @ theta + bias
+    
+    def fit(self, X,ps):
+        self._init_problem(X,ps)
+        self.problem.solve(**self.solver_flags)
+        
+    def predict_proba(self, X):
+        scores = self._scores(X, eval_mode=True)
+        return expit(scores)
+
+from .knn_methods import LabelPropagationRanker
+from sklearn.decomposition import PCA 
+import numpy as np
+import pyroaring as pr
+
+def makeXy(idx, lr, sample_size, pseudoLabel=True):
+
+    Xlab = idx.vectors[(lr.is_labeled > 0) ]
+    ylab = lr.labels[(lr.is_labeled > 0) ]
+    
+    rsize = sample_size - Xlab.shape[0]
+
+    scores = lr.current_scores()
+    rsample = np.random.permutation(idx.vectors.shape[0])[:rsize]
+
+    if pseudoLabel:
+
+        Xsamp = idx.vectors[rsample]
+        ysamp = scores[rsample]
+        
+        X = np.concatenate((Xlab, Xsamp))
+        y = np.concatenate((ylab, ysamp))
+        
+        # if quantile_transform:
+        #     ls = QuantileTransformer()
+        #     ls.fit(scores.reshape(-1,1))
+        #     y = ls.transform(y.reshape(-1,1)).reshape(-1)
+    else:
+        X = Xlab
+        y = ylab
+        
+    return X,y
+
+
+_default_linear_args=dict(C=10., solver_flags=dict(solver=cp.MOSEK, verbose=False))
+_default_pca_args=dict(n_components=128, whiten=True)
+_default_prop_args=dict(calib_a=10., calib_b=-5, prior_weight=1., edist=.1, num_iters=5)
+
+class LinearScorer:
+    def __init__(self, idx, knng_sym, init_scores, *,  sample_size, 
+                    label_prop_kwargs=_default_prop_args, 
+                    pca_kwargs=_default_pca_args, linear_kwargs=_default_linear_args):
+        self.idx = idx
+        self.sample_size = sample_size
+        self.lr = LabelPropagationRanker(knng=knng_sym, init_scores=init_scores, **label_prop_kwargs)
+        pca = PCA(**pca_kwargs)
+        samp = np.random.permutation(idx.vectors.shape[0])[:10000]
+        Xsamp = idx.vectors[samp]
+        pca.fit(Xsamp)
+        self.seen = pr.BitMap()
+        self.pca = pca
+        self.Xtransformed = pca.transform(idx.vectors)
+        self.lm = LinearModelCE(**linear_kwargs)
+        self._update_lm()
+        
+    def _update_lm(self):
+        X, y = makeXy(self.idx, self.lr, sample_size=self.sample_size, pseudoLabel=True)
+        Xtrans = self.pca.transform(X)
+        self.lm.fit(Xtrans, y)
+        
+    def update(self, idx, label):
+        self.lr.update(idx, label)
+        self._update_lm()
+        self.seen.add(idx)
+
+    def current_scores(self):
+        return self.lm.predict_proba(self.Xtransformed).reshape(-1)
+    
+    def top_k(self, k, unlabeled_only=True):
+        assert unlabeled_only
+        scores = self.current_scores()
+        desc_scores = np.argsort(-scores)
+        
+        idxs = []
+        for idx in desc_scores:
+            if len(idxs) >= k:
+                break
+            
+            if idx not in self.seen:
+                idxs.append(idx)
+                
+        dbidxs = np.array(idxs).astype('int')
+        return dbidxs, scores[dbidxs]
