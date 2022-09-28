@@ -83,6 +83,8 @@ class SeesawLoop:
             s.knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
         elif p.interactive == 'pytorch':
             pass
+        elif p.interactive == 'plain':
+            pass
         else:
             assert False, f'unknown interactive mode: {p.interactive=}'
 
