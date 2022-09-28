@@ -159,13 +159,13 @@ def fit_reg(
 
     trainer = pl.Trainer(
         logger=None,
-        gpus=gpus,
+        accelerator='cpu',
         precision=precision,
         max_epochs=max_epochs,
         callbacks=[CustomInterrupt()],
-        checkpoint_callback=False,
+        # checkpoint_callback=False,
         weights_save_path="/tmp/",
-        progress_bar_refresh_rate=0,  # =10
+        enable_progress_bar=False,
     )
     trainer.fit(mod, train_loader, val_loader)
 
@@ -224,13 +224,6 @@ class LookupVec(pl.LightningModule):
 
         self.log('loss', loss, prog_bar=True, logger=True, on_step=False, on_epoch=True)
         return {"loss": loss}
-
-    # def validation_epoch_end(self, validation_step_outputs):
-    #     apval = self.average_precision.compute()
-    #     self.log(
-    #         "AP/val", apval, prog_bar=True, logger=True, on_epoch=True, on_step=False
-    #     )
-    #     self.average_precision.reset()
 
     def configure_optimizers(self):
         return self.optimizer(self.parameters(), lr=self.hparams.learning_rate)
@@ -309,7 +302,7 @@ def make_tuple_ds(X, y, max_size):
         randsel = torch.randperm(len(train_ds))[:max_size]
         train_ds = Subset(train_ds, randsel)
     return train_ds
-
+from .basic_trainer import SimpleTrainer
 
 def fit_rank2(
     *,
@@ -369,23 +362,24 @@ def fit_rank2(
     else:
         val_loader = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False, num_workers=0)
 
-    trainer = pl.Trainer(
-        logger=None,
-        gpus=gpus,
-        precision=precision,
-        max_epochs=max_epochs,
-        # callbacks =[],
-        callbacks=[CustomInterrupt()],
-        # CustomTqdm()#  ],
-        checkpoint_callback=False,
-        weights_save_path="/tmp/",
-        enable_model_summary=False,
-        progress_bar_refresh_rate=0,  # =10
-    )
 
-    loss_before = trainer.validate(model=mod, dataloaders=val_loader, verbose=False)[0]['loss']
-    trainer.fit(mod, train_loader, val_loader)
-    loss_after = trainer.validate(model=mod, dataloaders=val_loader, verbose=False)[0]['loss']
+    trainer = SimpleTrainer(mod, max_epochs=max_epochs)
+    # trainer = pl.Trainer(
+    #     logger=False,
+    #     accelerator='cpu',
+    #     # precision=precision,
+    #     max_epochs=max_epochs,
+    #     enable_checkpointing=False,
+    #     # callbacks=[CustomInterrupt()],
+    #     enable_model_summary=False,
+    #     enable_progress_bar=False
+    # )
+    # loss_before = trainer.validate(model=mod, dataloaders=val_loader, verbose=False)[0]['loss']
+    # trainer.fit(mod, train_loader, val_loader)
+    # loss_after = trainer.validate(model=mod, dataloaders=val_loader, verbose=False)[0]['loss']
+    loss_before = trainer.validate(dataloader=val_loader)['loss']
+    trainer.fit(train_loader)
+    loss_after = trainer.validate(dataloader=val_loader)['loss']
     print(f'losses: {loss_before:.03f} vs. {loss_after:.03f}')
 
 def adjust_vec(vec, Xt, yt, learning_rate, loss_margin, max_examples, minibatch_size):

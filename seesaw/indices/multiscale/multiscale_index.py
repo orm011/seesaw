@@ -536,7 +536,7 @@ class MultiscaleIndex(AccessMethod):
         fullpath = f"{index_path}/vectors.annoy"
 
         print(f"looking for vector index in {fullpath}")
-        if False: #os.path.exists(fullpath) and options.get('use_index',True):
+        if os.path.exists(fullpath):
             print("using optimized index...")
             vec_index = VectorIndex(load_path=fullpath, prefault=True)
         else:

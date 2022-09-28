@@ -81,8 +81,10 @@ class SeesawLoop:
             knng = KNNGraph.from_file(knng_path, parallelism=0)
             knng = knng.restrict_k(k=p.knn_k).make_symmetric()
             s.knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
+        elif p.interactive == 'pytorch':
+            pass
         else:
-            assert False
+            assert False, f'unknown interactive mode: {p.interactive=}'
 
         lp = {
             "n_images": None,

@@ -4,7 +4,7 @@ datasets:
   - coco
   - objectnet
 shared_session_params: # see SessionParams
-  batch_size: 3
+  batch_size: 1
   shortlist_size: 50
 shared_bench_params: # see BenchParams
   max_feedback: null
@@ -14,8 +14,15 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
+    - name: seesaw_coarse
+      interactive: pytorch
+      # model_type: multirank2
+      index_name: coarse
+      agg_method: avg_score
+      aug_larger: all
     - name: seesaw_all
       interactive: pytorch
+      # model_type: multirank2
       index_name: multiscale
       agg_method: avg_score
       aug_larger: all
