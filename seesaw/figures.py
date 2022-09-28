@@ -70,7 +70,7 @@ def bsw_table_abs(compare, *, metric, abstol):
 
     if metric in _higher_is_better:
         higher_is_better = True
-    elif metric in _lower_is_better:
+    elif metric in _lower_is_better or metric.startswith('rank_'):
         higher_is_better = False
     else:
         assert False, "need to specify if higher is better for metric"
