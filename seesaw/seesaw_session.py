@@ -38,7 +38,6 @@ from .indices.multiscale.multiscale_index import _get_top_dbidxs, score_frame, s
 class LoopState:
     curr_str: str = None
     tvec: np.ndarray = None
-    tmod: str = None
     vec_state: VecState = None
     # model: OnlineModel = None
     knn_model : SimpleKNNRanker = None
@@ -96,7 +95,6 @@ class PointBased(LoopBase):
         rescore_m = lambda vecs: vecs @ vec.reshape(-1, 1)
 
         b = self.q.query_stateful(
-            mode=s.tmode,
             vector=vec,
             batch_size=p.batch_size,
             shortlist_size=p.shortlist_size,
@@ -140,7 +138,6 @@ class TextualLoop(LoopBase):
             vec = self.state.model.get_lookup_vec(s.curr_str)
 
         b = self.q.query_stateful(
-            mode=s.tmode,
             vector=vec,
             batch_size=p.batch_size,
             shortlist_size=p.shortlist_size,
@@ -242,7 +239,6 @@ class SeesawLoop(PointBased):
         if (yt.shape[0] == 0) or (yt.max() == yt.min()):
             pass # nothing to do yet.
 
-        s.tmode = "dot"
         if p.interactive == "sklearn":
             lr = sklearn.linear_model.LogisticRegression(
                 class_weight="balanced"
@@ -465,7 +461,6 @@ class Session:
         p = self.loop.params
         s = self.loop.state
         s.curr_str = key
-        s.tmode = "dot"
 
         vec = self.index.string2vec(string=key)
         self.loop.set_text_vec(vec)
