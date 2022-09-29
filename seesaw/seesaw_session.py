@@ -39,129 +39,61 @@ class LoopState:
     curr_str: str = None
     tvec: np.ndarray = None
     tmod: str = None
-    latency_profile: list = field(default_factory=list)
     vec_state: VecState = None
     # model: OnlineModel = None
     knn_model : SimpleKNNRanker = None
 
-
-class SeesawLoop:
+class LoopBase:
     q: InteractiveQuery
     params: SessionParams
     state: LoopState
 
-    def __init__(
-        self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams
-    ):
+    def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
+        self.gdm = gdm
         self.params = params
         self.state = LoopState()
         self.q = q
-        s = self.state
-        p = self.params
 
-        if self.params.interactive in ["textual"]:
-            assert False
-            # param_dict = gdm.global_cache.read_state_dict(
-            #     "/home/gridsan/groups/fastai/omoll/seesaw_root/models/clip/ViT-B-32.pt",
-            #     jit=True,
-            # )
-            # s.model = OnlineModel(param_dict, p.method_config)
-        elif p.interactive == 'knn_greedy':
-            knng_path = gdm._get_knng_path(p.index_spec)
-            knng = KNNGraph.from_file(knng_path, parallelism=0)
-            knng = knng.restrict_k(k=p.knn_k)
-            s.knn_model = SimpleKNNRanker(knng, init_scores=None)
-        elif p.interactive == 'knn_prop':
-            knng_path = gdm._get_knng_path(p.index_spec)
-            knng = KNNGraph.from_file(knng_path, parallelism=0)
-            knng = knng.restrict_k(k=p.knn_k).make_symmetric()
-            s.knn_model = LabelPropagationRanker(knng, init_scores=None, **p.interactive_options)
-        elif p.interactive == 'linear_prop':
-            knng_path = gdm._get_knng_path(p.index_spec)
-            knng = KNNGraph.from_file(knng_path, parallelism=0)
-            knng = knng.restrict_k(k=p.knn_k).make_symmetric()
-            s.knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
-        elif p.interactive == 'pytorch':
-            pass
-        elif p.interactive == 'plain':
-            pass
+    def set_text_vec(self, tvec):
+        pass
+
+    @staticmethod
+    def from_params(gdm, q, params):
+        if params.interactive in ['knn_greedy', 'knn_prop', 'linear_prop']:
+            cls = KnnBased
+        elif params.interactive in ['textual']:
+            cls = TextualLoop
+        elif params.interactive in ['plain']:
+            cls = PointBased
+        elif params.interactive in ['pytorch']:
+            cls = SeesawLoop
         else:
-            assert False, f'unknown interactive mode: {p.interactive=}'
+            assert False, f'unknown {params.interactive=}'
 
-        lp = {
-            "n_images": None,
-            "n_posvecs": None,
-            "n_negvecs": None,
-            "lookup": None,
-            "label": None,
-            "refine": None,
-        }
-
-
-
-        ## ensure non-empty
-        s.latency_profile.append(lp)
+        return cls(gdm, q, params)
 
     def next_batch(self):
-        """
-        gets next batch of image indices based on current vector
-        """
-        start_lookup = time.time()
+        pass
 
+    def refine(self):
+        pass
+
+class PointBased(LoopBase):
+    def __init__(self, gdm, q, params):
+        super().__init__(gdm, q, params)
+
+    def set_text_vec(self, vec):
+        self.state.tvec = vec
+
+    def refine(self):
+        pass # modify in subclasses
+
+    def next_batch(self):
         s = self.state
         p = self.params
-        lp = {
-            "n_images": None,
-            "n_posvecs": None,
-            "n_negvecs": None,
-            "lookup": None,
-            "label": None,
-            "refine": None,
-        }
-        s.latency_profile.append(lp)
-        if p.interactive in ['knn_greedy', 'knn_prop', 'linear_prop']:
-            q = self.q
-            sorted_idxs, sorted_scores = s.knn_model.top_k(k=None, unlabeled_only=False)
-            candidates = _get_top_dbidxs(vec_idxs=sorted_idxs, scores=sorted_scores, vector_meta=q.index.vector_meta, exclude=q.returned, topk=p.shortlist_size)
-            raw_scores = s.knn_model.current_scores()
 
-            frame_scores = np.zeros(candidates.shape[0])
-            activations = []
-            for (i,dbidx) in enumerate(candidates.dbidx.values):
-                meta_df = q.index.vector_meta.query(f'dbidx == {dbidx}')
-                meta_df = meta_df.assign(score=raw_scores[meta_df.index.values])
-                tup = score_frame2(meta_df, aug_larger=p.aug_larger, agg_method=p.agg_method)                
-                frame_scores[i] = tup.score.iloc[0]
-                activations.append(tup)
-
-            candidates = candidates.assign(frame_scores=frame_scores)
-            c = candidates.sort_values('frame_scores', ascending=False)
-
-            idxs = c.dbidx.iloc[:p.batch_size]
-            b  = {'dbidxs':idxs, 
-                    'scores':c.frame_scores.iloc[:p.batch_size], 
-                    'activations':None,
-                }
-
-            lp['n_images']= idxs.shape[0]
-            lp["lookup"] = time.time() - start_lookup
-            return b
-        
-        if p.interactive == "textual":
-            if p.method_config["mode"] == "finetune":
-                vec = s.model.encode_string(s.curr_str)
-                rescore_m = lambda vecs: vecs @ vec.reshape(-1, 1)
-            elif p.method_config["mode"] == "linear":
-                if len(s.model.linear_scorer.scorers) == 0:  ## first time
-                    vec = s.model.encode_string(s.curr_str)
-                    s.model.linear_scorer.add_scorer(
-                        s.curr_str, torch.from_numpy(vec.reshape(-1))
-                    )
-                rescore_m = self.state.model.score_vecs
-                vec = self.state.model.get_lookup_vec(s.curr_str)
-        else:
-            vec = s.tvec
-            rescore_m = lambda vecs: vecs @ vec.reshape(-1, 1)
+        vec = s.tvec
+        rescore_m = lambda vecs: vecs @ vec.reshape(-1, 1)
 
         b = self.q.query_stateful(
             mode=s.tmode,
@@ -173,187 +105,293 @@ class SeesawLoop:
             rescore_method=rescore_m,
         )
 
-        idxbatch = b["dbidxs"]
-        lp["n_images"] = idxbatch.shape[0]
-        lp["lookup"] = time.time() - start_lookup
+        return b
+        
+class TextualLoop(LoopBase):
+    def __init__(self, gdm, q, params):
+        super().__init__(gdm, q, params)
+        s = self.state
+        p = self.params
+        
+        if self.params.interactive in ["textual"]:
+            param_dict = gdm.global_cache.read_state_dict(
+                "/home/gridsan/groups/fastai/omoll/seesaw_root/models/clip/ViT-B-32.pt",
+                jit=True,
+            )
+            # s.model = OnlineModel(param_dict, p.method_config)
+
+    def set_text_vec(self, tvec):
+        pass
+
+    def refine(self):
+        p = self.params
+        s = self.state
+
+        if p.method_config["mode"] == "finetune":
+            vec = s.model.encode_string(s.curr_str)
+            rescore_m = lambda vecs: vecs @ vec.reshape(-1, 1)
+        elif p.method_config["mode"] == "linear":
+            if len(s.model.linear_scorer.scorers) == 0:  ## first time
+                vec = s.model.encode_string(s.curr_str)
+                s.model.linear_scorer.add_scorer(
+                    s.curr_str, torch.from_numpy(vec.reshape(-1))
+                )
+            rescore_m = self.state.model.score_vecs
+            vec = self.state.model.get_lookup_vec(s.curr_str)
+
+        b = self.q.query_stateful(
+            mode=s.tmode,
+            vector=vec,
+            batch_size=p.batch_size,
+            shortlist_size=p.shortlist_size,
+            agg_method=p.agg_method,
+            aug_larger=p.aug_larger,
+            rescore_method=rescore_m,
+        )
+
         return b
 
-    def compute_image_activatins(self, dbidx, annotations):
-        pass
+    def next_batch(self):
+        p = self.params
+        s = self.state
+        if (
+            "image_vector_strategy" not in p.dict()
+            or p.image_vector_strategy == None
+            or p.image_vector_strategy == "matched"
+        ):
+            vecs = []
+            strs = []
+            acc = []
+
+            for dbidx in self.q.label_db.get_seen():
+                annot = self.q.label_db.get(dbidx, format="box")
+                assert annot is not None
+                if len(annot) == 0:
+                    continue
+
+                dfvec, dfbox = join_vecs2annotations(self.q.index, dbidx, annot)
+                # best_box_iou, best_box_idx
+
+                ## vectors with overlap
+                df = dfbox  # use boxes as guide for now
+                mask_boxes = df.best_box_iou > p.method_config["vector_box_min_iou"]
+                df = df[mask_boxes]
+                if df.shape[0] > 0:
+                    vecs.append(df.vectors.values)
+                    strs.append(df.descriptions.values)
+                    acc.append(df.marked_accepted.values)
+
+            if len(vecs) == 0:
+                print("no annotations for update... skipping")
+                return
+
+            all_vecs = np.concatenate(vecs)
+            all_strs = np.concatenate(strs)
+            marked_accepted = np.concatenate(acc)
+        elif p.image_vector_strategy == "computed":
+            vecs = []
+            strs = []
+            acc = []
+            # annot = self.q.label_db.get(dbidx, format='box')
+            for dbidx in self.q.label_db.get_seen():
+                annot = self.q.label_db.get(dbidx, format="box")
+                if len(annot) == 0:
+                    continue
+
+                vecs.append(self.compute_image_activations(dbidx, annot))
+                strs.append()
+
+            pass
+        else:
+            assert False, "unknown image vec strategy"
+
+        losses = s.model.update(all_vecs, marked_accepted, all_strs, s.curr_str)
+        print("done with update", losses)
+
+class SeesawLoop(PointBased):
+    def __init__(
+        self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams
+    ):
+        super().__init__(gdm, q, params)
+        p = self.params
+        assert p.interactive == 'pytorch'
+
+    def set_text_vec(self, tvec):
+        super().set_text_vec(tvec)
+
+        s = self.state
+        p = self.params
+
+        if self.params.method_config.get("model_type", None) == "multirank2":
+            self.state.vec_state = VecState(
+                tvec,
+                margin=p.loss_margin,
+                opt_class=torch.optim.SGD,
+                opt_params={"lr": p.learning_rate},
+            )
 
     def refine(self):
         """
         update based on vector. box dict will have every index from idx batch, including empty dfs.
         """
-        start_refine = time.time()
-
-        p = self.params
         s = self.state
-        lp = s.latency_profile[-1]
-        lp["label"] = start_refine - lp["lookup"]
+        p = self.params
 
-        if p.interactive == "plain":
-            return
-        elif p.interactive in ["textual"]:
-            # get vectors and string corresponding to current annotations
-            # run the updater.
-            print("textual update")
+        Xt, yt = self.q.getXy()
 
-            if (
-                "image_vector_strategy" not in p.dict()
-                or p.image_vector_strategy == None
-                or p.image_vector_strategy == "matched"
-            ):
-                vecs = []
-                strs = []
-                acc = []
+        if (yt.shape[0] == 0) or (yt.max() == yt.min()):
+            pass # nothing to do yet.
 
-                for dbidx in self.q.label_db.get_seen():
-                    annot = self.q.label_db.get(dbidx, format="box")
-                    assert annot is not None
-                    if len(annot) == 0:
-                        continue
+        s.tmode = "dot"
+        if p.interactive == "sklearn":
+            lr = sklearn.linear_model.LogisticRegression(
+                class_weight="balanced"
+            )
+            lr.fit(Xt, yt)
+            s.tvec = lr.coef_.reshape(1, -1)
+        elif p.interactive == "pytorch":
+            prob = yt.sum() / yt.shape[0]
+            w = np.clip((1 - prob) / prob, 0.1, 10.0)
 
-                    dfvec, dfbox = join_vecs2annotations(self.q.index, dbidx, annot)
-                    # best_box_iou, best_box_idx
+            cfg = p.method_config
 
-                    ## vectors with overlap
-                    df = dfbox  # use boxes as guide for now
-                    mask_boxes = df.best_box_iou > p.method_config["vector_box_min_iou"]
-                    df = df[mask_boxes]
-                    if df.shape[0] > 0:
-                        vecs.append(df.vectors.values)
-                        strs.append(df.descriptions.values)
-                        acc.append(df.marked_accepted.values)
+            if cfg["model_type"] == "logistic":
+                mod = PTLogisiticRegression(
+                    Xt.shape[1],
+                    learning_ratep=p.learning_rate,
+                    C=0,
+                    positive_weight=w,
+                )
+                if cfg["warm_start"] == "warm":
+                    iv = torch.from_numpy(s.tvec)
+                    iv = iv / iv.norm()
+                    mod.linear.weight.data = iv.type(mod.linear.weight.dtype)
+                elif cfg["warm_start"] == "default":
+                    pass
 
-                if len(vecs) == 0:
-                    print("no annotations for update... skipping")
-                    return
-
-                all_vecs = np.concatenate(vecs)
-                all_strs = np.concatenate(strs)
-                marked_accepted = np.concatenate(acc)
-            elif p.image_vector_strategy == "computed":
-                vecs = []
-                strs = []
-                acc = []
-                # annot = self.q.label_db.get(dbidx, format='box')
-                for dbidx in self.q.label_db.get_seen():
-                    annot = self.q.label_db.get(dbidx, format="box")
-                    if len(annot) == 0:
-                        continue
-
-                    vecs.append(self.compute_image_activations(dbidx, annot))
-                    strs.append()
-
-                pass
-            else:
-                assert False, "unknown image vec strategy"
-
-            losses = s.model.update(all_vecs, marked_accepted, all_strs, s.curr_str)
-            print("done with update", losses)
-        elif p.interactive in ['knn_greedy', 'knn_prop', 'linear_prop']:
-            # labels already added.
-            # go over labels here since it takes time
-            ## translating box labels to labels over the vector index.
-            #### for each frame in a box label. box join with the vector index for that box.
-            # seen_ids = np.array(self.q.label_db.get_seen())
-            pos, neg = self.q.getXy(get_positions=True)
-            idxs = np.concatenate([pos,neg])
-            labels = np.concatenate([np.ones_like(pos), np.zeros_like(neg)])
-            s.knn_model.update(idxs, labels)
-
-        else:
-            Xt, yt = self.q.getXy()
-            lp["n_posvecs"] = (yt == 1).sum()  # .shape[0]
-            lp["n_negvecs"] = (yt != 1).sum()
-
-            if (yt.shape[0] > 0) and (yt.max() > yt.min()):
-                s.tmode = "dot"
-                if p.interactive == "sklearn":
-                    lr = sklearn.linear_model.LogisticRegression(
-                        class_weight="balanced"
+                fit_reg(
+                    mod=mod,
+                    X=Xt.astype("float32"),
+                    y=yt.astype("float"),
+                    batch_size=p.minibatch_size,
+                )
+                s.tvec = mod.linear.weight.detach().numpy().reshape(1, -1)
+            elif cfg["model_type"] in ["cosine", "multirank"]:
+                for i in range(cfg["num_epochs"]):
+                    s.tvec = adjust_vec(
+                        s.tvec,
+                        Xt,
+                        yt,
+                        learning_rate=cfg["learning_rate"],
+                        max_examples=cfg["max_examples"],
+                        minibatch_size=cfg["minibatch_size"],
+                        loss_margin=cfg["loss_margin"],
                     )
-                    lr.fit(Xt, yt)
-                    s.tvec = lr.coef_.reshape(1, -1)
-                elif p.interactive == "pytorch":
-                    prob = yt.sum() / yt.shape[0]
-                    w = np.clip((1 - prob) / prob, 0.1, 10.0)
+            elif cfg["model_type"] in ["multirank2"]:
+                npairs = yt.sum() * (1 - yt).sum()
+                max_iters = (
+                    math.ceil(
+                        min(npairs, cfg["max_examples"])
+                        // cfg["minibatch_size"]
+                    )
+                    * cfg["num_epochs"]
+                )
+                print("max iters this round would have been", max_iters)
+                # print(s.vec_state.)
 
-                    cfg = p.method_config
+                # vecs * niters = number of vector seen.
+                # n vec seen <= 10000
+                # niters <= 10000/vecs
+                max_vec_seen = 10000
+                n_iters = math.ceil(max_vec_seen / Xt.shape[0])
+                n_steps = np.clip(n_iters, 20, 200)
 
-                    if cfg["model_type"] == "logistic":
-                        mod = PTLogisiticRegression(
-                            Xt.shape[1],
-                            learning_ratep=p.learning_rate,
-                            C=0,
-                            positive_weight=w,
-                        )
-                        if cfg["warm_start"] == "warm":
-                            iv = torch.from_numpy(s.tvec)
-                            iv = iv / iv.norm()
-                            mod.linear.weight.data = iv.type(mod.linear.weight.dtype)
-                        elif cfg["warm_start"] == "default":
-                            pass
+                # print(f'steps for this iteration {n_steps}. num vecs: {Xt.shape[0]} ')
+                # want iters * vecs to be const..
+                # eg. dota. 1000*100*30
 
-                        fit_reg(
-                            mod=mod,
-                            X=Xt.astype("float32"),
-                            y=yt.astype("float"),
-                            batch_size=p.minibatch_size,
-                        )
-                        s.tvec = mod.linear.weight.detach().numpy().reshape(1, -1)
-                    elif cfg["model_type"] in ["cosine", "multirank"]:
-                        for i in range(cfg["num_epochs"]):
-                            s.tvec = adjust_vec(
-                                s.tvec,
-                                Xt,
-                                yt,
-                                learning_rate=cfg["learning_rate"],
-                                max_examples=cfg["max_examples"],
-                                minibatch_size=cfg["minibatch_size"],
-                                loss_margin=cfg["loss_margin"],
-                            )
-                    elif cfg["model_type"] in ["multirank2"]:
-                        npairs = yt.sum() * (1 - yt).sum()
-                        max_iters = (
-                            math.ceil(
-                                min(npairs, cfg["max_examples"])
-                                // cfg["minibatch_size"]
-                            )
-                            * cfg["num_epochs"]
-                        )
-                        print("max iters this round would have been", max_iters)
-                        # print(s.vec_state.)
+                for _ in range(n_steps):
+                    loss = s.vec_state.update(Xt, yt)
+                    if loss == 0:  # gradient is 0 when loss is 0.
+                        print("loss is 0, breaking early")
+                        break
 
-                        # vecs * niters = number of vector seen.
-                        # n vec seen <= 10000
-                        # niters <= 10000/vecs
-                        max_vec_seen = 10000
-                        n_iters = math.ceil(max_vec_seen / Xt.shape[0])
-                        n_steps = np.clip(n_iters, 20, 200)
-
-                        # print(f'steps for this iteration {n_steps}. num vecs: {Xt.shape[0]} ')
-                        # want iters * vecs to be const..
-                        # eg. dota. 1000*100*30
-
-                        for _ in range(n_steps):
-                            loss = s.vec_state.update(Xt, yt)
-                            if loss == 0:  # gradient is 0 when loss is 0.
-                                print("loss is 0, breaking early")
-                                break
-
-                        s.tvec = s.vec_state.get_vec()
-                    elif cfg["model_type"] == "solver":
-                        s.tvec = adjust_vec2(s.tvec, Xt, yt, **p.solver_opts)
-                    else:
-                        assert False, "model type"
-                else:
-                    assert False
+                s.tvec = s.vec_state.get_vec()
+            elif cfg["model_type"] == "solver":
+                s.tvec = adjust_vec2(s.tvec, Xt, yt, **p.solver_opts)
             else:
-                # print('missing positives or negatives to do any training', yt.shape, yt.max(), yt.min())
-                pass
+                assert False, "model type"
+        else:
+            assert False
 
+
+class KnnBased(LoopBase):
+    def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
+        super().__init__(gdm, q, params)
+        s = self.state
+        p = self.params 
+
+        knng_path = gdm._get_knng_path(p.index_spec)
+        knng = KNNGraph.from_file(knng_path, parallelism=0)
+        knng = knng.restrict_k(k=p.knn_k).make_symmetric()
+
+        if p.interactive == 'knn_greedy':
+            s.knn_model = SimpleKNNRanker(knng, init_scores=None)
+        elif p.interactive == 'knn_prop':
+            s.knn_model = LabelPropagationRanker(knng, init_scores=None, **p.interactive_options)
+        elif p.interactive == 'linear_prop':
+            s.knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
+        else:
+            assert False
+
+    def set_text_vec(self, tvec):
+        scores = self.q.index.score(tvec)
+        self.state.knn_model.set_base_scores(scores)
+
+    def next_batch(self):
+        """
+        gets next batch of image indices based on current vector
+        """
+        s = self.state
+        p = self.params
+        q = self.q
+
+        sorted_idxs, sorted_scores = s.knn_model.top_k(k=None, unlabeled_only=False)
+        candidates = _get_top_dbidxs(vec_idxs=sorted_idxs, scores=sorted_scores, 
+                        vector_meta=q.index.vector_meta, exclude=q.returned, topk=p.shortlist_size)
+        raw_scores = s.knn_model.current_scores()
+
+        frame_scores = np.zeros(candidates.shape[0])
+        activations = []
+        for (i,dbidx) in enumerate(candidates.dbidx.values):
+            meta_df = q.index.vector_meta.query(f'dbidx == {dbidx}')
+            meta_df = meta_df.assign(score=raw_scores[meta_df.index.values])
+            tup = score_frame2(meta_df, aug_larger=p.aug_larger, agg_method=p.agg_method)                
+            frame_scores[i] = tup.score.iloc[0]
+            activations.append(tup)
+
+        candidates = candidates.assign(frame_scores=frame_scores)
+        c = candidates.sort_values('frame_scores', ascending=False)
+
+        idxs = c.dbidx.iloc[:p.batch_size]
+        b  = {'dbidxs':idxs, 
+                'scores':c.frame_scores.iloc[:p.batch_size], 
+                'activations':None,
+            }
+        
+        return b
+
+    def refine(self):
+        # labels already added.
+        # go over labels here since it takes time
+        ## translating box labels to labels over the vector index.
+        #### for each frame in a box label. box join with the vector index for that box.
+        # seen_ids = np.array(self.q.label_db.get_seen())
+        pos, neg = self.q.getXy(get_positions=True)
+        idxs = np.concatenate([pos,neg])
+        labels = np.concatenate([np.ones_like(pos), np.zeros_like(neg)])
+        s = self.state
+        s.knn_model.update(idxs, labels)
 
 
 class Session:
@@ -389,7 +427,7 @@ class Session:
         self.image_timing = {}
         self.index = hdb
         self.q = hdb.new_query()
-        self.loop = SeesawLoop(self.gdm, self.q, params=self.params)
+        self.loop = LoopBase.from_params(self.gdm, self.q, params=self.params)
         self.action_log = []
         self._log("init")
 
@@ -427,25 +465,10 @@ class Session:
         p = self.loop.params
         s = self.loop.state
         s.curr_str = key
-        s.tvec = self.index.string2vec(string=key)
         s.tmode = "dot"
 
-        if p.interactive in ['knn_greedy', 'knn_prop', 'linear_prop'] :
-            ### need to add score method to index
-            ## need to add base score method to knn
-            scores = self.index.score(s.tvec)            
-            s.knn_model.set_base_scores(scores)
-        elif p.interactive == 'pytorch':
-            if p.method_config.get("model_type", None) == "multirank2":
-                s.vec_state = VecState(
-                    s.tvec,
-                    margin=p.loss_margin,
-                    opt_class=torch.optim.SGD,
-                    opt_params={"lr": p.learning_rate},
-                )
-        else:
-            pass
-        
+        vec = self.index.string2vec(string=key)
+        self.loop.set_text_vec(vec)
 
     def update_state(self, state: SessionState):
         self._update_labeldb(state)

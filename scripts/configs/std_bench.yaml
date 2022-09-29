@@ -1,7 +1,7 @@
 datasets:
-  # - bdd
-  # - lvis
-  # - coco
+  - bdd
+  - lvis
+  - coco
   - objectnet
 shared_session_params: # see SessionParams
   batch_size: 1

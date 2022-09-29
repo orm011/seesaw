@@ -1,8 +1,8 @@
 datasets:
   # - bdd
-  # - lvis
+  - lvis
   # - coco
-  - objectnet
+  # - objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
@@ -35,7 +35,6 @@ variants:
       interactive: linear_prop
       knn_k: 5
       interactive_options:
-        prop_only: False
         linear_kwargs:
           C: 10
           solver_flags:
@@ -54,15 +53,15 @@ variants:
       index_name: multiscale
       agg_method: avg_score
       aug_larger: greater
-    # - name: seesaw_knn_prop
-    #   interactive: knn_prop
-    #   knn_k: 5
-    #   interactive_options:
-    #       calib_a: 10.
-    #       calib_b: -5
-    #       prior_weight: 1.
-    #       edist: .1
-    #       num_iters: 5
-    #   index_name: multiscale
-    #   agg_method: avg_score
-    #   aug_larger: greater
+    - name: seesaw_knn_prop
+      interactive: knn_prop
+      knn_k: 5
+      interactive_options:
+          calib_a: 10.
+          calib_b: -5
+          prior_weight: 1.
+          edist: .1
+          num_iters: 5
+      index_name: multiscale
+      agg_method: avg_score
+      aug_larger: greater
