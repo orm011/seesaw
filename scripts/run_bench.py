@@ -25,7 +25,8 @@ parser.add_argument(
 parser.add_argument("--root_dir", type=str, help="seesaw root dir to use for benchmark")
 
 parser.add_argument(
-    "CONFIG", type=str, help="yaml file with benchmark configurations (see example_config.yaml)"
+    "configs", help="yaml file(s) with benchmark configurations (see example_config.yaml)", 
+        type=str,  nargs='+'
 )
 
 args = parser.parse_args()
@@ -33,38 +34,47 @@ assert os.path.isdir(args.root_dir)
 if not os.path.isdir(args.output_dir):
     os.makedirs(args.output_dir, exist_ok=True)
 
-assert os.path.isfile(args.CONFIG)
-yl = yaml.safe_load(open(args.CONFIG, 'r'))
-
-variants = yl['variants']
-names = set([])
-for v in variants:
-    if v["name"] in names:
-        assert False, f'repeated variant name "{v["name"]}" will make it harder to compare variants afterwards'
-    names.add(v["name"])
-
-datasets = yl['datasets']
-shared_session_params = yl['shared_session_params']
-shared_bench_params = yl['shared_bench_params']
+# assert os.path.isfile(args.CONFIG)
+yls = []
+for path in args.configs:
+    yl = yaml.safe_load(open(path, 'r'))
+    yls.append(yl)
 
 ray.init("auto", namespace="seesaw", log_to_driver=False, ignore_reinit_error=True)
 gdm = GlobalDataManager(args.root_dir)
 os.chdir(gdm.root)
 
-if args.dryrun:
-    nclasses = 1
-else:
-    nclasses=math.inf
+names = set([])
+all_cfgs = []
+for i,yl in enumerate(yls):
+    if args.dryrun:
+        nclasses = 1
+    else:
+        nclasses=math.inf
 
-cfgs = gen_configs(
-    gdm,
-    datasets=datasets,
-    variants=variants,
-    s_template=shared_session_params,
-    b_template=shared_bench_params,
-    max_classes_per_dataset=nclasses,
-)
-print(f"{len(cfgs)} generated")
+    variants = yl['variants']
+    for v in variants:
+        if v["name"] in names:
+            assert False, f'repeated variant name "{v["name"]}" will make it harder to compare variants afterwards'
+        names.add(v["name"])
+
+    datasets = yl['datasets']
+    shared_session_params = yl['shared_session_params']
+    shared_bench_params = yl['shared_bench_params']
+
+    cfgs = gen_configs(
+        gdm,
+        datasets=datasets,
+        variants=variants,
+        s_template=shared_session_params,
+        b_template=shared_bench_params,
+        max_classes_per_dataset=nclasses,
+    )
+
+    print(f"{len(cfgs)} generated from {args.configs[i]}")
+
+    all_cfgs.extend(cfgs)
+
 
 key = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 exp_name = key
@@ -85,10 +95,10 @@ class BatchRunner:
 
 if args.dryrun:
     br = BatchRunner(redirect_output=False)
-    br(cfgs)
+    br(all_cfgs)
 else:
-    random.shuffle(cfgs) # randomize task order to kind-of balance work
-    ds = ray.data.from_items(cfgs, parallelism=800)
+    random.shuffle(all_cfgs) # randomize task order to kind-of balance work
+    ds = ray.data.from_items(all_cfgs, parallelism=800)
     actor_options = dict(num_cpus=args.num_cpus, memory=5 * (2**30))
     _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(10,200), **actor_options).take_all()
 
