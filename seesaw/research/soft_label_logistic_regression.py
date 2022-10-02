@@ -18,26 +18,44 @@ def bce_loss_with_logits(p, logits):
     return cp.multiply(p, cp.logistic(-logits)) + cp.multiply(1-p, cp.logistic(logits))
 
 class LinearModelCE:
-    def __init__(self, *, solver_flags, C=1.):
+    def __init__(self, *, solver_flags, C=1., class_weights='balanced', regularizer_vector=None):
         self.theta = None 
-        self.bias = None 
+        self.bias = None
+        self.regularizer_vector = regularizer_vector
+        self.class_weights = class_weights
         self.problem = None
         self.C = C
         self.solver_flags = solver_flags
         
-    def _loss(self, scores, ps):
-        loss = cp.sum(
-            bce_loss_with_logits(ps.reshape(-1,1), scores)
-        )
-        return loss
+    def _loss(self, scores, ps, weights=None):
+        losses = bce_loss_with_logits(ps, scores)
+        if weights is None:
+            weights = np.ones_like(losses)
+
+        weights = weights / weights.sum()
+
+        return losses @ weights
+
+    def _regularizer(self):
+        if self.regularizer_vector is None:
+            return cp.norm(self.theta)
+        else:
+            return cp.norm(self.theta - self.regularizer_vector)
         
     def _init_problem(self, X, ps):
-        self.theta = cp.Variable((X.shape[1],1))
+        self.theta = cp.Variable((X.shape[1],))
         self.bias = cp.Variable((1,))
+        num_pos = (ps == 1).sum()
+        wpos = (ps.shape[0] - num_pos)/ num_pos
+
+        weights = np.ones_like(ps)
+        weights[ps == 1] = wpos
         
         scores = self._scores(X)  
-        loss = self._loss(scores, ps)
-        rloss =  self.C*loss/X.shape[0] + cp.norm(self.theta)
+        loss = self._loss(scores, ps, weights)
+        reg = self._regularizer()
+
+        rloss =  self.C*loss + reg
         self.problem = cp.Problem(cp.Minimize(rloss))
 
         
@@ -52,6 +70,7 @@ class LinearModelCE:
         return X @ theta + bias
     
     def fit(self, X,ps):
+        ps = ps.reshape(-1)
         self._init_problem(X,ps)
         self.problem.solve(**self.solver_flags)
         
@@ -151,3 +170,5 @@ class LinearScorer:
         topk_positions = np.argsort(-raw_scores[subset])[:k]
         topk_indices = subset[topk_positions]
         return topk_indices, raw_scores[topk_indices]
+
+
