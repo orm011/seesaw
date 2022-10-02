@@ -302,7 +302,7 @@ def make_tuple_ds(X, y, max_size):
         randsel = torch.randperm(len(train_ds))[:max_size]
         train_ds = Subset(train_ds, randsel)
     return train_ds
-from .basic_trainer import SimpleTrainer
+from .basic_trainer import BasicTrainer
 
 def fit_rank2(
     *,
@@ -363,7 +363,7 @@ def fit_rank2(
         val_loader = DataLoader(train_ds, batch_size=len(train_ds), shuffle=False, num_workers=0)
 
 
-    trainer = SimpleTrainer(mod, max_epochs=max_epochs)
+    trainer = BasicTrainer(mod, max_epochs=max_epochs)
     # trainer = pl.Trainer(
     #     logger=False,
     #     accelerator='cpu',
