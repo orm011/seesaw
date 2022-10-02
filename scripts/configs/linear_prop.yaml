@@ -2,7 +2,7 @@ datasets:
   # - bdd
   - lvis
   # - coco
-  # - objectnet
+  - objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
@@ -14,11 +14,6 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    # - name: seesaw_multi
-    #   interactive: plain
-    #   index_name: multiscale
-    #   agg_method: avg_score
-    #   aug_larger: greater
     # - name: seesaw_knn5
     #   knn_k : 5
     #   interactive: knn_greedy
@@ -31,25 +26,37 @@ variants:
     #   index_name: multiscale
     #   agg_method: avg_score
     #   aug_larger: greater
-    - name: seesaw_linear_prop
-      interactive: linear_prop
+    # - name: seesaw_linear_prop
+    #   interactive: linear_prop
+    #   knn_k: 5
+    #   interactive_options:
+    #     linear_kwargs:
+    #       C: 10
+    #       solver_flags:
+    #         solver: 'MOSEK'
+    #         verbose: False
+    #     pca_kwargs:
+    #       n_components: 128
+    #       whiten: True
+    #     label_prop_kwargs:
+    #       calib_a: 10.
+    #       calib_b: -5
+    #       prior_weight: 1.
+    #       edist: .1
+    #       num_iters: 5
+    #     sample_size: 4000
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: greater
+    - name: seesaw_knn_prop
+      interactive: knn_prop
       knn_k: 5
       interactive_options:
-        linear_kwargs:
-          C: 10
-          solver_flags:
-            solver: 'MOSEK'
-            verbose: False
-        pca_kwargs:
-          n_components: 128
-          whiten: True
-        label_prop_kwargs:
           calib_a: 10.
           calib_b: -5
           prior_weight: 1.
           edist: .1
           num_iters: 5
-        sample_size: 4000
       index_name: multiscale
       agg_method: avg_score
       aug_larger: greater
