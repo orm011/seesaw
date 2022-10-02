@@ -49,7 +49,7 @@ class CoarseIndex(AccessMethod):
             embedding=embedding, vectors=embedded_dataset, vector_meta=vector_meta
         )
 
-    def query(self, *, topk, mode, vector=None, exclude=None, startk=None, **kwargs):
+    def query(self, *, topk, vector=None, exclude=None, startk=None, **kwargs):
         if exclude is None:
             exclude = pr.BitMap([])
         included = pr.BitMap(self.all_indices).difference(exclude)
@@ -58,8 +58,6 @@ class CoarseIndex(AccessMethod):
 
         if len(included) <= topk:
             topk = len(included)
-
-        assert mode == "dot"
 
         metas = self.vector_meta.dbidx.isin(included)
         vecs = self.vectors[metas]
