@@ -10,9 +10,6 @@ plot <- (ggplot(df, aes(x=ndcg_score_baseline, y=ndcg_score))
          + geom_point(aes(color=dataset), position = jitter, alpha=.7)
          + scale_x_continuous(breaks=seq(0,1,.2))
          + scale_y_continuous(breaks=seq(0,1,.2))
-        # + geom_point(position = jitter, fill=)
-        # + geom_jitter(aes(fill=dataset), 
-        #            width=jitter, alpha=.7,  height=jitter)
          + geom_abline(aes(slope=1, intercept=0))
          + labs(x='NDCG score - CLIP baseline', y='NDCG score - this work', 
                 title='Scatter of query accuracy with Seesaw vs. CLIP baseline')
