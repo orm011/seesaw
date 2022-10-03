@@ -12,9 +12,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
 class LogisticRegModule(nn.Module):
-    def __init__(self, *, dim,  pos_weight=1., reg_weight=1.,  max_iter=100, lr=1., regularizer_function=None):
+    def __init__(self, *, dim,  pos_weight=1., reg_weight=1., fit_intercept=True,  max_iter=100, lr=1., regularizer_function=None):
         super().__init__()
-        self.linear = nn.Linear(dim, 1)
+        self.linear = nn.Linear(dim, 1, bias=fit_intercept)
         self.pos_weight = torch.tensor([pos_weight])
         self.regularizer_function = regularizer_function
             
@@ -49,7 +49,8 @@ class LogisticRegModule(nn.Module):
         
         loss = celoss + self.reg_weight*reg
         print('wnorm', self.linear.weight.norm().detach().item())
-        print('bias', self.linear.bias.detach().item())
+        if self.linear.bias is not None:
+            print('bias', self.linear.bias.detach().item())
         return {'loss':loss, 'celoss':celoss, 'reg':reg}
     
     def validation_step(self, batch, batch_idx):
@@ -63,8 +64,10 @@ import numpy as np
 
 from sklearn.decomposition import PCA
 ## problem: lack of convergence makes it unpredictable.
+
 class LogisticRegresionPT: 
-    def __init__(self, class_weights, scale='centered',  reg_lambda=1., regularizer_vector=None,  **kwargs):
+    def __init__(self, class_weights, scale='centered',  reg_lambda=1., intercept_reg_lambda=1., 
+            regularizer_vector=None,  **kwargs):
         ''' reg type: nparray means use that vector '''
         assert scale in ['centered', 'pca', None]
         self.class_weights = class_weights
@@ -74,17 +77,17 @@ class LogisticRegresionPT:
         self.mu_ = None
         self.scale = scale
         self.reg_lambda = reg_lambda
+        self.intercept_reg_lambda = intercept_reg_lambda
         self.n_examples = None
+        self.regularizer_vector = None
 
-        if regularizer_vector is None:
-            self.regularizer_vector = regularizer_vector
-        else:
+        if regularizer_vector is not None:
             self.regularizer_vector = torch.from_numpy(regularizer_vector).float().reshape(-1)
 
         if scale == 'centered':
             self.scaler_ = StandardScaler(with_mean=True, with_std=False)
         elif scale == 'pca':
-            self.scaler_ = PCA(whiten=False, n_components=128)
+            self.scaler_ = PCA(whiten=False, n_components=512)
             self.sigma_inv_ = None
         else:
             self.scaler_ = None
@@ -93,22 +96,24 @@ class LogisticRegresionPT:
         assert self.model_ is not None
         weight = self.model_.linear.weight
 
+        norm_penalty = (weight.norm()**2 - 1.)**2
 
-        if self.regularizer_vector is None:
-            ans = weight.norm()   
-        else: 
+        if self.regularizer_vector is not None:
             if self.scale == 'pca':
                 base_vec = self.regularizer_vector  @ self.sigma_inv_.t()
-            elif self.scale == 'centered' :
+            elif self.scale == 'centered' or self.scale is None :
                 base_vec = self.regularizer_vector
-            elif self.scale is None:
-                base_vec = torch.zeros_like(self.model_.linear.weight)
             else:
                 assert False
 
-            ans = (weight.reshape(-1) - base_vec.reshape(-1)).norm()
+            angle_penalty = (F.normalize(weight).reshape(-1) - base_vec.reshape(-1)).norm()**2
+        else:
+            angle_penalty = 0.
 
-        return ans + self.model_.linear.bias.norm()
+        ans = norm_penalty + angle_penalty
+            # ans = (weight.reshape(-1) - base_vec.reshape(-1)).norm()
+
+        return ans #+ self.intercept_reg_lambda*self.model_.linear.bias.norm()
             
     def _get_coeff(self):
         assert self.model_
@@ -134,6 +139,10 @@ class LogisticRegresionPT:
     
     def fit(self, X, y):
         self.n_examples = X.shape[0]
+        npos = (y == 1).sum()
+        nneg = (y == 0).sum()
+        if self.n_examples != npos + nneg:
+            assert False, 'some of the weighting code assumes only 0 or 1. fix that to proceed'
 
         if self.scaler_:
             X = self.scaler_.fit_transform(X)
@@ -144,13 +153,16 @@ class LogisticRegresionPT:
 
         if self.class_weights == 'balanced':
             alpha = 1
-            npos = (y == 1).sum() + alpha
-            pos_weight = (self.n_examples + alpha - npos) / npos
+            pseudo_pos = npos + alpha
+            pseudo_neg = nneg + alpha
+            pseudo_n = pseudo_pos + pseudo_neg
+            pos_weight = (pseudo_n - pseudo_pos) / pseudo_pos
         else:
             pos_weight = self.class_weights
         
         self.model_ = LogisticRegModule(dim=X.shape[1], pos_weight=pos_weight, 
-                        reg_weight=self.reg_lambda/self.n_examples, #
+                        reg_weight=self.reg_lambda/self.n_examples,
+                        fit_intercept=(npos > 0 and nneg > 0), # only fit intercept if there are both signs
                         regularizer_function=self._regularizer_func, **self.kwargs)
         
         if self.regularizer_vector is None:
