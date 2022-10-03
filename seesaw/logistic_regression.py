@@ -1,5 +1,6 @@
-from numpy import ndarray
+
 import torch
+import numpy as np
 from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
 import torch.nn as nn
@@ -12,7 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
 class LogisticRegModule(nn.Module):
-    def __init__(self, *, dim,  pos_weight=1., reg_weight=1., fit_intercept=True,  max_iter=100, lr=1., regularizer_function=None):
+    def __init__(self, *, dim,  pos_weight=1., reg_weight=1., fit_intercept=True,  verbose=False, max_iter=100, lr=1., regularizer_function=None):
         super().__init__()
         self.linear = nn.Linear(dim, 1, bias=fit_intercept)
         self.pos_weight = torch.tensor([pos_weight])
@@ -21,6 +22,7 @@ class LogisticRegModule(nn.Module):
         self.reg_weight = reg_weight
         self.max_iter = max_iter
         self.lr = lr
+        self.verbose = verbose
         
     def get_coeff(self):
         return self.linear.weight.detach().numpy()
@@ -48,9 +50,11 @@ class LogisticRegModule(nn.Module):
             reg = self.regularizer_function()
         
         loss = celoss + self.reg_weight*reg
-        print('wnorm', self.linear.weight.norm().detach().item())
-        if self.linear.bias is not None:
-            print('bias', self.linear.bias.detach().item())
+        if self.verbose:
+            print('wnorm', self.linear.weight.norm().detach().item())
+            if self.linear.bias is not None:
+                print('bias', self.linear.bias.detach().item())
+        
         return {'loss':loss, 'celoss':celoss, 'reg':reg}
     
     def validation_step(self, batch, batch_idx):
@@ -66,7 +70,7 @@ from sklearn.decomposition import PCA
 ## problem: lack of convergence makes it unpredictable.
 
 class LogisticRegresionPT: 
-    def __init__(self, class_weights, scale='centered',  reg_lambda=1., intercept_reg_lambda=1., 
+    def __init__(self, class_weights, scale='centered',  reg_lambda=1., verbose=False, 
             regularizer_vector=None,  **kwargs):
         ''' reg type: nparray means use that vector '''
         assert scale in ['centered', 'pca', None]
@@ -77,12 +81,12 @@ class LogisticRegresionPT:
         self.mu_ = None
         self.scale = scale
         self.reg_lambda = reg_lambda
-        self.intercept_reg_lambda = intercept_reg_lambda
         self.n_examples = None
         self.regularizer_vector = None
+        self.verbose = verbose
 
         if regularizer_vector is not None:
-            self.regularizer_vector = torch.from_numpy(regularizer_vector).float().reshape(-1)
+            self.regularizer_vector = F.normalize(torch.from_numpy(regularizer_vector.reshape(1,-1)).float(), dim=-1).reshape(-1)
 
         if scale == 'centered':
             self.scaler_ = StandardScaler(with_mean=True, with_std=False)
@@ -111,9 +115,7 @@ class LogisticRegresionPT:
             angle_penalty = 0.
 
         ans = norm_penalty + angle_penalty
-            # ans = (weight.reshape(-1) - base_vec.reshape(-1)).norm()
-
-        return ans #+ self.intercept_reg_lambda*self.model_.linear.bias.norm()
+        return ans 
             
     def _get_coeff(self):
         assert self.model_
@@ -124,8 +126,6 @@ class LogisticRegresionPT:
             return weight_prime.reshape(1,-1) @ self.sigma_inv_.t()
         else:
             assert False
-        # elif self.scale == 'basic':
-        #     return weight_prime.reshape(1, -1) @ self.sigma_inv_
 
     def get_coeff(self):
         return self._get_coeff().detach().numpy()
@@ -155,14 +155,13 @@ class LogisticRegresionPT:
             alpha = 1
             pseudo_pos = npos + alpha
             pseudo_neg = nneg + alpha
-            pseudo_n = pseudo_pos + pseudo_neg
-            pos_weight = (pseudo_n - pseudo_pos) / pseudo_pos
+            pos_weight = pseudo_neg / pseudo_pos
         else:
             pos_weight = self.class_weights
         
         self.model_ = LogisticRegModule(dim=X.shape[1], pos_weight=pos_weight, 
                         reg_weight=self.reg_lambda/self.n_examples,
-                        fit_intercept=(npos > 0 and nneg > 0), # only fit intercept if there are both signs
+                        fit_intercept=False, #(npos > 0 and nneg > 0), # only fit intercept if there are both signs
                         regularizer_function=self._regularizer_func, **self.kwargs)
         
         if self.regularizer_vector is None:
@@ -176,14 +175,15 @@ class LogisticRegresionPT:
         is_nan = False        
         for i,loss in enumerate(self.losses_):
             if math.isnan(loss) or math.isinf(loss):
-                print(f'warning: loss diverged at step {i=} {loss=:.03f}. you may want to consider scaling and centering')
+                if self.verbose:
+                    print(f'warning: loss diverged at step {i=} {loss=:.03f}. you may want to consider scaling and centering')
                 is_nan = True
                 break
         
         if not is_nan:
             niter = len(self.losses_)
-            print(f'converged after {niter} iterations')
-
+            if self.verbose:
+                print(f'converged after {niter} iterations')
                 
     def predict_proba(self, X):
         if self.scaler_:
