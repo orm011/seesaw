@@ -215,6 +215,7 @@ def fill_imdata(imdata: Imdata, box_data: pd.DataFrame, b: BenchParams):
     imdata.boxes = boxes
     return imdata
 
+import pyroaring as pr
 
 def benchmark_loop(
     *,
@@ -243,11 +244,18 @@ def benchmark_loop(
 
     total_results = 0
     total_seen = 0
+    seen_dbidxs = pr.BitMap()
+
     session.set_text(b.qstr)
     for batch_num in tqdm(range(1, b.n_batches + 1), leave=False, disable=True):
         print(f"iter {batch_num}")
         idxbatch = session.next()
-        assert [idx in subset for idx in idxbatch]
+
+        for idx in idxbatch:
+            assert idx in subset, f'returned a dbidx outside of range'
+            assert idx not in seen_dbidxs, f'returned a repeated dbidx'
+            seen_dbidxs.add(idx)
+
         if len(idxbatch) == 0:
             break
 
