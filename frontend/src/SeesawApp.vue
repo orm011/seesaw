@@ -511,10 +511,9 @@ export default defineComponent({
                   break;
                 case 'pytorch':
                 case 'fine':
+                default:
                   this.front_end_type = 'pytorch';
                   break
-                default:
-                  console.log(`unknown mode ${params.get('mode')}.`);
             }
       } ,
       changeInput(input){
