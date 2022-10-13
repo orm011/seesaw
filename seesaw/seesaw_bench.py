@@ -368,9 +368,10 @@ class BenchRunner(object):
                 )
 
                 json.dump(summary.dict(), open(output_path, "w"))
-            except Exception as e:
-                print(e, file=sys.stderr)
-                raise e
+            except Exception as exception:
+                print(f'{p=}\n\n{exception=}', file=sys.stderr)
+                sys.stderr.flush()
+                raise exception
             finally:  ## restore
                 if self.redirect_output:
                     sys.stdout = self.stdout
@@ -505,11 +506,23 @@ def gen_configs(
 ):
     configs = []
     avail_datasets = gdm.list_datasets()
-    for d in datasets:
+    for ddict in datasets:
+        if isinstance(ddict , dict):
+            d = ddict['name']
+            cats = ddict.get('categories', [])
+
+        else:
+            d = ddict
+            cats = []
+
         assert d in avail_datasets
-        ds = gdm.get_dataset(d)
+        ds = gdm.get_dataset(d)        
         classes = ds.load_eval_categories()
-        for i, c in enumerate(classes):
+        if cats == []:
+            cats = classes
+
+        for i, c in enumerate(cats):
+            assert c in classes
             if i == max_classes_per_dataset:
                 break
             for var in variants:
