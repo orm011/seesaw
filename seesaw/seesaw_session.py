@@ -52,12 +52,14 @@ class LoopBase:
         self.params = params
         self.state = LoopState()
         self.q = q
+        self.index = self.q.index
 
     def set_text_vec(self, tvec):
         pass
 
     @staticmethod
     def from_params(gdm, q, params):
+
         if params.interactive in ['knn_greedy', 'knn_prop', 'linear_prop']:
             cls = KnnBased
         elif params.interactive in ['textual']:
@@ -66,6 +68,10 @@ class LoopBase:
             cls = PointBased
         elif params.interactive in ['pytorch']:
             cls = SeesawLoop
+        elif params.interactive == 'log_reg2':
+            cls = LogReg2
+        elif params.interactive == 'pseudo_lr':
+            cls = PseudoLabelLR
         else:
             assert False, f'unknown {params.interactive=}'
 
@@ -80,9 +86,11 @@ class LoopBase:
 class PointBased(LoopBase):
     def __init__(self, gdm, q, params):
         super().__init__(gdm, q, params)
+        self.curr_vec = None
 
     def set_text_vec(self, vec):
         self.state.tvec = vec
+        self.curr_vec = vec
 
     def refine(self):
         pass # modify in subclasses
@@ -91,7 +99,7 @@ class PointBased(LoopBase):
         s = self.state
         p = self.params
 
-        vec = s.tvec
+        vec = self.curr_vec
         rescore_m = lambda vecs: vecs @ vec.reshape(-1, 1)
 
         b = self.q.query_stateful(
@@ -204,6 +212,19 @@ class TextualLoop(LoopBase):
 
         losses = s.model.update(all_vecs, marked_accepted, all_strs, s.curr_str)
         print("done with update", losses)
+
+
+from .logistic_regression import LogisticRegresionPT
+class LogReg2(PointBased):
+    def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
+        super().__init__(gdm, q, params)
+
+    # def set_text_vec(self) # let super do this
+    def refine(self):
+        Xt, yt = self.q.getXy()
+        model = LogisticRegresionPT(regularizer_vector=self.state.tvec, **self.params.interactive_options)
+        model.fit(Xt, yt.reshape(-1,1))
+        self.curr_vec = model.get_coeff()
 
 class SeesawLoop(PointBased):
     def __init__(
@@ -321,6 +342,38 @@ class SeesawLoop(PointBased):
             assert False
 
 
+from .research.soft_label_logistic_regression import makeXy
+from .research.knn_methods import  LabelPropagationRanker
+
+class PseudoLabelLR(PointBased):
+    def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
+        super().__init__(gdm, q, params)
+        self.options = self.params.interactive_options
+        self.label_prop_params = self.options['label_prop_params']
+        self.log_reg_params = self.options['log_reg_params']
+
+        knng_path = gdm._get_knng_path(params.index_spec)
+        knng = KNNGraph.from_file(knng_path, parallelism=0)
+        self.knng_sym = knng.restrict_k(k=params.knn_k).make_symmetric()
+        self.label_prop = LabelPropagationRanker(knng=self.knng_sym, **self.label_prop_params)
+
+    def set_text_vec(self, tvec):
+        self.state.tvec = tvec
+        scores = self.q.index.score(tvec)
+        self.label_prop.set_base_scores(scores)
+        self.curr_vec = tvec
+
+    def refine(self):
+        pos, neg = self.q.getXy(get_positions=True)
+        idxs = np.concatenate([pos,neg])
+        labels = np.concatenate([np.ones_like(pos), np.zeros_like(neg)])
+        self.label_prop.update(idxs, labels)
+        model = LogisticRegresionPT(**self.log_reg_params)
+        X,y = makeXy(self.index, self.label_prop, sample_size=self.options['sample_size'])
+        model.fit(X, y.reshape(-1,1)) # y 
+        self.curr_vec = model.get_coeff().reshape(-1)
+    ## def next_batch(self):
+
 class KnnBased(LoopBase):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
         super().__init__(gdm, q, params)
@@ -328,13 +381,19 @@ class KnnBased(LoopBase):
         p = self.params 
 
         knng_path = gdm._get_knng_path(p.index_spec)
+        print('loading graph')
         knng = KNNGraph.from_file(knng_path, parallelism=0)
-        knng = knng.restrict_k(k=p.knn_k).make_symmetric()
+        print('done loading')
+        knng = knng.restrict_k(k=p.knn_k)
 
         if p.interactive == 'knn_greedy':
+            print('simple ranker')
             s.knn_model = SimpleKNNRanker(knng, init_scores=None)
+            print('done building ranker')
         elif p.interactive == 'knn_prop':
+            print('sym done')
             s.knn_model = LabelPropagationRanker(knng, init_scores=None, **p.interactive_options)
+            print('label prop done')
         elif p.interactive == 'linear_prop':
             s.knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
         else:
@@ -352,7 +411,7 @@ class KnnBased(LoopBase):
         p = self.params
         q = self.q
 
-        sorted_idxs, sorted_scores = s.knn_model.top_k(k=None, unlabeled_only=False)
+        sorted_idxs, sorted_scores = s.knn_model.top_k(k=None, unlabeled_only=True)
         candidates = _get_top_dbidxs(vec_idxs=sorted_idxs, scores=sorted_scores, 
                         vector_meta=q.index.vector_meta, exclude=q.returned, topk=p.shortlist_size)
         raw_scores = s.knn_model.current_scores()
@@ -537,7 +596,6 @@ class Session:
 def prep_data(ds, p: SessionParams):
     box_data, qgt = ds.load_ground_truth()
     catgt = qgt[p.index_spec.c_name]
-
     positive_box_data = box_data[box_data.category == p.index_spec.c_name]
     present = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
     positive = pr.FrozenBitMap(positive_box_data.dbidx.values)
@@ -557,12 +615,18 @@ def make_session(gdm: GlobalDataManager, p: SessionParams):
     subset = None
     positive = None
 
-    assert p.index_spec.c_name is not None
+    # assert p.index_spec.c_name is not None
     print("prepping  data....")
-    box_data, subset, positive = prep_data(ds, p)
-    if len(positive) == 0:
-        print('warning: no positive elements in this benchmark')
-    hdb = hdb.subset(subset)
+    if p.index_spec.c_name is not None:
+        print(f"subsetting for subset {p.index_spec.c_name=}")
+        box_data, subset, positive = prep_data(ds, p)
+        if len(positive) == 0:
+            print('warning: no positive elements in this benchmark')
+        hdb = hdb.subset(subset)
+    else:
+        box_data = None
+        subset = None
+        positive = None
 
     print("about to construct session...")
     session = Session(gdm, ds, hdb, p)
