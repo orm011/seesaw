@@ -149,7 +149,7 @@ class LogisticRegresionPT:
                 # self.sigma_inv_ = torch.diag_embed(torch.from_numpy(1./self.scaler_.scale_.astype('float'))).float()
 
 
-        pos_weight = 1.
+        pos_weight = self.class_weights
         # if self.class_weights == 'balanced':
         #         pseudo_pos = max(npos, 1)
         #         pseudo_neg = max(nneg, 1)
