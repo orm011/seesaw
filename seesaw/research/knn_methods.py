@@ -25,42 +25,53 @@ def get_knn_matrix(knn_df, reverse=False):
     return scipy.sparse.csr_matrix((entries, (row_index, column_index)), shape=(n_vertex,n_vertex))
 
 
-def get_rev_lookup_ranges(rev_df, nvecs):
-    cts = rev_df.dst_vertex.value_counts().sort_index()
+def get_lookup_ranges(sorted_col, nvecs):
+    cts = sorted_col.value_counts().sort_index()
     counts_filled = cts.reindex(np.arange(-1, nvecs), fill_value=0)
     ind_ptr = counts_filled.cumsum().values
     return ind_ptr
 
+def reprocess_df(df0):
+    df = df0.assign(src_vertex=df0.src_vertex.astype('int32'), 
+                    dst_vertex=df0.dst_vertex.astype('int32'),
+                    distance=df0.distance.astype('float32'),
+                    dst_rank=df0.dst_rank.astype('int32'))
+    
+    df_rev = df.assign(src_vertex=df.dst_vertex, dst_vertex=df.src_vertex)
+    df_all = pd.concat([df.assign(is_forward=True, is_reverse=False), 
+                        df_rev.assign(is_forward=False, is_reverse=True)], ignore_index=True)
+
+    df_all = df_all.sort_values(['src_vertex'])
+    dups = df_all.duplicated(['src_vertex', 'dst_vertex'], keep=False)
+    df_all = df_all.assign(is_forward=(df_all.is_forward | dups),
+                     is_reverse=(df_all.is_reverse | dups))
+    df_all = df_all.drop_duplicates(['src_vertex', 'dst_vertex']).reset_index(drop=True)
+    return df_all
+
 class KNNGraph:
-    def __init__(self, knn_df, rev_df=None):
+    def __init__(self, knn_df):
         self.knn_df = knn_df
         actual_nvecs = knn_df.src_vertex.max() + 1
         self.nvecs = actual_nvecs
-
-        if rev_df is None:
-            rev_df = self.knn_df.sort_values('dst_vertex')
-
         self.k = knn_df.dst_rank.max() + 1        
-        self.knn_df = knn_df
-        self.rev_df = rev_df
-        self.ind_ptr = get_rev_lookup_ranges(rev_df, self.nvecs)
+        self.ind_ptr = get_lookup_ranges(knn_df.src_vertex, self.nvecs)
 
     def restrict_k(self, *, k):
         if k < self.k:
-            knn_df = self.knn_df.query(f'dst_rank < {k}').reset_index(drop=False)
-            rev_df = self.rev_df.query(f'dst_rank < {k}').reset_index(drop=False)
-            return KNNGraph(knn_df, rev_df=rev_df)
+            knn_df = self.knn_df.query(f'dst_rank < {k}').reset_index(drop=True)
+            return KNNGraph(knn_df)
         elif k > self.k:
             assert False, f'can only do up to k={self.k} neighbors based on input df'
         else:
             return self
 
-    def make_symmetric(self):
-        knndf = self.knn_df
-        knndf_reciprocal = knndf.assign(src_vertex=knndf.dst_vertex, dst_vertex=knndf.src_vertex)
-        symknn_all = pd.concat([knndf, knndf_reciprocal], ignore_index=True)
-        symknn_all = symknn_all.sort_values('src_vertex').drop_duplicates().reset_index(drop=True)
-        return KNNGraph(knn_df=symknn_all)
+    def forward_graph(self):
+        knn_df = self.knn_df
+        return KNNGraph(knn_df[knn_df.is_forward])
+    
+    def reverse_graph(self):
+        knn_df = self.knn_df
+        return KNNGraph(knn_df[knn_df.is_reverse])
 
     @staticmethod
     def from_vectors(vectors, *, n_neighbors, n_jobs=-1, low_memory=False, **kwargs):
@@ -72,19 +83,20 @@ class KNNGraph:
         exclude = identity
         exclude[~any_identity, -1] = 1 # if there is no identity in the top k+1, exclude the k+1
         assert (exclude.sum(axis=1) == 1).all()
-        positions1 = positions[~exclude].reshape(-1,n_neighbors   )
+        positions1 = positions[~exclude].reshape(-1,n_neighbors)
         distances1 = distances[~exclude].reshape(-1,n_neighbors)
 
         nvec, nneigh = positions1.shape
         iis, jjs = np.meshgrid(np.arange(nvec), np.arange(nneigh), indexing='ij')
 
-        knn_df = pd.DataFrame({ 'src_vertex':iis.reshape(-1),
-                                'dst_vertex':positions1.reshape(-1), 
-                                'distance':distances1.reshape(-1),
-                                'dst_rank':jjs.reshape(-1)
-                                
-                                })
-        
+        knn_df = pd.DataFrame({ 'src_vertex':iis.reshape(-1).astype('int32'),
+                                'dst_vertex':positions1.reshape(-1).astype('int32'), 
+                                'distance':distances1.reshape(-1).astype('float32'),
+                                'dst_rank':jjs.reshape(-1).astype('int32'),
+                            })
+
+        print('postprocessing df')
+        knn_df = reprocess_df(knn_df)
         knn_graph = KNNGraph(knn_df)
         return knn_graph, index2
 
@@ -96,26 +108,31 @@ class KNNGraph:
         if os.path.exists(path) and overwrite:
             shutil.rmtree(path)
 
-        os.makedirs(path, exist_ok=False)
+        os.makedirs(path, exist_ok=True)
 
-        ds = ray.data.from_pandas(self.knn_df).lazy()
-        ds.repartition(num_blocks=num_blocks).write_parquet(f'{path}/forward.parquet')
-
-        ds2 = ray.data.from_pandas(self.rev_df).lazy()
-        ds2.repartition(num_blocks=num_blocks).write_parquet(f'{path}/backward.parquet')
-
+        if num_blocks > 1:
+            ds = ray.data.from_pandas(self.knn_df).lazy()
+            ds.repartition(num_blocks=num_blocks).write_parquet(f'{path}/sym.parquet')
+        else:
+            self.knn_df.to_parquet(f'{path}/sym.parquet')            
     
     @staticmethod
     def from_file(path, parallelism=0):
-        # if not cache:
-        df = parallel_read_parquet(f'{path}/forward.parquet', parallelism=parallelism)
-        # from ..services import get_parquet
-        # df = get_parquet()
-        rev_df = parallel_read_parquet(f'{path}/backward.parquet', parallelism=parallelism)
-        return KNNGraph(df, rev_df=rev_df)
+        if os.path.exists(f'{path}/sym.parquet'):
+            df = parallel_read_parquet(f'{path}/sym.parquet', parallelism=parallelism)
+            return KNNGraph(df)
+
+        else:
+            print('no sym.parquet found, computing')
+            knn_df = parallel_read_parquet(f'{path}/forward.parquet', parallelism=parallelism)
+            knn_df = reprocess_df(knn_df)
+            graph = KNNGraph(knn_df)
+            graph.save(path, num_blocks=1)
+            return graph
+
 
     def rev_lookup(self, dst_vertex) -> pd.DataFrame:
-        return self.rev_df.iloc[self.ind_ptr[dst_vertex]:self.ind_ptr[dst_vertex+1]]
+        return self.knn_df.iloc[self.ind_ptr[dst_vertex]:self.ind_ptr[dst_vertex+1]]
 
 from scipy.special import expit as sigmoid
 
@@ -237,7 +254,7 @@ def smoothen_scores(idx, term,  knndf, num_iters, prior_weight, **kwargs):
 
 
 class LabelPropagationRanker:
-    def __init__(self, knng : KNNGraph, init_scores=None, calib_a=2., calib_b=-1., prior_weight=1., kval=5, edist=.1, num_iters=2):
+    def __init__(self, knng : KNNGraph, init_scores=None, calib_a=2., calib_b=-1., prior_weight=1., kval=5, edist=.1, num_iters=2, **other):
         self.knng : KNNGraph = knng
 
         self.calib_a = calib_a
@@ -246,6 +263,9 @@ class LabelPropagationRanker:
         self.edist = edist
         self.kval = kval
         self.num_iters = num_iters
+
+        self.is_labeled = np.zeros(self.knng.nvecs)
+        self.labels = np.zeros(self.knng.nvecs)
 
         self.all_indices = pr.FrozenBitMap(range(self.knng.nvecs))
         self.adj_mat, self.norm_w = prepare(self.knng, prior_weight=prior_weight, edist=edist)
@@ -257,8 +277,6 @@ class LabelPropagationRanker:
     def set_base_scores(self, init_scores):
         assert self.knng.nvecs == init_scores.shape[0]
         self.prior_scores = sigmoid(self.calib_a*init_scores + self.calib_b)
-        self.is_labeled = np.zeros_like(self.prior_scores)        
-        self.labels = np.zeros_like(self.prior_scores)
         self._scores = self.prior_scores.copy()
         self._propagate(num_iters=self.num_iters)
 
