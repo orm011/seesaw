@@ -21,7 +21,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "inputpath",
+    "--inputpath",
     type=str,
     help="Parquet dataset with the vectors readable by ray.data",
 )
@@ -32,8 +32,8 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-# import ray
-# ray.init('auto', namespace='seesaw')
+import ray
+ray.init('auto', namespace='seesaw')
 #from seesaw.services import get_parquet
 from seesaw.util import parallel_read_parquet
 
