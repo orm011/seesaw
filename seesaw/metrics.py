@@ -2,28 +2,38 @@ import math
 import numpy as np
 
 
-def average_precision(hit_indices, *, nseen, npositive, max_results=None):
+def average_reciprocal_gap(*args, **kwargs):
+    return average_precision(*args, **kwargs, average_reciprocal_gap=True)
+
+def average_precision(hit_indices, *, npositive, max_results=None, average_reciprocal_gap=False):
     ### average the precision at every point a new instance is seen
     ### for those unseen instances, they score zero.
     ## for consistency across experiments we ignore results after max_results (treated as not found)
     assert npositive > 0
-    assert nseen > 0
-    assert (hit_indices < nseen).all()
+    
+    if max_results is None:
+        max_results = npositive        
+    max_results = min(npositive,max_results)
+    
+    hit_indices = hit_indices[:max_results]
+    ranks = hit_indices + 1
+    
+    ranks2 = np.concatenate((np.zeros(1), ranks))
+    gaps = ranks2[1:] - ranks2[:-1]
 
-    hpos_full = np.ones(npositive) * np.inf
+    denominators = np.ones(max_results) * np.inf
+    if average_reciprocal_gap:
+        numerator = 1.
+        denominators[:hit_indices.shape[0]] = gaps
+    else:
+        numerator = np.arange(denominators.shape[0]) + 1
+        denominators[:hit_indices.shape[0]] = ranks
+        
+    ratio = numerator/denominators
+    # print(numerator, denominators, ratio)
+    return np.mean(ratio)
 
-    if max_results is not None:
-        hit_indices = hit_indices[:max_results]
-
-    hpos_full[: hit_indices.shape[0]] = hit_indices
-    total_seen_count = hpos_full + 1
-
-    true_positive_count = np.arange(npositive) + 1
-    precisions = true_positive_count / total_seen_count
-    AP = np.mean(precisions)
-
-    return AP
-
+# average_precision(np.array([0,1,2]), npositive=4, max_results=3) == 1.
 
 def dcg_score(hit_indices):
     # weights following https://github.com/scikit-learn/scikit-learn/blob/0d378913b/sklearn/metrics/_ranking.py#L1239
@@ -57,11 +67,11 @@ def ndcg_score(hit_indices, *, nseen, npositive):
 def normalizedAP(hit_indices, *, nseen, npositive, max_results=None):
     best_hits = best_possible_hits(nseen, npositive)
     best_AP = average_precision(
-        best_hits, nseen=nseen, npositive=npositive, max_results=max_results
+        best_hits,  npositive=npositive, max_results=max_results
     )
     return (
         average_precision(
-            hit_indices, nseen=nseen, npositive=npositive, max_results=max_results
+            hit_indices, npositive=npositive, max_results=max_results
         )
         / best_AP
     )
@@ -88,8 +98,10 @@ def batch_metrics(hit_indices, *, nseen, npositive, batch_size):
 
 def compute_metrics(*, hit_indices, batch_size, nseen, ntotal, max_results):
     AP = average_precision(
-        hit_indices, nseen=nseen, npositive=ntotal, max_results=max_results
+        hit_indices, npositive=ntotal, max_results=max_results
     )
+    average_reciprocal = average_reciprocal_gap(hit_indices, npositive=ntotal, max_results=max_results)
+
     nAP = normalizedAP(
         hit_indices, nseen=nseen, npositive=ntotal, max_results=max_results
     )
@@ -105,7 +117,8 @@ def compute_metrics(*, hit_indices, batch_size, nseen, ntotal, max_results):
     return dict(
         nfound=nfound,
         ndcg_score=ndcg,
-        AP=AP,
+        average_precision=AP,
+        average_reciprocal_gap=average_reciprocal,
         nAP=nAP,
         rank_first=rank_first,
         rank_second=rank_second,

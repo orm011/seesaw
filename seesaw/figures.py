@@ -62,6 +62,9 @@ _higher_is_better = [
     "nAP",
     "reciprocal_rank_first",
     "reciprocal_rank_last",
+    'average_reciprocal_gap',
+    'average_precision',
+    "nfound",
 ]
 _lower_is_better = ["rank_first", "rank_last"]
 
