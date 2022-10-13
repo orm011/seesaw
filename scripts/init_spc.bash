@@ -17,7 +17,7 @@ ray stop
 echo '' > $SIGFILE
 sleep 5
 
-bash +x $DIR/start_worker.bash --head &
+bash +x $DIR/start_worker.bash --head 
 
 sleep 5
 
