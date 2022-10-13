@@ -49,17 +49,16 @@ def reprocess_df(df0):
     return df_all
 
 class KNNGraph:
-    def __init__(self, knn_df):
+    def __init__(self, knn_df, nvecs):
         self.knn_df = knn_df
-        actual_nvecs = knn_df.src_vertex.max() + 1
-        self.nvecs = actual_nvecs
+        self.nvecs = nvecs
         self.k = knn_df.dst_rank.max() + 1        
         self.ind_ptr = get_lookup_ranges(knn_df.src_vertex, self.nvecs)
 
     def restrict_k(self, *, k):
         if k < self.k:
             knn_df = self.knn_df.query(f'dst_rank < {k}').reset_index(drop=True)
-            return KNNGraph(knn_df)
+            return KNNGraph(knn_df, self.nvecs)
         elif k > self.k:
             assert False, f'can only do up to k={self.k} neighbors based on input df'
         else:
@@ -67,11 +66,11 @@ class KNNGraph:
 
     def forward_graph(self):
         knn_df = self.knn_df
-        return KNNGraph(knn_df[knn_df.is_forward])
+        return KNNGraph(knn_df[knn_df.is_forward], self.nvecs)
     
     def reverse_graph(self):
         knn_df = self.knn_df
-        return KNNGraph(knn_df[knn_df.is_reverse])
+        return KNNGraph(knn_df[knn_df.is_reverse], self.nvecs)
 
     @staticmethod
     def from_vectors(vectors, *, n_neighbors, n_jobs=-1, low_memory=False, **kwargs):
@@ -97,7 +96,7 @@ class KNNGraph:
 
         print('postprocessing df')
         knn_df = reprocess_df(knn_df)
-        knn_graph = KNNGraph(knn_df)
+        knn_graph = KNNGraph(knn_df, nvecs=vectors.shape[0])
         return knn_graph, index2
 
                 
@@ -120,19 +119,44 @@ class KNNGraph:
     def from_file(path, parallelism=0):
         if os.path.exists(f'{path}/sym.parquet'):
             df = parallel_read_parquet(f'{path}/sym.parquet', parallelism=parallelism)
-            return KNNGraph(df)
+            nvecs = df.src_vertex.max() + 1
+            return KNNGraph(df, nvecs)
 
         else:
             print('no sym.parquet found, computing')
             knn_df = parallel_read_parquet(f'{path}/forward.parquet', parallelism=parallelism)
             knn_df = reprocess_df(knn_df)
-            graph = KNNGraph(knn_df)
+            nvecs = knn_df.src_vertex.max() + 1
+            graph = KNNGraph(knn_df, nvecs)
             graph.save(path, num_blocks=1)
             return graph
 
 
     def rev_lookup(self, dst_vertex) -> pd.DataFrame:
         return self.knn_df.iloc[self.ind_ptr[dst_vertex]:self.ind_ptr[dst_vertex+1]]
+
+
+def compute_exact_knn(vectors, kmax):
+    k = kmax + 1
+    all_pairs = 1. - (vectors @ vectors.T)
+    topk = np.argsort(all_pairs, axis=-1)
+    n = all_pairs.shape[0]
+    dst_vertex = topk[:,:k]
+    src_vertex = np.repeat(np.arange(n).reshape(-1,1), repeats=k, axis=1)
+    distances_sq = np.take_along_axis(all_pairs, dst_vertex, axis=-1)
+    
+    df1 = pd.DataFrame(dict(src_vertex=src_vertex.reshape(-1).astype('int32'), dst_vertex=dst_vertex.reshape(-1).astype('int32'), 
+                  distance=distances_sq.reshape(-1).astype('float32')))
+    
+    ## remove same vertex
+    df1 = df1[df1.src_vertex != df1.dst_vertex]
+    
+    ## add dst rank
+    df1 = df1.assign(dst_rank=df1.groupby(['src_vertex']).distances.rank('first').sub(1).astype('int32'))
+    
+    ## filter any extra neighbors
+    df1 = df1[df1.dst_rank < kmax]
+    return df1
 
 from scipy.special import expit as sigmoid
 
@@ -218,9 +242,9 @@ def kernel(cosine_distance, edist):
 def prepare(knng : KNNGraph, *, edist, prior_weight):
     knndf = knng.knn_df 
     symknn = knndf.assign(weight = kernel(knndf.distance, edist=edist))
-    wmatrix = sp.coo_matrix( (symknn.weight.values, (symknn.src_vertex.values, symknn.dst_vertex.values)))
+    n = knng.nvecs
 
-    n = wmatrix.shape[0]
+    wmatrix = sp.coo_matrix( (symknn.weight.values, (symknn.src_vertex.values, symknn.dst_vertex.values)), shape=(n, n))
     diagw = sp.coo_matrix((np.ones(n)*prior_weight, (np.arange(n), np.arange(n))))
     wmatrix_tot = wmatrix + diagw
     norm_w = 1./np.array(wmatrix_tot.sum(axis=1)).reshape(-1)
