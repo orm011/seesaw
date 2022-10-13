@@ -35,6 +35,17 @@ _method_configs = {
         "label_margin": 0.1,
         "rank_margin": 0.1,
     },
+    'knn_greedy':{
+        "knn_k": 5
+    },
+    'knn_prop' : {
+        'knn_k': 5,
+        'calib_a': 10.,
+        'calib_b': -5,
+        'prior_weight': 1.,
+        'edist': .1,
+        'num_iters': 5,
+    }
 }
 
 def get_default_config(method):
@@ -45,16 +56,20 @@ std_linear_config = _method_configs["pytorch"]
 
 modes = { ## change terminology?
     'default':'plain', # no feedback
-    'pytorch':'pytorch',
+    # 'pytorch':'pytorch',
 }
 
 
 def make_session_params(mode, dataset, index):
-    _mode = modes[mode]
+    _mode = modes.get(mode, mode)
+    cfg = _method_configs[_mode]
+
     return SessionParams(
         index_spec={"d_name": dataset, "i_name": index},
         interactive=_mode,
-        method_config=_method_configs[_mode],
+        interactive_options=cfg, # TODO same as method config
+        method_config=cfg,
+        knn_k = cfg['knn_k'],
         agg_method="avg_score",
         aug_larger='all',
         shortlist_size = 40,

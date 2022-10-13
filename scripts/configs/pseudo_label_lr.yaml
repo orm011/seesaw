@@ -1,0 +1,37 @@
+datasets:
+  # - bdd
+  # - lvis
+  # - coco
+  - objectnet
+shared_session_params: # see SessionParams
+  batch_size: 1
+  shortlist_size: 50
+shared_bench_params: # see BenchParams
+  max_feedback: null
+  box_drop_prob: 0. 
+  max_results: 10 # max positive results
+  n_batches : 30 # max batches
+  provide_textual_feedback: False
+  query_template : "a {}"
+variants:
+    - name: pseudo_lr_test_lambda_try3_calib22
+      interactive: pseudo_lr
+      knn_k: 5
+      interactive_options:
+        log_reg_params:
+          class_weights: 1.
+          scale: centered
+          reg_lambda: .1 # enough pseudolabels
+          max_iter: 200.
+          lr: 1
+        label_prop_params:
+          calib_a: 3.
+          calib_b: -2
+          prior_weight: 1.
+          edist: .1
+          num_iters: 5
+        sample_size: 10000
+      index_name: multiscale
+      agg_method: avg_score
+      aug_larger: greater
+
