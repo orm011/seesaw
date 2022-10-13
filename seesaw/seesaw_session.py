@@ -354,7 +354,7 @@ class PseudoLabelLR(PointBased):
 
         knng_path = gdm._get_knng_path(params.index_spec)
         knng = KNNGraph.from_file(knng_path, parallelism=0)
-        self.knng_sym = knng.restrict_k(k=params.knn_k).make_symmetric()
+        self.knng_sym = knng.restrict_k(k=self.label_prop_params['knn_k'])
         self.label_prop = LabelPropagationRanker(knng=self.knng_sym, **self.label_prop_params)
 
     def set_text_vec(self, tvec):
@@ -384,7 +384,7 @@ class KnnBased(LoopBase):
         print('loading graph')
         knng = KNNGraph.from_file(knng_path, parallelism=0)
         print('done loading')
-        knng = knng.restrict_k(k=p.knn_k)
+        knng = knng.restrict_k(k=p.interactive_options['knn_k'])
 
         if p.interactive == 'knn_greedy':
             s.knn_model = SimpleKNNRanker(knng, init_scores=None)

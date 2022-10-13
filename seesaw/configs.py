@@ -69,7 +69,6 @@ def make_session_params(mode, dataset, index):
         interactive=_mode,
         interactive_options=cfg, # TODO same as method config
         method_config=cfg,
-        knn_k = cfg['knn_k'],
         agg_method="avg_score",
         aug_larger='all',
         shortlist_size = 40,
