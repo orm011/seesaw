@@ -37,9 +37,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 def parallel_read_parquet(path, columns=None, parallelism=-1) -> pd.DataFrame:
-    import ray.data
     """uncached version"""
     if parallelism != 0:
+        import ray.data
+
         ds = ray.data.read_parquet(path, columns=columns, parallelism=parallelism)
         tabs = ray.get(ds.to_arrow_refs())
 
