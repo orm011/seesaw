@@ -30,9 +30,9 @@ class GlobalDataManager:
     def list_indices(self, dataset):
         return os.listdir(f"{self.data_root}/{dataset}/indices/")
 
-    def load_index(self, dataset_name, index_name, **options) -> AccessMethod:
+    def load_index(self, dataset_name, index_name, *, options) -> AccessMethod:
         index_path = f"{self.root}/data/{dataset_name}/indices/{index_name}"
-        return AccessMethod.load(index_path, **options)
+        return AccessMethod.load(index_path, options=options)
 
     def get_dataset(self, dataset_name) -> SeesawDatasetManager:
         dataset_path = f"{self.root}/data/{dataset_name}"

@@ -608,7 +608,7 @@ def make_session(gdm: GlobalDataManager, p: SessionParams):
     print("got dataset")
     # d_name right now is like data/bdd/
     # and i_name is like multiscale
-    hdb = gdm.load_index(p.index_spec.d_name, p.index_spec.i_name)
+    hdb = gdm.load_index(p.index_spec.d_name, p.index_spec.i_name, options=p.index_options)
     print("index loaded")
     box_data = None
     subset = None

@@ -6,6 +6,8 @@ datasets:
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
+  index_options : 
+    use_vec_index : False
 shared_bench_params: # see BenchParams
   max_feedback: null
   box_drop_prob: 0. 

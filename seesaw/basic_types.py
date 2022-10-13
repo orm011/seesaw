@@ -64,6 +64,7 @@ class SessionParams(BaseModel):
     interactive_options: Optional[dict] = None
     batch_size: int
     knn_k : Optional[int] = None
+    index_options : Optional[dict] = {'use_vec_index':True}
     aug_larger: Literal['greater', 'all'] = 'all'
     agg_method: Optional[Literal["avg_score", 'avg_vector', 'plain_score']] = 'avg_score'
     shortlist_size: Optional[int]
