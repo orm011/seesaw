@@ -434,6 +434,7 @@ class KnnBased(LoopBase):
                 'activations':None,
             }
         
+        q.returned.update(idxs)        
         return b
 
     def refine(self):
