@@ -119,7 +119,7 @@ _default_prop_args=dict(calib_a=10., calib_b=-5, prior_weight=1., edist=.1, num_
 class LinearScorer:
     def __init__(self, idx, knng_sym, *, init_scores=None, sample_size, 
                     label_prop_kwargs=_default_prop_args, 
-                    pca_kwargs=_default_pca_args, linear_kwargs=_default_linear_args):
+                    pca_kwargs=_default_pca_args, linear_kwargs=_default_linear_args, **other):
         self.idx = idx
         self.knng_sym = knng_sym
         self.sample_size = sample_size

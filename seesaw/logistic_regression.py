@@ -65,9 +65,7 @@ class LogisticRegModule(nn.Module):
         return opt.LBFGS(self.parameters(), max_iter=self.max_iter, lr=self.lr, line_search_fn='strong_wolfe')
 
 import numpy as np
-
 from sklearn.decomposition import PCA
-## problem: lack of convergence makes it unpredictable.
 
 class LogisticRegresionPT: 
     def __init__(self, class_weights, scale='centered',  reg_lambda=1., verbose=False, 
@@ -91,7 +89,7 @@ class LogisticRegresionPT:
         if scale == 'centered':
             self.scaler_ = StandardScaler(with_mean=True, with_std=False)
         elif scale == 'pca':
-            self.scaler_ = PCA(whiten=False, n_components=512)
+            self.scaler_ = PCA(whiten=True, n_components=256)
             self.sigma_inv_ = None
         else:
             self.scaler_ = None
@@ -100,7 +98,6 @@ class LogisticRegresionPT:
         assert self.model_ is not None
         weight = self.model_.linear.weight
 
-        norm_penalty = (weight.norm()**2 - 1.)**2
 
         if self.regularizer_vector is not None:
             if self.scale == 'pca':
@@ -110,8 +107,10 @@ class LogisticRegresionPT:
             else:
                 assert False
 
+            norm_penalty = (weight.norm() - 1.)**2
             angle_penalty = (F.normalize(weight).reshape(-1) - base_vec.reshape(-1)).norm()**2
         else:
+            norm_penalty = weight.norm()
             angle_penalty = 0.
 
         ans = norm_penalty + angle_penalty
@@ -140,9 +139,7 @@ class LogisticRegresionPT:
     def fit(self, X, y):
         self.n_examples = X.shape[0]
         npos = (y == 1).sum()
-        nneg = (y == 0).sum()
-        if self.n_examples != npos + nneg:
-            assert False, 'some of the weighting code assumes only 0 or 1. fix that to proceed'
+        nneg = (y == 0).sum() 
 
         if self.scaler_:
             X = self.scaler_.fit_transform(X)
@@ -151,17 +148,18 @@ class LogisticRegresionPT:
                 self.sigma_inv_ = torch.from_numpy(self.scaler_.components_).float()
                 # self.sigma_inv_ = torch.diag_embed(torch.from_numpy(1./self.scaler_.scale_.astype('float'))).float()
 
-        if self.class_weights == 'balanced':
-            alpha = 1
-            pseudo_pos = npos + alpha
-            pseudo_neg = nneg + alpha
-            pos_weight = pseudo_neg / pseudo_pos
-        else:
-            pos_weight = self.class_weights
+
+        pos_weight = 1.
+        # if self.class_weights == 'balanced':
+        #         pseudo_pos = max(npos, 1)
+        #         pseudo_neg = max(nneg, 1)
+        #         pos_weight = pseudo_neg / pseudo_pos
+        # else:
+        #     pos_weight = self.class_weights
         
         self.model_ = LogisticRegModule(dim=X.shape[1], pos_weight=pos_weight, 
-                        reg_weight=self.reg_lambda/self.n_examples,
-                        fit_intercept=False, #(npos > 0 and nneg > 0), # only fit intercept if there are both signs
+                        reg_weight=self.reg_lambda, #/self.n_examples,
+                        fit_intercept=True, #False, #(npos > 0 and nneg > 0), # only fit intercept if there are both signs
                         regularizer_function=self._regularizer_func, **self.kwargs)
         
         if self.regularizer_vector is None:
