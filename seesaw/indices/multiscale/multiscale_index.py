@@ -559,9 +559,12 @@ class MultiscaleIndex(AccessMethod):
             path = index_path
         )
 
-    def get_knng(self):
+    def get_knng(self, path=None):
         from ...research.knn_methods import KNNGraph
-        knng = KNNGraph.from_file(f'{self.path}/knn_graph')
+        if path is None:
+            path = ''
+            
+        knng = KNNGraph.from_file(f'{self.path}/knn_graph/{path}')
         return knng
 
     def string2vec(self, string: str):

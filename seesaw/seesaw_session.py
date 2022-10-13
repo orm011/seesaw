@@ -352,7 +352,7 @@ class PseudoLabelLR(PointBased):
         self.label_prop_params = self.options['label_prop_params']
         self.log_reg_params = self.options['log_reg_params']
 
-        knng_path = gdm._get_knng_path(params.index_spec)
+        knng_path = gdm._get_knng_path(params.index_spec, self.params)
         knng = KNNGraph.from_file(knng_path, parallelism=0)
         self.knng_sym = knng.restrict_k(k=self.label_prop_params['knn_k'])
         self.label_prop = LabelPropagationRanker(knng=self.knng_sym, **self.label_prop_params)
@@ -380,7 +380,7 @@ class KnnBased(LoopBase):
         s = self.state
         p = self.params 
 
-        knng_path = gdm._get_knng_path(p.index_spec)
+        knng_path = gdm._get_knng_path(p.index_spec, p)
         print('loading graph')
         knng = KNNGraph.from_file(knng_path, parallelism=0)
         print('done loading')
