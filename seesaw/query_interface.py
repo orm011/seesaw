@@ -50,9 +50,8 @@ class InteractiveQuery(object):
 
     def __init__(self, index: AccessMethod):
         self.index = index
-        self.returned = (
-            pr.BitMap()
-        )  # images returned from index (not necessarily seen yet)
+        self.returned = pr.BitMap() 
+        # images returned from index (not necessarily seen yet)
         self.label_db = LabelDB()
 
     def query_stateful(self, *args, **kwargs):
@@ -69,11 +68,7 @@ class InteractiveQuery(object):
             *args, topk=batch_size, **kwargs, exclude=self.returned
         )
         
-        if 'excluded_dbidxs' in res.keys(): 
-            self.returned.update(res['excluded_dbidxs'])
-            del res['excluded_dbidxs']
-        else: 
-            self.returned.update(res["dbidxs"])
+        self.returned.update(res["dbidxs"])
         return res
 
     def getXy(self, **options):

@@ -32,7 +32,7 @@ from .query_interface import *
 # from .textual_feedback_box import OnlineModel, join_vecs2annotations
 from .research.knn_methods import KNNGraph, LabelPropagationRanker, SimpleKNNRanker
 from .research.soft_label_logistic_regression import LinearScorer
-from .indices.multiscale.multiscale_index import _get_top_dbidxs, score_frame, score_frame2
+from .indices.multiscale.multiscale_index import _get_top_dbidxs, score_frame2
 
 @dataclass
 class LoopState:
@@ -387,13 +387,9 @@ class KnnBased(LoopBase):
         knng = knng.restrict_k(k=p.knn_k)
 
         if p.interactive == 'knn_greedy':
-            print('simple ranker')
             s.knn_model = SimpleKNNRanker(knng, init_scores=None)
-            print('done building ranker')
         elif p.interactive == 'knn_prop':
-            print('sym done')
             s.knn_model = LabelPropagationRanker(knng, init_scores=None, **p.interactive_options)
-            print('label prop done')
         elif p.interactive == 'linear_prop':
             s.knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
         else:
@@ -404,6 +400,7 @@ class KnnBased(LoopBase):
         self.state.knn_model.set_base_scores(scores)
 
     def next_batch(self):
+
         """
         gets next batch of image indices based on current vector
         """
@@ -414,6 +411,7 @@ class KnnBased(LoopBase):
         sorted_idxs, sorted_scores = s.knn_model.top_k(k=None, unlabeled_only=True)
         candidates = _get_top_dbidxs(vec_idxs=sorted_idxs, scores=sorted_scores, 
                         vector_meta=q.index.vector_meta, exclude=q.returned, topk=p.shortlist_size)
+
         raw_scores = s.knn_model.current_scores()
 
         frame_scores = np.zeros(candidates.shape[0])
@@ -433,7 +431,7 @@ class KnnBased(LoopBase):
                 'scores':c.frame_scores.iloc[:p.batch_size], 
                 'activations':None,
             }
-        
+
         q.returned.update(idxs)        
         return b
 
