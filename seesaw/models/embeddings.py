@@ -5,8 +5,6 @@ import os
 import numpy as np
 import PIL.Image
 import torch.nn as nn
-import torch.nn.functional as F
-import sklearn
 import torchvision.transforms as T
 import pyroaring as pr
 import typing
