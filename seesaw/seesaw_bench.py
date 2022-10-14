@@ -302,6 +302,7 @@ import string
 import time
 from .util import reset_num_cpus
 
+from contextlib import redirect_stderr, redirect_stdout
 
 class BenchRunner(object):
     def __init__(
@@ -316,8 +317,6 @@ class BenchRunner(object):
         self.results_dir = results_dir
         random.seed(int(f"{time.time_ns()}{os.getpid()}"))
         self.redirect_output = redirect_output
-        self.stdout = sys.stdout
-        self.stderr = sys.stdin
 
     def ready(self):
         return True
@@ -331,25 +330,24 @@ class BenchRunner(object):
         output_dir = f"{self.results_dir}/session_{timestamp}_{random_suffix}"
         os.mkdir(output_dir)
         print(f"saving output to {output_dir}")
+        summary = BenchSummary(
+            bench_params=b, output_dir=output_dir, session_params=p, timestamp=timestamp, result=None
+        )
+        output_path = f"{output_dir}/summary.json"
+        def closure():
+            try:
+                json.dump(summary.dict(), open(output_path, "w"), indent=3)
 
-        with open(f"{output_dir}/stdout", "w") as stdout, open(
-            f"{output_dir}/stderr", "w"
-        ) as stderr:
-            try:  ## print the log to the output folder as well
-                if self.redirect_output:
-                    sys.stdout = stdout
-                    sys.stderr = stderr
-
-                summary = BenchSummary(
-                    bench_params=b, session_params=p, timestamp=timestamp, result=None
-                )
-                output_path = f"{output_dir}/summary.json"
-                json.dump(summary.dict(), open(output_path, "w"))
-
-                #assert p.index_spec.c_name is not None, "need category for benchmark"
+                ## also place them in log for convenience
+                bench_params = json.dumps(b.dict(), indent=3)
+                session_params = json.dumps(p.dict(), indent=3)
+                print('bench_params')
+                print(bench_params)
+                print('session_params')
+                print(session_params)
 
                 ret = make_session(self.gdm, p)
-                print("session done... now runnning loop")
+                print("session built... now runnning loop")
                 run_info = benchmark_loop(
                     session=ret["session"],
                     box_data=ret["box_data"],
@@ -367,18 +365,19 @@ class BenchRunner(object):
                     total_time=time.time() - start,
                 )
 
-                json.dump(summary.dict(), open(output_path, "w"))
+                json.dump(summary.dict(), open(output_path, "w"), indent=3)
             except Exception as exception:
-                print(f'{p=}\n\n{exception=}', file=sys.stderr)
-                sys.stderr.flush()
+                print(f'{exception=}', file=sys.stderr)
                 raise exception
-            finally:  ## restore
-                if self.redirect_output:
-                    sys.stdout = self.stdout
-                    sys.stderr = self.stderr
+            
+        if self.redirect_output:
+            with  open(f"{output_dir}/output.log", "w") as output_log:
+                with redirect_stdout(output_log), redirect_stderr(output_log):
+                    closure()
+        else:
+            closure()
 
         return output_dir
-
 
 import glob
 
