@@ -1,3 +1,4 @@
+from seesaw.services import get_parquet
 from seesaw.util import parallel_read_parquet
 import numpy as np
 import pyroaring as pr
@@ -47,6 +48,20 @@ def reprocess_df(df0):
                      is_reverse=(df_all.is_reverse | dups))
     df_all = df_all.drop_duplicates(['src_vertex', 'dst_vertex']).reset_index(drop=True)
     return df_all
+
+def uniquify_knn_graph(knng, idx): 
+    dbidxs = idx.vector_meta.dbidx.astype('int32').values
+    df = knng.knn_df
+    df = df.assign(src_dbidx=dbidxs[df.src_vertex.values], 
+              dst_dbidx=dbidxs[df.dst_vertex.values])
+
+    df = df[df.src_dbidx != df.dst_dbidx]
+    per_dest = df.groupby(['src_vertex','dst_dbidx']).distance.idxmin()
+    pddf = df.loc[per_dest.values]
+
+    pddf = pddf.assign(dst_rank=pddf.groupby(['src_vertex']).distance.rank('first').astype('int32'))
+    pddf = pddf.reset_index(drop=True)
+    return pddf
 
 class KNNGraph:
     def __init__(self, knn_df, nvecs):
@@ -117,8 +132,10 @@ class KNNGraph:
     
     @staticmethod
     def from_file(path, parallelism=0):
-        if os.path.exists(f'{path}/sym.parquet'):
-            df = parallel_read_parquet(f'{path}/sym.parquet', parallelism=parallelism)
+
+        pref_path = f'{path}/sym.parquet'
+        if os.path.exists(pref_path):
+            df = parallel_read_parquet(pref_path, parallelism=parallelism)
             nvecs = df.src_vertex.max() + 1
             return KNNGraph(df, nvecs)
 
