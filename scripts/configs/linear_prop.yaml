@@ -1,7 +1,9 @@
 datasets:
   # - bdd
-  # - name: lvis
-  - name: objectnet
+  - name: lvis
+    # categories: 
+    #   - golfcart
+  # - name: objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
@@ -15,48 +17,48 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    - name: seesaw_knn5
-      interactive: knn_greedy
-      interactive_options:
-        knn_k: 5
-        knn_path: exact
-      index_name: multiscale
-      agg_method: avg_score
-      aug_larger: greater
+    # - name: seesaw_knn5
+    #   interactive: knn_greedy
+    #   interactive_options:
+    #     knn_k: 5
+    #     knn_path: dividx
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: greater
     # - name: seesaw_knn10
     #   interactive: knn_greedy
     #   interactive_options:
     #     knn_k: 10
-    #     knn_path: exact
+    #     knn_path: dividx
     #   index_name: multiscale
     #   agg_method: avg_score
     #   aug_larger: greater
-    - name: seesaw_knn_prop5
-      interactive: knn_prop
-      interactive_options:
-        knn_k: 5
-        knn_path: exact
-        calib_a: 10.
-        calib_b: -5
-        prior_weight: 1.
-        edist: .2
-        num_iters: 5
-      index_name: multiscale
-      agg_method: avg_score
-      aug_larger: greater
-    # - name: seesaw_knn_prop10
+    # - name: seesaw_knn_prop5
     #   interactive: knn_prop
     #   interactive_options:
-    #     knn_k: 10
-    #     knn_path: exact
+    #     knn_k: 5
+    #     knn_path: dividx
     #     calib_a: 10.
     #     calib_b: -5
     #     prior_weight: 1.
-    #     edist: .1
+    #     edist: .2
     #     num_iters: 5
     #   index_name: multiscale
     #   agg_method: avg_score
     #   aug_larger: greater
+    - name: seesaw_knn_prop10
+      interactive: knn_prop
+      interactive_options:
+        knn_k: 10
+        knn_path: dividx
+        calib_a: 10.
+        calib_b: -5
+        prior_weight: 1.
+        edist: .1
+        num_iters: 5
+      index_name: multiscale
+      agg_method: avg_score
+      aug_larger: greater
     # - name: seesaw_knn_prop20
     #   interactive: knn_prop
     #   interactive_options:

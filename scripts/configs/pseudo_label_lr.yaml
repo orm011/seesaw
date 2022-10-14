@@ -1,8 +1,10 @@
 datasets:
   # - bdd
-  # - lvis
+  - name: lvis
+    # categories: 
+    #   - zebra
   # - coco
-  - objectnet
+  # - objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
@@ -14,19 +16,20 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    - name: pseudo_lr
+    - name: pseudo_lr_lambda20_105_tryagain_nndescent
       interactive: pseudo_lr
       interactive_options:
         log_reg_params:
           class_weights: 1.
           scale: centered
-          reg_lambda: 10 # enough pseudolabels
+          reg_lambda: 10. # enough pseudolabels
           max_iter: 200.
           lr: 1
         label_prop_params:
           knn_k: 10
+          knn_path: dividx
           calib_a: 10.
-          calib_b: 5.
+          calib_b: -5.
           prior_weight: 1.
           edist: .1
           num_iters: 5
