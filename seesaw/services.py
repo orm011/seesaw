@@ -1,20 +1,16 @@
+from seesaw.util import parallel_read_parquet
 from .definitions import resolve_path
 from .memory_cache import CacheStub
 from .models.embeddings import ModelStub, HGWrapper
 import pandas as pd
 import ray
 
-
 def get_cache() -> CacheStub:
     return CacheStub("actor#cache")
 
-
-g_cache = get_cache()
-
-
 def get_parquet(parquet_path: str, columns = None) -> pd.DataFrame:
-    return g_cache.read_parquet(parquet_path, columns)
-
+    cache = get_cache()
+    return cache.read_parquet(parquet_path, columns)
 
 def get_model_actor(model_path: str) -> ModelStub:
     import ray
