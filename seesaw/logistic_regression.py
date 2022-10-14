@@ -158,8 +158,8 @@ class LogisticRegresionPT:
         #     pos_weight = self.class_weights
         
         self.model_ = LogisticRegModule(dim=X.shape[1], pos_weight=pos_weight, 
-                        reg_weight=self.reg_lambda, #/self.n_examples,
-                        fit_intercept=True, #False, #(npos > 0 and nneg > 0), # only fit intercept if there are both signs
+                        reg_weight=self.reg_lambda/self.n_examples,
+                        fit_intercept=False, #(npos > 0 and nneg > 0), # only fit intercept if there are both signs
                         regularizer_function=self._regularizer_func, **self.kwargs)
         
         if self.regularizer_vector is None:
