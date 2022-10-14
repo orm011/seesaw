@@ -113,4 +113,5 @@ class BenchSummary(BaseModel):
     bench_params: BenchParams
     session_params: SessionParams
     timestamp: str
+    output_dir : Optional[str]
     result: Optional[BenchResult]
