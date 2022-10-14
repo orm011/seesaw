@@ -38,9 +38,9 @@ class GlobalDataManager:
         dataset_path = f"{self.root}/data/{dataset_name}"
         return SeesawDatasetManager(dataset_path, cache=self.global_cache)
 
-    def _get_knng_path(self, ispec: IndexSpec, params : SessionParams):
+    def _get_knng_path(self, ispec: IndexSpec, knn_options : dict):
         base = f'{self.root}/data/{ispec.d_name}/indices/{ispec.i_name}'
-        knn_subpath  = params.interactive_options.get('knn_path', '')
+        knn_subpath  = knn_options.get('knn_path', '')
 
         if ispec.c_name is None or ispec.d_name != 'lvis': # HACK. lvis treat lvis separately since each category has a subset
             return f'{base}/knn_graph/{knn_subpath}'
