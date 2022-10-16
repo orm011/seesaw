@@ -336,20 +336,20 @@ def get_boxes(vec_meta):
     return boxes
 
 
-def get_pos_negs_all_v2(dbidxs, label_db: LabelDB, vec_meta: pd.DataFrame):
-    idxs = pr.BitMap(dbidxs)
-    relvecs = vec_meta[vec_meta.dbidx.isin(idxs)]
-
+def get_pos_negs_all_v2(label_db: LabelDB, vec_meta: pd.DataFrame):
+    idxs = label_db.get_seen()
     pos = []
     neg = []
-    for idx in dbidxs:
-        acc_vecs = relvecs[relvecs.dbidx == idx]
-        acc_boxes = get_boxes(acc_vecs)
+    vec_meta = vec_meta[vec_meta.dbidx.isin(idxs)]
+
+    for idx, acc_vecs in vec_meta.groupby('dbidx'):
         label_boxes = label_db.get(idx, format="df")
-        ious = box_iou(label_boxes, acc_boxes)
+        if label_boxes.shape[0] == 0:
+            ## every vector is a negative example in this case
+            neg.append(acc_vecs.index.values)
+            continue
 
-        ## if there are no labels, the ious are an empty tensor.
-
+        ious = box_iou(label_boxes, acc_vecs)
         total_iou = ious.sum(axis=0)
         negatives = total_iou == 0
         negvec_positions = acc_vecs.index[negatives].values
@@ -706,9 +706,7 @@ class BoxFeedbackQuery(InteractiveQuery):
         # self.acc_neg = []
 
     def getXy(self, get_positions=False):
-        pos, neg = get_pos_negs_all_v2(
-            self.label_db.get_seen(), self.label_db, self.index.vector_meta
-        )
+        pos, neg = get_pos_negs_all_v2(self.label_db, self.index.vector_meta)
         if get_positions:
             return pos, neg
 
