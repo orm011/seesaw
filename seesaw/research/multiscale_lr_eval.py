@@ -69,13 +69,18 @@ def eval_multiscale_lr(objds, idx, category):
     train_meta = vec_meta[vec_meta.dbidx.isin(set(tr_idcs))]
     test_meta = vec_meta[vec_meta.dbidx.isin(set(tst_idcs))]
     
-    qstr = category2query(dataset='lvis', cat=category)
+    qstr = category2query(dataset=objds.dataset_name, cat=category)
     reg_vec = idx.string2vec(qstr)
     lr = LogisticRegresionPT(class_weights=1., scale='centered', reg_lambda = 1., verbose=True, fit_intercept=False, 
-                         regularizer_vector=reg_vec)
+                         regularizer_vector=None)
     
     lr.fit(train_meta.vectors.to_numpy(), train_meta.ys.values.reshape(-1,1))
     
-    m_train = get_metrics(category, reg_vec, train_meta).assign(split='train')
-    m_val = get_metrics(category, reg_vec, test_meta).assign(split='test')
-    return pd.concat([m_train, m_val], ignore_index=True)
+    dfs1 = [get_metrics(category, reg_vec, train_meta).assign(split='train', method='clip'),  
+        get_metrics(category, reg_vec, test_meta).assign(split='test', method='clip')]
+
+    dfs2 = [
+        get_metrics(category, lr, train_meta).assign(split='train', method='lr'),  
+        get_metrics(category, lr, test_meta).assign(split='test', method='lr')
+    ]
+    return pd.concat(dfs1 + dfs2, ignore_index=True)
