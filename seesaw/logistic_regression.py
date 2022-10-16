@@ -69,7 +69,7 @@ from sklearn.decomposition import PCA
 
 class LogisticRegresionPT: 
     def __init__(self, class_weights, scale='centered',  reg_lambda=1., verbose=False, 
-            regularizer_vector=None,  **kwargs):
+            regularizer_vector=None,  fit_intercept=False, **kwargs):
         ''' reg type: nparray means use that vector '''
         assert scale in ['centered', 'pca', None]
         self.class_weights = class_weights
@@ -82,6 +82,7 @@ class LogisticRegresionPT:
         self.n_examples = None
         self.regularizer_vector = None
         self.verbose = verbose
+        self.fit_intercept = fit_intercept
 
         if regularizer_vector is not None:
             self.regularizer_vector = F.normalize(torch.from_numpy(regularizer_vector.reshape(1,-1)).float(), dim=-1).reshape(-1)
@@ -159,7 +160,7 @@ class LogisticRegresionPT:
         
         self.model_ = LogisticRegModule(dim=X.shape[1], pos_weight=pos_weight, 
                         reg_weight=self.reg_lambda/self.n_examples,
-                        fit_intercept=False, #(npos > 0 and nneg > 0), # only fit intercept if there are both signs
+                        fit_intercept=self.fit_intercept, #(npos > 0 and nneg > 0), # only fit intercept if there are both signs
                         regularizer_function=self._regularizer_func, **self.kwargs)
         
         if self.regularizer_vector is None:
