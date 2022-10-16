@@ -1,7 +1,8 @@
 datasets:
   # - bdd
-  - lvis
+   - lvis
   # - coco
+  # - objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
@@ -24,30 +25,30 @@ variants:
       index_name: multiscale
       agg_method: avg_score
       aug_larger: all
-    - name: seesaw_knn10
-      interactive: knn_greedy
-      knn_k: 10
-      index_name: multiscale
-      agg_method: avg_score
-      aug_larger: all
-    - name: seesaw_knn20
-      interactive: knn_greedy
-      knn_k: 20
-      index_name: multiscale
-      agg_method: avg_score
-      aug_larger: all
-    - name: seesaw_knn40
-      interactive: knn_greedy
-      knn_k: 40
-      index_name: multiscale
-      agg_method: avg_score
-      aug_larger: all
-    - name: seesaw_knn80
-      interactive: knn_greedy
-      knn_k: 80
-      index_name: multiscale
-      agg_method: avg_score
-      aug_larger: all
+    # - name: seesaw_knn10
+    #   interactive: knn_greedy
+    #   knn_k: 10
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: all
+    # - name: seesaw_knn20
+    #   interactive: knn_greedy
+    #   knn_k: 20
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: all
+    # - name: seesaw_knn40
+    #   interactive: knn_greedy
+    #   knn_k: 40
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: all
+    # - name: seesaw_knn80
+    #   interactive: knn_greedy
+    #   knn_k: 80
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: all
 
     # - name: baseline
     #   interactive: plain
