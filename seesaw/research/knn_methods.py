@@ -154,14 +154,17 @@ class KNNGraph:
 
 
 def compute_exact_knn(vectors, kmax):
-    k = kmax + 1
+    k = min(kmax + 1,vectors.shape[0])
     all_pairs = 1. - (vectors @ vectors.T)
     topk = np.argsort(all_pairs, axis=-1)
     n = all_pairs.shape[0]
     dst_vertex = topk[:,:k]
     src_vertex = np.repeat(np.arange(n).reshape(-1,1), repeats=k, axis=1)
+
+    assert(dst_vertex.shape == src_vertex.shape)
+
     distances_sq = np.take_along_axis(all_pairs, dst_vertex, axis=-1)
-    
+    assert(src_vertex.shape == distances_sq.shape)
     df1 = pd.DataFrame(dict(src_vertex=src_vertex.reshape(-1).astype('int32'), dst_vertex=dst_vertex.reshape(-1).astype('int32'), 
                   distance=distances_sq.reshape(-1).astype('float32')))
     
@@ -169,11 +172,34 @@ def compute_exact_knn(vectors, kmax):
     df1 = df1[df1.src_vertex != df1.dst_vertex]
     
     ## add dst rank
-    df1 = df1.assign(dst_rank=df1.groupby(['src_vertex']).distances.rank('first').sub(1).astype('int32'))
+    df1 = df1.assign(dst_rank=df1.groupby(['src_vertex']).distance.rank('first').sub(1).astype('int32'))
     
     ## filter any extra neighbors
     df1 = df1[df1.dst_rank < kmax]
     return df1
+
+#     all_meta = idx_top.vector_meta.reset_index(drop=False)
+#    pairs = all_meta.groupby('dbidx')['index'].min()
+#    dbidx2minidx_old = dict(zip(pairs.index.values, pairs.values))
+#
+
+
+def make_intra_frame_knn(dbidx2minidx_old, final_df, idx):
+    sdf = idx.vector_meta.reset_index(drop=False)
+
+    
+    pairs = sdf.groupby('dbidx')['index'].min()
+    dbidx2minidx_new = dict(zip(pairs.index.values, pairs.values))
+
+    def per_group(gp):
+        k = int(gp.dst_dbidx.iloc[0])
+        delta = dbidx2minidx_new[k] - dbidx2minidx_old[k]
+        gp = gp.eval(f'src_vertex = src_vertex + {delta}\n dst_vertex=dst_vertex + {delta}')
+        return gp
+
+    knn_df_frame = final_df[final_df.src_dbidx.isin(set(dbidx2minidx_new.keys()))]
+    remapped = knn_df_frame.groupby('src_dbidx', group_keys=False).apply(per_group)
+    return remapped
 
 from scipy.special import expit as sigmoid
 
