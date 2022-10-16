@@ -100,7 +100,8 @@ else:
     random.shuffle(all_cfgs) # randomize task order to kind-of balance work
     ds = ray.data.from_items(all_cfgs, parallelism=800)
     actor_options = dict(num_cpus=args.num_cpus, memory=5 * (2**30))
-    _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(10,300), **actor_options).take_all()
+    ## use a small batch size so that maybe failures affect as few classes as possible?
+    _ = ds.map_batches(BatchRunner, batch_size=1, compute=ActorPoolStrategy(10,300), **actor_options).take_all()
 
 print("done with benchmark. computing summary")
 get_all_session_summaries(results_dir, force_recompute=True)
