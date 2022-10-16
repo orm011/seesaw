@@ -55,8 +55,7 @@ def eval_multiscale_lr(objds, idx, category):
     for dbidx in set(present) - set(positive):
         ldb.put(dbidx, [])
         
-    dbidxs = subidx.vector_meta.dbidx.unique()
-    pos, neg = get_pos_negs_all_v2(dbidxs, ldb, vec_meta=subidx.vector_meta)
+    pos, neg = get_pos_negs_all_v2(ldb, vec_meta=subidx.vector_meta)
     
     indices = np.concatenate([pos, neg])
     ys = np.concatenate([np.ones(np.array(pos).shape[0]), np.zeros(np.array(neg).shape[0])])
@@ -71,7 +70,7 @@ def eval_multiscale_lr(objds, idx, category):
     
     qstr = category2query(dataset=objds.dataset_name, cat=category)
     reg_vec = idx.string2vec(qstr)
-    lr = LogisticRegresionPT(class_weights=1., scale='centered', reg_lambda = 1., verbose=True, fit_intercept=False, 
+    lr = LogisticRegresionPT(class_weights='balanced', scale='centered', reg_lambda = 1., verbose=True, fit_intercept=False, 
                          regularizer_vector=None)
     
     lr.fit(train_meta.vectors.to_numpy(), train_meta.ys.values.reshape(-1,1))

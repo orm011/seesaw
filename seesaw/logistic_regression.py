@@ -149,14 +149,12 @@ class LogisticRegresionPT:
                 self.sigma_inv_ = torch.from_numpy(self.scaler_.components_).float()
                 # self.sigma_inv_ = torch.diag_embed(torch.from_numpy(1./self.scaler_.scale_.astype('float'))).float()
 
-
-        pos_weight = self.class_weights
-        # if self.class_weights == 'balanced':
-        #         pseudo_pos = max(npos, 1)
-        #         pseudo_neg = max(nneg, 1)
-        #         pos_weight = pseudo_neg / pseudo_pos
-        # else:
-        #     pos_weight = self.class_weights
+        if self.class_weights == 'balanced':
+                pseudo_pos = max(npos, 1)
+                pseudo_neg = max(nneg, 1)
+                pos_weight = pseudo_neg / pseudo_pos
+        else:
+            pos_weight = self.class_weights
         
         self.model_ = LogisticRegModule(dim=X.shape[1], pos_weight=pos_weight, 
                         reg_weight=self.reg_lambda/self.n_examples,
@@ -182,7 +180,7 @@ class LogisticRegresionPT:
         if not is_nan:
             niter = len(self.losses_)
             if self.verbose:
-                print(f'converged after {niter} iterations')
+                print(f'converged after {niter} iterations. {self.losses_[-1]=}')
                 
     def predict_proba(self, X):
         if self.scaler_:
