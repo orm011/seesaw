@@ -71,7 +71,7 @@ class LogisticRegresionPT:
     def __init__(self, class_weights, scale='centered',  reg_lambda=1., verbose=False, 
             regularizer_vector=None,  fit_intercept=False, **kwargs):
         ''' reg type: nparray means use that vector '''
-        assert scale in ['centered', 'pca', None]
+        assert scale in ['centered', None]
         self.class_weights = class_weights
         self.kwargs = kwargs
         self.model_ = None
@@ -80,30 +80,37 @@ class LogisticRegresionPT:
         self.scale = scale
         self.reg_lambda = reg_lambda
         self.n_examples = None
+        self.regularization_type = None
         self.regularizer_vector = None
         self.verbose = verbose
         self.fit_intercept = fit_intercept
 
-        if regularizer_vector is not None:
+        if isinstance(regularizer_vector, np.ndarray):
             self.regularizer_vector = F.normalize(torch.from_numpy(regularizer_vector.reshape(1,-1)).float(), dim=-1).reshape(-1)
+            self.regularization_type = 'vector'
+        elif isinstance(regularizer_vector, str):
+            self.regularization_type = regularizer_vector
+        elif regularizer_vector is None:
+            self.regularization_type = None
+        else:
+            assert False
+            
 
         if scale == 'centered':
             self.scaler_ = StandardScaler(with_mean=True, with_std=False)
-        elif scale == 'pca':
-            self.scaler_ = PCA(whiten=True, n_components=256)
-            self.sigma_inv_ = None
         else:
             self.scaler_ = None
 
     def _regularizer_func(self):
         assert self.model_ is not None
+
+        if self.regularization_type is None:
+            return 0.
+        
         weight = self.model_.linear.weight
 
-
         if self.regularizer_vector is not None:
-            if self.scale == 'pca':
-                base_vec = self.regularizer_vector  @ self.sigma_inv_.t()
-            elif self.scale == 'centered' or self.scale is None :
+            if self.scale == 'centered' or self.scale is None :
                 base_vec = self.regularizer_vector
             else:
                 assert False
@@ -111,7 +118,12 @@ class LogisticRegresionPT:
             norm_penalty = (weight.norm() - 1.)**2
             angle_penalty = (F.normalize(weight).reshape(-1) - base_vec.reshape(-1)).norm()**2
         else:
-            norm_penalty = weight.norm()
+            if self.regularization_type in ['norm1', 'norm']:
+                norm_target = 1 if self.regularization_type == 'norm1' else 0
+                norm_penalty = (weight.norm() - norm_target)**2
+            else:
+                assert False
+                
             angle_penalty = 0.
 
         ans = norm_penalty + angle_penalty
@@ -122,8 +134,6 @@ class LogisticRegresionPT:
         weight_prime = self.model_.linear.weight
         if self.scale == 'centered':
             return weight_prime
-        elif self.scale == 'pca':
-            return weight_prime.reshape(1,-1) @ self.sigma_inv_.t()
         else:
             assert False
 
@@ -145,9 +155,6 @@ class LogisticRegresionPT:
         if self.scaler_:
             X = self.scaler_.fit_transform(X)
             self.mu_ = torch.from_numpy(self.scaler_.mean_).float()
-            if self.scale == 'pca':
-                self.sigma_inv_ = torch.from_numpy(self.scaler_.components_).float()
-                # self.sigma_inv_ = torch.diag_embed(torch.from_numpy(1./self.scaler_.scale_.astype('float'))).float()
 
         if self.class_weights == 'balanced':
                 pseudo_pos = max(npos, 1)
