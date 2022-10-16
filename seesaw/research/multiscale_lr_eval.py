@@ -70,8 +70,8 @@ def eval_multiscale_lr(objds, idx, category):
     
     qstr = category2query(dataset=objds.dataset_name, cat=category)
     reg_vec = idx.string2vec(qstr)
-    lr = LogisticRegresionPT(class_weights='balanced', scale='centered', reg_lambda = 1., verbose=True, fit_intercept=False, 
-                         regularizer_vector=None)
+    lr = LogisticRegresionPT(class_weights='balanced', scale='centered', reg_lambda = 10., verbose=True, fit_intercept=False, 
+                         regularizer_vector='norm')
     
     lr.fit(train_meta.vectors.to_numpy(), train_meta.ys.values.reshape(-1,1))
     
