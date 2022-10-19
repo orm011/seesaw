@@ -56,24 +56,29 @@ def brief_formatter(num_sd):
 brief_format = brief_formatter(1)
 
 
-_higher_is_better = [
-    "ndcg_score",
-    "AP",
-    "nAP",
-    "reciprocal_rank_first",
-    "reciprocal_rank_last",
-    'average_reciprocal_gap',
-    'average_precision',
-    "nfound",
-]
-_lower_is_better = ["rank_first", "rank_last"]
+def _higher_is_better(metric):
+    _mets = [
+        "ndcg_score",
+        "AP",
+        "nAP",
+        "reciprocal_rank_first",
+        "reciprocal_rank_last",
+        'average_reciprocal_gap',
+        'average_precision',
+        "nfound",
+    ]
+
+    return metric in _mets
+
+def _lower_is_better(metric):
+    return metric.startswith('rank')
 
 def bsw_table_abs(compare, *, metric, abstol):
     assert abstol >= 0
 
-    if metric in _higher_is_better:
+    if _higher_is_better(metric):
         higher_is_better = True
-    elif metric in _lower_is_better or metric.startswith('rank_'):
+    elif _lower_is_better(metric):
         higher_is_better = False
     else:
         assert False, "need to specify if higher is better for metric"
@@ -150,6 +155,44 @@ def make_labeler(fmt_func):
 
     return fun
 
+def pivot_metric(stats, metric):
+    rest = stats[['dataset', 'category', 'variant', metric]]
+    return rest.pivot(index=['dataset', 'category'], columns='variant', values=metric,)
+
+# this case excludes case where there is nan or both are infinity
+def compare_method_pair(sbs, *, method_name, reference_name, epsilon = .01):
+    method1 = method_name
+    method2 = reference_name
+    assert (sbs[method1] != -np.inf).all(), 'not dealing with neg inf metrics right now'
+    assert (sbs[method2] != -np.inf).all()
+
+    inf1 = sbs[method1] == np.inf
+    inf2 = sbs[method2] == np.inf
+    inf_both = inf1 & inf2
+    only_left_inf = inf1 & ~inf_both
+    only_right_inf = inf2 & ~inf_both
+
+    nan1 = sbs[method1].isna()
+    nan2 = sbs[method2].isna()
+    nan1_not2 = nan1 & ~nan2
+    nan_both = nan1 & nan2
+    nan_either = nan1 | nan2
+    nan2_not1 = nan2 & ~nan1
+
+    comparable = ~nan_either & ~inf_both
+
+    close =  comparable & ((sbs[method1] - sbs[method2]).abs() < epsilon)
+    m1greater = comparable & ((sbs[method1] > sbs[method2]) & ~close)
+    m1smaller = comparable & ((sbs[method1] < sbs[method2]) & ~close)
+
+    df = pd.DataFrame(dict(greater=m1greater, close=close, smaller=m1smaller, 
+                            bothINF=inf_both, 
+                           methodNA=nan1_not2, bothNA=nan_both, refNA=nan2_not1))
+
+    total=df.sum(axis=1)
+    assert (total == 1).all() # ensure classification is non-repeted
+    df = df.assign(total=total, methodINF=only_left_inf,refINF=only_right_inf)
+    return df
 
 def side_by_side_comparison(stats, *, baseline_variant, metric):
     stats = stats.assign(session_index=stats.index.values)
@@ -463,6 +506,35 @@ def rel_plot(sbs, variant, jitter=0.01):
     )
 
     return scatterplot
+
+
+def plot_compare2(stats, variant, baseline, metric, jitter=0.01, abstol=.01):
+    pvt = pivot_metric(stats, metric=metric)
+    all_results = compare_method_pair(pvt, method_name=variant, reference_name=baseline, epsilon=abstol)
+
+    bsw = all_results.groupby('dataset').sum()
+    display(bsw)
+
+    baseline_name = f"{metric}_{baseline}"
+    variant_name = f"{metric}_{variant}"
+
+    plotdata = pvt[[variant, baseline]].reset_index()
+    plotdata = plotdata.rename(mapper={variant:variant_name, baseline:baseline_name}, axis=1)
+
+    return (
+        ggplot(data=plotdata)
+        + geom_jitter(
+            aes(x=baseline_name, y=variant_name, fill="dataset", color='dataset'),
+            alpha=.7,
+            width=jitter,
+            height=jitter,
+        )
+        # + scale_x_log10()
+        # + scale_y_log10()
+        + geom_abline(aes(slope=1, intercept=0))
+    )
+
+
 
 
 def plot_compare(
