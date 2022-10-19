@@ -495,6 +495,58 @@ from .basic_types import IndexSpec
 from .dataset_search_terms import category2query
 from .configs import get_default_config
 
+
+import numpy as np
+import copy
+from collections import namedtuple
+import numpy as np
+
+def space_size(base_config):
+    szs = []
+
+    for k,v in base_config.items():
+        if isinstance(v, dict) and len(v) == 1 and 'choose' in v.keys() and isinstance(v['choose'], list):
+            szs.append(len(v['choose']))
+        else:
+            szs.append(1)
+            
+    if len(szs) > 0:
+        return int(np.product(szs))
+    else:
+        return 0
+
+import random
+    
+def generate_method_configs(base_config, max_trials):
+    T = namedtuple('T', field_names=base_config.keys())
+    tcfgs = []
+
+    total_opts = space_size(base_config)
+    
+    def choose(lst):
+        return random.choice(lst)
+
+    total_opts = min(total_opts, max_trials)
+    
+    while len(tcfgs) < total_opts:            
+        cfg = copy.deepcopy(base_config)
+        for k,v in base_config.items():
+            if isinstance(v, dict) and len(v) == 1 and 'choose' in v.keys() and isinstance(v['choose'], list):
+                ret = choose(v['choose'])
+                cfg[k] = ret
+
+        t = T(**cfg)
+        if t in tcfgs:
+            continue
+        else:
+            tcfgs.append(t)
+        
+    cfgs = []
+    for t in tcfgs:
+        cfgs.append(t._asdict())
+
+    return cfgs
+
 def gen_configs(
     gdm: GlobalDataManager,
     datasets,
@@ -525,51 +577,60 @@ def gen_configs(
             if i == max_classes_per_dataset:
                 break
             for var in variants:
-                update_b = {}
-                term = category2query(d, c)
-                qstr = b_template["query_template"].format(term)
-                update_b["qstr"] = qstr
-                update_b["ground_truth_category"] = c
-                b = BenchParams(
-                    **{
-                        **b_template,
-                        **update_b,
-                        **{
-                            k: v
-                            for (k, v) in var.items()
-                            if k in BenchParams.__fields__.keys()
-                        },
-                    }
-                )
                 if 'method_config' in var:
-                    config = var['method_config']
+                    base_config = var['method_config']
+                elif 'interactive_options' in var:
+                    base_config = var['interactive_options']
                 else:
-                    config = get_default_config(var['interactive'])
+                    base_config = get_default_config(var['interactive'])
 
-                # if d != 'lvis':
-                #     c_name = None
-                # else:
-                c_name = c
-
-                update_s = {
-                    "index_spec": IndexSpec(
-                        d_name=d, i_name=var["index_name"], c_name=c_name
-                    ),
-                    "method_config": config
-                }
-
-                s = SessionParams(
-                    **{
-                        **s_template,
-                        **update_s,
+                gconfigs = generate_method_configs(base_config, max_trials=var.get('max_trials', 1))
+                print(len(gconfigs))
+                for i,config in enumerate(gconfigs):
+                    update_b = {}
+                    term = category2query(d, c)
+                    qstr = b_template["query_template"].format(term)
+                    update_b["qstr"] = qstr
+                    update_b["ground_truth_category"] = c
+                    b = BenchParams(
                         **{
-                            k: v
-                            for (k, v) in var.items()
-                            if k in SessionParams.__fields__.keys()
-                        },
+                            **b_template,
+                            **update_b,
+                            **{
+                                k: v
+                                for (k, v) in var.items()
+                                if k in BenchParams.__fields__.keys()
+                            },
+                        }
+                    )
+
+                    b.name = b.name + f'_var{i:03d}' if len(gconfigs) > 1 else b.name
+
+                    if d != 'lvis':
+                        c_name = None
+                    else:
+                        c_name = c
+
+                    update_s = {
+                        "index_spec": IndexSpec(
+                            d_name=d, i_name=var["index_name"], c_name=c_name
+                        ),
+                        "method_config": config,
+                        'interactive_options':config
                     }
-                )
-                configs.append((b, s))
+
+                    s = SessionParams(
+                        **{
+                            **s_template,
+                            **{
+                                k: v
+                                for (k, v) in var.items()
+                                if k in SessionParams.__fields__.keys()
+                            },
+                            **update_s,
+                        }
+                    )
+                    configs.append((b, s))
     return configs
 
 
