@@ -347,11 +347,13 @@ class BenchRunner(object):
                 print(session_params)
 
                 ret = make_session(self.gdm, p)
+                ds = ret['dataset']
+                boxes, _ = ds.load_ground_truth()
                 print("session built... now runnning loop")
                 run_info = benchmark_loop(
                     session=ret["session"],
-                    box_data=ret["box_data"],
-                    subset=ret["subset"],
+                    box_data=boxes,
+                    subset=pr.BitMap(ds.file_meta.index.values),
                     b=b,
                     p=p,
                 )

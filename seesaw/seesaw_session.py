@@ -607,58 +607,25 @@ class Session:
                     self.accepted.add(imdata.dbidx)
                 self.q.label_db.put(imdata.dbidx, imdata.boxes)
 
+def get_labeled_subset_dbdidxs(qgt, c_name):
+    labeled = ~qgt[c_name].isna()
+    return qgt[labeled].index.values
 
-def get_subset(ds, idx, c_name):
-    box_data, qgt = ds.load_ground_truth()
-    catgt = qgt[c_name]
-    positive_box_data = box_data[box_data.category == c_name]
-    present = pr.FrozenBitMap(catgt[~catgt.isna()].index.values)
-    positive = pr.FrozenBitMap(positive_box_data.dbidx.values)
-
-    assert positive.intersection(present) == positive
-
-    idx_subset = idx.subset(present)
-    return idx_subset, box_data, present, positive
-
-
-# def load_subset(gdm, ds, d_name, i_name, *, index_options, subset_name=None):
-#     # d_name right now is like data/bdd/
-#     # and i_name is like multiscale
-
-#     # assert p.index_spec.c_name is not None
-#     print("prepping  data....")
-#     if subset_name is not None:
-#         print(f"subsetting for subset {subset_name=}")
-#         box_data, subset, positive = prep_data(ds, subset_name)
-#         if len(positive) == 0:
-#             print('warning: no positive elements in this benchmark')
-#         hdb = hdb.subset(subset)
-#     else:
-#         box_data = None
-#         subset = None
-#         positive = None
-
-#     return dict(hdb=hdb, box_data=box_data, subset=subset, positive=positive)
 def make_session(gdm: GlobalDataManager, p: SessionParams):
     ds = gdm.get_dataset(p.index_spec.d_name)
-    print("got dataset")
-
-    idx = gdm.load_index(p.index_spec.d_name, p.index_spec.i_name, options=p.index_options)
-    print("index loaded")
-    box_data = None
-    subset = None
-    positive = None
-
     if p.index_spec.c_name is not None:
-        print('taking subset')
-        idx, box_data, subset, positive = get_subset(ds, idx, c_name=p.index_spec.c_name)
+        print('subsetting...')
+        ds = ds.load_subset(p.index_spec.c_name)
+        print('done subsetting')
+
+    print('loading index')
+    idx = ds.load_index(p.index_spec.i_name, options=p.index_options)
+    print('done loading index')
     
     print("about to construct session...")
     session = Session(gdm, ds, idx, p)
     print("session constructed...")
     return {
         "session": session,
-        "box_data": box_data,
-        "subset": subset,
-        "positive": positive,
+        "dataset": ds,
     }
