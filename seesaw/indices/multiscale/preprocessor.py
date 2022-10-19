@@ -191,13 +191,13 @@ class Preprocessor:
 
 import ray
 
-from seesaw.dataset import SeesawDatasetManager
+from seesaw.dataset import SeesawDataset
 import math
 import shutil
 
 
 def preprocess_dataset(
-    sds: SeesawDatasetManager,
+    sds: SeesawDataset,
     model_path,
     output_path,
     cpu=False,
@@ -295,7 +295,7 @@ def split_df(df, n_splits):
 
 def load_vecs(index_path, invalidate=False):
     index_path = resolve_path(index_path)
-    ds = SeesawDatasetManager(f"{index_path}/dataset")
+    ds = SeesawDataset(f"{index_path}/dataset")
     vec_path = f"{index_path}/vectors"
     cached_meta_path = f"{index_path}/vectors.sorted.cached"
 

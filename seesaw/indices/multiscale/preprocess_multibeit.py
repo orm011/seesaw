@@ -82,7 +82,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     import ray
-    from seesaw.dataset import SeesawDatasetManager
+    from seesaw.dataset import SeesawDataset
     from seesaw.indices.multiscale.preprocessor import preprocess_dataset, load_vecs
 
     #ray.init("auto", namespace="seesaw")

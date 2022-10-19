@@ -1,4 +1,4 @@
-from seesaw.definitions import resolve_path
+sfrom seesaw.definitions import resolve_path
 import pandas as pd
 from ray.data.extensions import TensorArray
 import ray
@@ -11,7 +11,7 @@ from operator import itemgetter
 import numpy as np
 
 
-from seesaw.dataset import SeesawDatasetManager
+from seesaw.dataset import SeesawDataset
 import math
 import shutil
 import torchvision
@@ -204,7 +204,7 @@ def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device,
     return image_embeds, new_boxes
 
 def preprocess_detr_dataset(
-    sds: SeesawDatasetManager,
+    sds: SeesawDataset,
     output_path,
     clip_model_path = None, 
     cpu=False,

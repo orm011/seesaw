@@ -11,7 +11,7 @@ from operator import itemgetter
 import numpy as np
 
 
-from seesaw.dataset import SeesawDatasetManager
+from seesaw.dataset import SeesawDataset
 import math
 import shutil
 import torchvision
@@ -166,7 +166,7 @@ def run_clip_proposal(image, boxes, padding, clip_model, clip_processor, device,
     return image_embeds, new_boxes
 
 def preprocess_beit_dataset(
-    sds: SeesawDatasetManager,
+    sds: SeesawDataset,
     output_path,
     clip_model_path = None, 
     cpu=False,

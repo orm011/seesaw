@@ -25,12 +25,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     import ray
-    from seesaw.dataset import SeesawDatasetManager
+    from seesaw.dataset import SeesawDataset
     from preprocessor import preprocess_detr_dataset
 
     #ray.init("auto", namespace="seesaw")
 
-    ds = SeesawDatasetManager(args.dataset_path)
+    ds = SeesawDataset(args.dataset_path)
     preprocess_detr_dataset(
         ds, clip_model_path=args.model_path, cpu=args.cpu, output_path=args.output_path, start_index=args.start, end_index=args.end, 
     )
