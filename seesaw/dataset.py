@@ -62,11 +62,13 @@ def get_default_qgt(dataset, box_data):
     qgt = pd.DataFrame.sparse.from_spmatrix(mat, index=dataset.file_meta.index.values, columns=box_data.category.dtype.categories)
     return qgt
 
+from .query_interface import AccessMethod
 
-class SeesawDatasetManager:
+class SeesawDataset:
     def __init__(self, dataset_path, cache=None):
         """Assumes layout created by create_dataset"""
         dataset_path = resolve_path(dataset_path)
+        self.path = dataset_path
         self.dataset_name = os.path.basename(dataset_path)
         self.dataset_root = dataset_path
         file_meta = pd.read_parquet(f"{self.dataset_root}/file_meta.parquet")
@@ -79,6 +81,10 @@ class SeesawDatasetManager:
         return ExplicitPathDataset(
             root_dir=self.image_root, relative_path_list=self.paths
         )
+
+    def load_index(self, index_name, *, options):
+        index_path = f"{self.path}/indices/{index_name}"
+        return AccessMethod.load(index_path, options=options)
     
     def get_url(self, dbidx, host='localhost.localdomain:10000') -> str:
         return f"http://{host}/{self.image_root}/{self.paths[dbidx]}"
@@ -148,7 +154,7 @@ class SeesawDatasetManager:
     ## TODO: add subset method that takes care of ground truth, and URLS, and that 
     ### can be used by indices over the subset?
 
-def create_dataset(image_src, output_path, paths=[]) -> SeesawDatasetManager:
+def create_dataset(image_src, output_path, paths=[]) -> SeesawDataset:
     """
     if not given explicit paths, it assumes every jpg, jpeg and png is wanted
     """
@@ -177,4 +183,48 @@ def create_dataset(image_src, output_path, paths=[]) -> SeesawDatasetManager:
     df.to_parquet(f"{dspath}/file_meta.parquet")
 
     os.rename(dspath, final_dspath)
-    return SeesawDatasetManager(final_dspath)
+    return SeesawDataset(final_dspath)
+
+### subset. need some way for tools to get path so they can build more stuff underneath
+### index subset (easily computed)
+### ground truth subset (easily computed)
+### pre-built data structures for subset vectors: (eg annoy index, knn graphs, etc. loaded. require some type of name for folder)
+### a way to build the first time -> from_dbidxs need some subset paths
+### a way to specify where to save intermediates -> 
+### a way to re-build later -> need some name to find previously saved stuff.
+
+### goal: it should be easy to know given an index
+##  where to save knn indices and where to load them from.
+
+### what we can do in one hour:
+## 1. move the data to a folder structure compatible with this idea
+##  {dspath}/subsets/{subset_name}/indices/multiscale/knn_graph
+##  {dspath}/subsets/{subset_name}/indices/coarse/knn_graph
+
+## 2. change read path to use this rather than gdm to figure out where to read.
+#### it makes it easy to handle subsets of other datasets if we want to try that (eg making classes rarer)
+
+class SeesawDatasetSubset(SeesawDataset):
+    def __init__(self, parent_dataset, path):
+        self.parent_dataset = parent_dataset
+        self.path = path
+
+    @staticmethod
+    def from_paths(ds):
+        pass
+
+    @staticmethod
+    def from_path(path):
+        pass
+
+    def load_index(self, index_name, *, options):
+        ## the index itself is the one with access to index metadata, including knn graphs
+        pass
+
+    def load_ground_truth(self):
+        ## derive from query
+        pass
+
+    def save(self, path):
+        ## saves meta to path so it can be loaded again
+        pass

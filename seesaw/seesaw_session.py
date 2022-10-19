@@ -4,7 +4,7 @@ from torch import index_fill
 from seesaw.query_interface import AccessMethod
 import numpy as np
 import pandas as pd
-from .dataset_manager import GlobalDataManager, SeesawDatasetManager
+from .dataset_manager import GlobalDataManager, SeesawDataset
 
 import os
 import time
@@ -481,7 +481,7 @@ class Session:
     def __init__(
         self,
         gdm: GlobalDataManager,
-        dataset: SeesawDatasetManager,
+        dataset: SeesawDataset,
         hdb: AccessMethod,
         params: SessionParams,
     ):

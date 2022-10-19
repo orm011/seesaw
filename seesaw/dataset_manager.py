@@ -1,7 +1,7 @@
 from .memory_cache import CacheStub
 from .query_interface import AccessMethod
 import os
-from .dataset import SeesawDatasetManager
+from .dataset import SeesawDataset
 from .basic_types import IndexSpec, SessionParams
 
 class GlobalDataManager:
@@ -31,12 +31,12 @@ class GlobalDataManager:
         return os.listdir(f"{self.data_root}/{dataset}/indices/")
 
     def load_index(self, dataset_name, index_name, *, options) -> AccessMethod:
-        index_path = f"{self.root}/data/{dataset_name}/indices/{index_name}"
-        return AccessMethod.load(index_path, options=options)
+        ds = self.get_dataset(dataset_name)
+        return ds.load_index(index_name, options=options)
 
-    def get_dataset(self, dataset_name) -> SeesawDatasetManager:
+    def get_dataset(self, dataset_name) -> SeesawDataset:
         dataset_path = f"{self.root}/data/{dataset_name}"
-        return SeesawDatasetManager(dataset_path, cache=self.global_cache)
+        return SeesawDataset(dataset_path, cache=self.global_cache)
 
     def _get_knng_path(self, ispec: IndexSpec, knn_options : dict):
         base = f'{self.root}/data/{ispec.d_name}/indices/{ispec.i_name}'
