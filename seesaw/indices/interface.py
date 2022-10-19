@@ -13,8 +13,18 @@ def get_constructor(cons_name: str):
 
 
 class AccessMethod:
+    path : str
+
     def string2vec(self, string: str) -> np.ndarray:
         raise NotImplementedError("implement me")
+
+    def get_knng(self, path=None):
+        from seesaw.research.knn_methods import KNNGraph
+        if path is None:
+            path = ''
+            
+        knng = KNNGraph.from_file(f'{self.path}/knn_graph/{path}')
+        return knng
 
     def query(
         self, *, vector: np.ndarray, topk: int, exclude: pr.BitMap = None
