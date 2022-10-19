@@ -64,7 +64,30 @@ def get_default_qgt(dataset, box_data):
 
 from .query_interface import AccessMethod
 
-class SeesawDataset:
+
+class BaseDataset: # common interface for datasets and their subsets
+    def load_index(self, index_name, *, options):
+        raise NotImplementedError
+
+    def size(self):
+        raise NotImplementedError
+    
+    def load_subset(self, subset_name):
+        raise NotImplementedError
+
+    def get_url(self, dbidx, host) -> str:
+        raise NotImplementedError
+
+    def as_ray_dataset(self, limit=None, parallelism=-1) -> ray.data.Dataset:
+        raise NotImplementedError
+
+    def load_eval_categories(self):
+        raise NotImplementedError
+
+    def load_ground_truth(self):
+        raise NotImplementedError
+
+class SeesawDataset(BaseDataset):
     def __init__(self, dataset_path, cache=None):
         """Assumes layout created by create_dataset"""
         dataset_path = resolve_path(dataset_path)
@@ -77,15 +100,41 @@ class SeesawDataset:
         self.image_root = os.path.realpath(f"{self.dataset_root}/images/")
         self.cache = cache
 
+    def size(self):
+        return self.file_meta.shape[0]
+
     def get_pytorch_dataset(self):
         return ExplicitPathDataset(
             root_dir=self.image_root, relative_path_list=self.paths
         )
 
+    def list_indices(self):
+        return os.listdir(f'{self.path}/indices/')
+
     def load_index(self, index_name, *, options):
         index_path = f"{self.path}/indices/{index_name}"
         return AccessMethod.load(index_path, options=options)
-    
+
+
+    def _create_subset(self, subset_path, dbidxs):
+        dbidxs = pr.FrozenBitMap(dbidxs)
+        assert not os.path.exists(subset_path)
+        file_meta = self.file_meta[self.file_meta.index.isin(dbidxs)]
+        assert file_meta.shape[0] > 0
+
+        os.makedirs(subset_path)
+        meta_info = {'parent':self.path}
+        json.dump(meta_info, open(f'{subset_path}/meta.json', 'w'))
+        file_meta.to_parquet(f'{subset_path}/file_meta.parquet')
+        return SeesawDatasetSubset.load_from_path(self, path=subset_path)
+
+    def create_named_subset(self, subset_name, dbidxs):
+        subset_path = f'{self.path}/subsets/{subset_name}'
+        return self._create_subset(subset_path, dbidxs)
+
+    def load_subset(self, subset_name):
+        return SeesawDatasetSubset.load_from_path(self, f'{self.path}/subsets/{subset_name}')
+
     def get_url(self, dbidx, host='localhost.localdomain:10000') -> str:
         return f"http://{host}/{self.image_root}/{self.paths[dbidx]}"
 
@@ -203,28 +252,58 @@ def create_dataset(image_src, output_path, paths=[]) -> SeesawDataset:
 
 ## 2. change read path to use this rather than gdm to figure out where to read.
 #### it makes it easy to handle subsets of other datasets if we want to try that (eg making classes rarer)
+import pyroaring as pr
 
-class SeesawDatasetSubset(SeesawDataset):
-    def __init__(self, parent_dataset, path):
-        self.parent_dataset = parent_dataset
+class SeesawDatasetSubset(BaseDataset):
+    def __init__(self, parent_dataset, file_meta, path=None):
+        """ use factory methods to build
+        """ 
         self.path = path
+        self.parent = parent_dataset
+        self.file_meta = file_meta ## this file_meta could be confusing for any code that indexes into file meta using dbidx
+        self.dbidxs = pr.FrozenBitMap(self.file_meta.index.values)
 
+    def size(self):
+        return self.file_meta.shape[0]
+        
     @staticmethod
-    def from_paths(ds):
-        pass
+    def load_from_path(parent_ds, path):
+        file_meta = pd.read_parquet(f'{path}/file_meta.parquet')
+        os.makedirs(f'{path}/indices/', exist_ok=True)
+        return SeesawDatasetSubset(parent_ds, file_meta, path=path)
 
-    @staticmethod
-    def from_path(path):
-        pass
+    def list_indices(self):
+        parent_indices = self.parent.list_indices()        
+        child_indices = os.listdir(f'{self.path}/indices/')
+        return set(parent_indices + child_indices)
 
-    def load_index(self, index_name, *, options):
-        ## the index itself is the one with access to index metadata, including knn graphs
-        pass
+    def load_index(self, index_name, *, options):        
+        if index_name in self.parent.list_indices():
+            parent_index = self.parent.load_index(index_name, options=options)
+            subset = parent_index.subset(self.dbidxs)
+            ## make the path work for other stuff
+            subset.path = f'{self.path}/indices/{index_name}/'
+            return subset
+        else:
+            raise NotImplementedError
+        ## if there is a parent index and also a local structure,
+        ## we want to compute the parent index vectors, 
+        ## but we also want to return the local subset structures.
+        ## we can do this by constructing the index explicitly.
+        ## we have two types of indices though.
 
     def load_ground_truth(self):
-        ## derive from query
-        pass
+        boxes, qgt = self.parent.load_ground_truth()
+        boxes = boxes[boxes.dbidx.isin(self.dbidxs)]
+        qgt = qgt[qgt.index.isin(self.dbidxs)]
+        return boxes, qgt
 
-    def save(self, path):
-        ## saves meta to path so it can be loaded again
-        pass
+    def load_subset(self, subset_name):
+        raise NotImplementedError('not supporting recursive subset right now')
+
+    def get_url(self, dbidx, host='localhost.localdomain:10000') -> str:
+        ## url should be same as before
+        return self.parent.get_url(dbidx, host)
+
+    def as_ray_dataset(self, limit=None, parallelism=-1) -> ray.data.Dataset:
+        raise NotImplementedError()
