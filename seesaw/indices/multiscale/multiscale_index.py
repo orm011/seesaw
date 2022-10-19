@@ -347,7 +347,7 @@ def get_pos_negs_all_v2(label_db: LabelDB, vec_meta: pd.DataFrame):
         if label_boxes.shape[0] == 0:
             ## every vector is a negative example in this case
             neg.append(acc_vecs.index.values)
-            continue
+            pos.append(np.array([], dtype=acc_vecs.index.values.dtype))
 
         ious = box_iou(label_boxes, acc_vecs)
         total_iou = ious.sum(axis=0)
