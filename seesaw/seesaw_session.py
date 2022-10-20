@@ -380,11 +380,9 @@ class KnnBased(LoopBase):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
         super().__init__(gdm, q, params)
         s = self.state
-        p = self.params 
+        p = self.params
 
-        knng_path = gdm._get_knng_path(p.index_spec, p.interactive_options)
-        print(f'{knng_path=}')
-        knng = KNNGraph.from_file(knng_path, parallelism=0)
+        knng = q.index.get_knng(path=p.interactive_options.get('knn_path', ''))
         knng = knng.restrict_k(k=p.interactive_options['knn_k'])
 
         assert q.index.vectors.shape[0] == knng.nvecs
