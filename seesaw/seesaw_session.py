@@ -375,10 +375,15 @@ class PseudoLabelLR(PointBased):
 
     def next_batch(self):
         pos, neg = self.q.getXy(get_positions=True)
-        if (len(pos) == 0 or len(neg) == 0) and self.switch_over:
-            return self.knn_based.next_batch() # tree based 
+
+        if self.switch_over:
+            if (len(pos) == 0 or len(neg) == 0):
+                print('not switching over yet')
+                return self.knn_based.next_batch() # tree based 
+            else:
+                return super().next_batch() # point based result
         else:
-            return super().next_batch() # point based result
+            return super().next_batch()
 
 
 
@@ -576,6 +581,7 @@ class Session:
 
     def get_panel_data(self, *, idxbatch, activation_batch=None):
         reslabs = []
+        #urls = get_image_paths(self.dataset.image_root, self.dataset.paths, idxbatch)
         urls = self.dataset.get_image_paths(idxbatch)
 
         for i, (url, dbidx) in enumerate(zip(urls, idxbatch)):
