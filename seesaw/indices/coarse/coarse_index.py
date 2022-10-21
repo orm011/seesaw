@@ -20,8 +20,9 @@ class CoarseIndex(AccessMethod):
     """
 
     def __init__(
-        self, embedding: XEmbedding, vectors: np.ndarray, vector_meta: pd.DataFrame
+        self, embedding: XEmbedding, vectors: np.ndarray, vector_meta: pd.DataFrame, path : str = None
     ):
+        self.path = path
         self.embedding = embedding
         self.vectors = vectors
         self.vector_meta = vector_meta
@@ -46,7 +47,8 @@ class CoarseIndex(AccessMethod):
         embedded_dataset = coarse_df["vectors"].values.to_numpy()
         vector_meta = coarse_df.drop("vectors", axis=1)
         return CoarseIndex(
-            embedding=embedding, vectors=embedded_dataset, vector_meta=vector_meta
+            embedding=embedding, vectors=embedded_dataset, vector_meta=vector_meta, 
+            path = index_path
         )
 
     def query(self, *, topk, vector=None, exclude=None, startk=None, **kwargs):
@@ -99,6 +101,7 @@ class CoarseIndex(AccessMethod):
             embedding=self.embedding,
             vectors=self.vectors[mask],
             vector_meta=self.vector_meta[mask].reset_index(drop=True),
+
         )
 
 

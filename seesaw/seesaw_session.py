@@ -354,7 +354,8 @@ class PseudoLabelLR(PointBased):
         self.label_prop_params = self.options['label_prop_params']
         self.log_reg_params = self.options['log_reg_params']
 
-        knng = q.index.get_knng()
+        knng_path = q.index.get_knng_path()
+        knng = KNNGraph.from_file(knng_path)
         self.knng_sym = knng.restrict_k(k=self.label_prop_params['knn_k'])
         self.label_prop = LabelPropagationRanker(knng=self.knng_sym, **self.label_prop_params)
 
@@ -381,7 +382,8 @@ class KnnBased(LoopBase):
         s = self.state
         p = self.params
 
-        knng = q.index.get_knng(path=p.interactive_options.get('knn_path', ''))
+        knng_path = q.index.get_knng_path(name=p.interactive_options.get('knn_path', ''))
+        knng = KNNGraph.from_file(knng_path)
         knng = knng.restrict_k(k=p.interactive_options['knn_k'])
 
         assert q.index.vectors.shape[0] == knng.nvecs

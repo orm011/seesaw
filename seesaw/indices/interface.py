@@ -4,7 +4,6 @@ import importlib
 import json
 from ..definitions import resolve_path
 
-
 def get_constructor(cons_name: str):
     pieces = cons_name.split(".", maxsplit=-1)
     index_mod = importlib.import_module(".".join(pieces[:-1]))
@@ -18,14 +17,6 @@ class AccessMethod:
     def string2vec(self, string: str) -> np.ndarray:
         raise NotImplementedError("implement me")
 
-    def get_knng(self, path=None):
-        from seesaw.research.knn_methods import KNNGraph
-        if path is None:
-            path = ''
-            
-        knng = KNNGraph.from_file(f'{self.path}/knn_graph/{path}')
-        return knng
-
     def query(
         self, *, vector: np.ndarray, topk: int, exclude: pr.BitMap = None
     ) -> np.ndarray:
@@ -36,6 +27,11 @@ class AccessMethod:
 
     def subset(self, indices: pr.BitMap):
         raise NotImplementedError("implement me")
+
+    def get_knng_path(self, name: str = None):
+        if name is None:
+             name = ''
+        return f'{self.path}/knn_graph/{name}'
 
     @staticmethod
     def from_path(index_path: str, **options):
