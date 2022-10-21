@@ -61,6 +61,11 @@ for i,yl in enumerate(yls):
     datasets = yl['datasets']
     shared_session_params = yl['shared_session_params']
     shared_bench_params = yl['shared_bench_params']
+    if args.dryrun:
+        shared_bench_params['n_batches'] = 5
+        shared_bench_params['max_results'] = 3
+
+        # batch_size['n_batches'] = 5
 
     cfgs = gen_configs(
         gdm,
