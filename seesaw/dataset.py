@@ -66,12 +66,23 @@ from .query_interface import AccessMethod
 
 
 class BaseDataset: # common interface for datasets and their subsets
+    image_root : str
+    file_meta : pd.DataFrame # indexed by dbidx, column 'file_path'
     def load_index(self, index_name, *, options):
         raise NotImplementedError
 
     def size(self):
         raise NotImplementedError
     
+    def get_image_paths(self, dbidxs):
+        paths = []
+        for dbidx in dbidxs:
+            subpath = self.file_meta.loc[dbidx]
+            path = f'{self.image_root}/{subpath}'
+            paths.append(path)
+        # urls = get_image_paths(self.dataset.image_root, self.dataset.paths, idxbatch)
+        return paths
+
     def load_subset(self, subset_name):
         raise NotImplementedError
 
@@ -259,8 +270,10 @@ class SeesawDatasetSubset(BaseDataset):
         """ use factory methods to build
         """ 
         self.path = path
-        self.parent = parent_dataset
+        self.image_root = parent_dataset.image_root
         self.file_meta = file_meta ## this file_meta could be confusing for any code that indexes into file meta using dbidx
+        self.paths = self.file_meta['file_path'].values
+        self.parent = parent_dataset
         self.dbidxs = pr.FrozenBitMap(self.file_meta.index.values)
 
     def size(self):

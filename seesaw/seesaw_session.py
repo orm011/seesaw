@@ -576,7 +576,7 @@ class Session:
 
     def get_panel_data(self, *, idxbatch, activation_batch=None):
         reslabs = []
-        urls = get_image_paths(self.dataset.image_root, self.dataset.paths, idxbatch)
+        urls = self.dataset.get_image_paths(idxbatch)
 
         for i, (url, dbidx) in enumerate(zip(urls, idxbatch)):
             dbidx = int(dbidx)
