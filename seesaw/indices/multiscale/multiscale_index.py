@@ -339,8 +339,9 @@ def get_boxes(vec_meta):
 
 def get_pos_negs_all_v2(label_db: LabelDB, vec_meta: pd.DataFrame):
     idxs = label_db.get_seen()
-    pos = []
-    neg = []
+    pos = [np.array([], dtype=vec_meta.index.values.dtype)]
+    neg = [np.array([], dtype=vec_meta.index.values.dtype)]
+    
     vec_meta = vec_meta[vec_meta.dbidx.isin(idxs)]
 
     for idx, acc_vecs in vec_meta.groupby('dbidx'):
