@@ -10,7 +10,8 @@ from torch.utils.data import DataLoader
 import math
 from tqdm.auto import tqdm
 import torch
-from seesaw.query_interface import *
+from seesaw.labeldb import LabelDB
+from seesaw.query_interface import  AccessMethod, InteractiveQuery
 
 from seesaw.models.embeddings import make_clip_transform, ImTransform, XEmbedding
 import pyroaring as pr

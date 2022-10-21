@@ -1,46 +1,6 @@
 import pyroaring as pr
-from .indices.interface import get_constructor, AccessMethod
-from .basic_types import *
-import pandas as pd
-
-
-class LabelDB:
-    def __init__(self):
-        self.ldata = {}
-
-    def get_seen(self):
-        return pr.BitMap(self.ldata.keys())
-
-    def put(self, dbidx: int, boxes: List[Box]):
-        self.ldata[dbidx] = boxes
-
-    def get(self, dbidx: int, format: str):
-        dbidx = int(dbidx)
-        if dbidx not in self.ldata:
-            return None  # has not been seen. used when sending data
-
-        boxes = self.ldata[dbidx]
-        if boxes is None:  # seen by user but not labeled. consider negative for now
-            boxes = []
-
-        if format == "df":
-            if boxes == []:
-                return pd.DataFrame(boxes, columns=["x1", "x2", "y1", "y2"]).astype(
-                    "float32"
-                )  # cols in case it is empty
-            else:
-                return pd.DataFrame([b.dict() for b in boxes])[
-                    ["x1", "x2", "y1", "y2"]
-                ].astype("float32")
-        elif format == "box":
-            return boxes
-        elif format == 'binary':
-            if len(boxes) == 0:
-                return 0
-            else:
-                return 1
-        else:
-            assert False, 'unknown format'
+from .indices.interface import AccessMethod
+from .labeldb import LabelDB
 
 class InteractiveQuery(object):
     """
@@ -50,8 +10,11 @@ class InteractiveQuery(object):
 
     def __init__(self, index: AccessMethod):
         self.index = index
-        self.returned = pr.BitMap() 
+
         # images returned from index (not necessarily seen yet)
+        self.returned = pr.BitMap() 
+
+        # image labels received back
         self.label_db = LabelDB()
 
     def query_stateful(self, *args, **kwargs):
