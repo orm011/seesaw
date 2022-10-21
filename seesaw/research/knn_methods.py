@@ -406,7 +406,7 @@ class LabelPropagationRanker(BaseLabelPropagationRanker):
 
             ## override scores with labels 
             scores = scores * (1 - self.is_labeled) + self.labels * self.is_labeled
-            norm = np.linalg.norm(prev_score - scores)
+            # norm = np.linalg.norm(prev_score - scores)
             # print(f'norm delta : {norm}')
 
         return scores
