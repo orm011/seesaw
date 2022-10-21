@@ -63,7 +63,7 @@ class LoopBase:
     def from_params(gdm, q, params):
 
         if params.interactive in ['knn_greedy', 'knn_prop', 'knn_prop2', 'linear_prop']:
-            cls = KnnBased
+            return KnnBased.from_params(gdm, q, params)
         elif params.interactive in ['textual']:
             cls = TextualLoop
         elif params.interactive in ['plain']:
@@ -353,35 +353,42 @@ class PseudoLabelLR(PointBased):
         self.options = self.params.interactive_options
         self.label_prop_params = self.options['label_prop_params']
         self.log_reg_params = self.options['log_reg_params']
+        self.switch_over = self.options.get('switch_over', False)
 
         knng_path = q.index.get_knng_path()
         knng = KNNGraph.from_file(knng_path)
         self.knng_sym = knng.restrict_k(k=self.label_prop_params['knn_k'])
-        self.label_prop = LabelPropagationRanker(knng=self.knng_sym, **self.label_prop_params)
+        label_prop = LabelPropagationRanker2(knng=self.knng_sym, **self.label_prop_params)
+
+        self.knn_based = KnnBased(gdm, q, params, knn_model = label_prop)
 
     def set_text_vec(self, tvec):
-        self.state.tvec = tvec
-        scores = self.q.index.score(tvec)
-        self.label_prop.set_base_scores(scores)
-        self.curr_vec = tvec
+        super().set_text_vec(tvec)
+        self.knn_based.set_text_vec(tvec)
 
     def refine(self):
-        pos, neg = self.q.getXy(get_positions=True)
-        idxs = np.concatenate([pos,neg])
-        labels = np.concatenate([np.ones_like(pos), np.zeros_like(neg)])
-        self.label_prop.update(idxs, labels)
+        self.knn_based.refine() # label prop
+        X,y = makeXy(self.index, self.knn_based.state.knn_model, sample_size=self.options['sample_size'])
         model = LogisticRegresionPT(**self.log_reg_params)
-        X,y = makeXy(self.index, self.label_prop, sample_size=self.options['sample_size'])
         model.fit(X, y.reshape(-1,1)) # y 
         self.curr_vec = model.get_coeff().reshape(-1)
-    ## def next_batch(self):
+
+    def next_batch(self):
+        pos, neg = self.q.getXy(get_positions=True)
+        if (len(pos) == 0 or len(neg) == 0) and self.switch_over:
+            return self.knn_based.next_batch() # tree based 
+        else:
+            return super().next_batch() # point based result
+
+
 
 class KnnBased(LoopBase):
-    def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
+    def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams, knn_model):
         super().__init__(gdm, q, params)
-        s = self.state
-        p = self.params
+        self.state.knn_model = knn_model
 
+    @staticmethod
+    def from_params(gdm, q, p: SessionParams):
         knng_path = q.index.get_knng_path(name=p.interactive_options.get('knn_path', ''))
         knng = KNNGraph.from_file(knng_path)
         knng = knng.restrict_k(k=p.interactive_options['knn_k'])
@@ -389,9 +396,9 @@ class KnnBased(LoopBase):
         assert q.index.vectors.shape[0] == knng.nvecs
 
         if p.interactive == 'knn_greedy':
-            s.knn_model = SimpleKNNRanker(knng, init_scores=None)
+            knn_model = SimpleKNNRanker(knng, init_scores=None)
         elif p.interactive == 'knn_prop':
-            s.knn_model = LabelPropagationRanker(knng, init_scores=None, nvecs=knng.nvecs, **p.interactive_options)
+            knn_model = LabelPropagationRanker(knng, init_scores=None, nvecs=knng.nvecs, **p.interactive_options)
         elif p.interactive == 'knn_prop2':
             intra_knn_k = p.interactive_options.get('intra_knn_k', 0)
             if  intra_knn_k > 0:
@@ -404,11 +411,14 @@ class KnnBased(LoopBase):
                 print('using simple prop')
                 knng_frame = None
                 # knng_frame= knng_frame.restrict_k(k=p.interactive_options['knn_k'])
-            s.knn_model = LabelPropagationRanker2(knng_intra=knng_frame, knng=knng, nvecs=knng.nvecs, **p.interactive_options)
+            knn_model = LabelPropagationRanker2(knng_intra=knng_frame, knng=knng, nvecs=knng.nvecs, **p.interactive_options)
         elif p.interactive == 'linear_prop':
-            s.knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
+            knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
         else:
             assert False
+
+        return KnnBased(gdm, q, p, knn_model)
+
 
     def set_text_vec(self, tvec):
         scores = self.q.index.score(tvec)
