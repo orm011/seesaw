@@ -354,8 +354,7 @@ class PseudoLabelLR(PointBased):
         self.label_prop_params = self.options['label_prop_params']
         self.log_reg_params = self.options['log_reg_params']
 
-        knng_path = gdm._get_knng_path(params.index_spec, self.label_prop_params)
-        knng = KNNGraph.from_file(knng_path, parallelism=0)
+        knng = q.index.get_knng()
         self.knng_sym = knng.restrict_k(k=self.label_prop_params['knn_k'])
         self.label_prop = LabelPropagationRanker(knng=self.knng_sym, **self.label_prop_params)
 

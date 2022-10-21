@@ -7,7 +7,7 @@ class IndexActor:
     def __init__(self, root):
         gdm = GlobalDataManager(root)
         ds = gdm.get_dataset('lvis')
-        idx_top = gdm.load_index('lvis', 'multiscale',  options=dict(use_vec_index=False))
+        idx_top = ds.load_index('multiscale',  options=dict(use_vec_index=False))
         knng = KNNGraph.from_file(f'/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/data/lvis/indices/multiscale/subsets/{category}/')
         self.gdm = gdm
         self.ds = ds

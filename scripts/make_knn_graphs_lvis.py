@@ -14,8 +14,8 @@ from seesaw.dataset_manager import GlobalDataManager
 
 root = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/'
 gdm = GlobalDataManager(root)
-index = gdm.load_index('lvis', 'multiscale', use_index=False)
-lvisds = gdm.get_dataset('lvis')
+lvisds = gdm.get_dataset()
+index = lvisds.load_index('multiscale', use_index=False)
 _, qgt = lvisds.load_ground_truth()
 
 
@@ -34,9 +34,9 @@ class KNNMaker:
 
         gdm = GlobalDataManager(root)
         self.gdm = gdm
-        self.index = gdm.load_index('lvis', 'multiscale', use_index=False)
-        ds = gdm.get_dataset('lvis')
-        _, qgt = ds.load_ground_truth()
+        lvisds = gdm.get_dataset('lvis')
+        self.index = lvisds.load_index('multiscale', use_index=False)
+        _, qgt = lvisds.load_ground_truth()
         self.qgt = qgt
 
     def __call__(self, batch):
