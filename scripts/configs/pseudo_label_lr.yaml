@@ -3,11 +3,13 @@ datasets:
   - name: lvis
     # categories: 
     #   - zebra
-  # - coco
-  # - objectnet
+    # - coco
+  - objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
+  index_options: 
+    use_vec_index: False
 shared_bench_params: # see BenchParams
   max_feedback: null
   box_drop_prob: 0. 
@@ -16,9 +18,11 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    - name: pseudo_lr_lambda20_105_tryagain_nndescent
+    - name: pseudo_lr_switch_ng
+      max_samples : 10
       interactive: pseudo_lr
       interactive_options:
+        switch_over: True
         log_reg_params:
           class_weights: 1.
           scale: centered
@@ -26,10 +30,36 @@ variants:
           max_iter: 200.
           lr: 1
         label_prop_params:
-          knn_k: 10
-          knn_path: dividx
-          calib_a: 10.
-          calib_b: -5.
+          knn_k: 20
+          knn_path: ''
+          calib_a: 
+            choose: [1.] #[.2, .5, 1., 2.]
+          calib_b: 
+            choose: [-2.] #, -1., -.5, 0., .5]
+          prior_weight: 1.
+          edist: .1
+          num_iters: 5
+        sample_size: 5000
+      index_name: multiscale
+      agg_method: avg_score
+      aug_larger: greater
+    - name: pseudo_lr_ng
+      interactive: pseudo_lr
+      interactive_options:
+        switch_over: False
+        log_reg_params:
+          class_weights: 1.
+          scale: centered
+          reg_lambda: 10. # enough pseudolabels
+          max_iter: 200.
+          lr: 1
+        label_prop_params:
+          knn_k: 20
+          knn_path: ''
+          calib_a: 
+            choose: [1.] #[.2, .5, 1., 2.]
+          calib_b: 
+            choose: [-2.] #, -1., -.5, 0., .5]
           prior_weight: 1.
           edist: .1
           num_iters: 5

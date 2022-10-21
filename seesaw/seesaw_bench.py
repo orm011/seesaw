@@ -348,7 +348,9 @@ class BenchRunner(object):
 
                 ret = make_session(self.gdm, p)
                 ds = ret['dataset']
-                boxes, _ = ds.load_ground_truth()
+                boxes, qgt = ds.load_ground_truth()
+                gtseries = qgt[b.ground_truth_category]
+
                 print("session built... now runnning loop")
                 run_info = benchmark_loop(
                     session=ret["session"],
@@ -360,8 +362,8 @@ class BenchRunner(object):
                 print("loop done... now saving results")
                 session = ret["session"]
                 summary.result = BenchResult(
-                    ntotal=len(ret["positive"]),
-                    nimages=len(ret["subset"]),
+                    ntotal=(gtseries > 0).sum(),
+                    nimages=gtseries.shape[0],
                     session=session.get_state(),
                     run_info=run_info,
                     total_time=time.time() - start,
@@ -502,52 +504,76 @@ import numpy as np
 import copy
 from collections import namedtuple
 import numpy as np
+import math
 
 def space_size(base_config):
     szs = []
-
-    for k,v in base_config.items():
-        if isinstance(v, dict) and len(v) == 1 and 'choose' in v.keys() and isinstance(v['choose'], list):
+    for _,v in base_config.items():
+        if isinstance(v, dict) and 'choose' in v.keys() and isinstance(v['choose'], list):
+            assert len(v) == 1
             szs.append(len(v['choose']))
+        elif isinstance(v, dict):
+            szs.append(space_size(v))
         else:
             szs.append(1)
             
-    if len(szs) > 0:
-        return int(np.product(szs))
-    else:
-        return 0
+    return math.prod(szs)
 
 import random
     
-def generate_method_configs(base_config, max_trials):
+
+## want to: 
+# 1. sample n things (top level)
+# 2. estimate size (top level)
+
+## recursively:
+### size of conf:
+### prod of elements, with primitive count for 1, choose for size of list, and size of subdict
+
+### sample of conf
+def sample_config(base_config):
     T = namedtuple('T', field_names=base_config.keys())
-    tcfgs = []
 
-    total_opts = space_size(base_config)
-    
-    def choose(lst):
-        return random.choice(lst)
-
-    total_opts = min(total_opts, max_trials)
-    
-    while len(tcfgs) < total_opts:            
-        cfg = copy.deepcopy(base_config)
-        for k,v in base_config.items():
-            if isinstance(v, dict) and len(v) == 1 and 'choose' in v.keys() and isinstance(v['choose'], list):
-                ret = choose(v['choose'])
-                cfg[k] = ret
-
-        t = T(**cfg)
-        if t in tcfgs:
-            continue
+    cfg = {}
+    for k,v in base_config.items():
+        if isinstance(v, dict) and 'choose' in v.keys():
+            assert isinstance(v['choose'], list)
+            assert len(v) == 1 
+            ret = random.choice(v['choose'])
+            cfg[k] = ret
+        elif isinstance(v, dict):
+            cfg[k] = sample_config(v)
         else:
-            tcfgs.append(t)
-        
-    cfgs = []
-    for t in tcfgs:
-        cfgs.append(t._asdict())
+            cfg[k] = v # simply copy over
 
-    return cfgs
+    return T(**cfg)
+
+
+def asdict(t):
+    base_dict = t._asdict().copy()
+    for k,v in base_dict.items():
+        if hasattr(v, '_asdict'):
+            base_dict[k] = asdict(v)
+
+    return base_dict
+
+def generate_method_configs(base_config, max_trials):
+    seen_configs = set()
+    total_configs = space_size(base_config)
+    limit = min(max_trials, total_configs)
+
+    while len(seen_configs) < limit:
+        cfg = sample_config(base_config)
+        seen_configs.add(cfg)
+
+    ans = []
+    for i,cfgelt in enumerate(seen_configs):
+        cfg = asdict(cfgelt)
+        if len(seen_configs) > 1:
+            cfg['name'] = f"{cfg['name']}_sample_{i:02d}"
+        ans.append(cfg)
+
+    return ans
 
 def gen_configs(
     gdm: GlobalDataManager,
@@ -579,15 +605,9 @@ def gen_configs(
             if i == max_classes_per_dataset:
                 break
             for var in variants:
-                if 'method_config' in var:
-                    base_config = var['method_config']
-                elif 'interactive_options' in var:
-                    base_config = var['interactive_options']
-                else:
-                    base_config = get_default_config(var['interactive'])
+                gconfigs = generate_method_configs(var, max_trials=var.get('max_samples', 1))
+                print(f'sampled {len(gconfigs)=}')
 
-                gconfigs = generate_method_configs(base_config, max_trials=var.get('max_trials', 1))
-                print(len(gconfigs))
                 for i,config in enumerate(gconfigs):
                     update_b = {}
                     term = category2query(d, c)
@@ -600,13 +620,11 @@ def gen_configs(
                             **update_b,
                             **{
                                 k: v
-                                for (k, v) in var.items()
+                                for (k, v) in config.items()
                                 if k in BenchParams.__fields__.keys()
                             },
                         }
                     )
-
-                    b.name = b.name + f'_var{i:03d}' if len(gconfigs) > 1 else b.name
 
                     if d != 'lvis':
                         c_name = None
@@ -617,8 +635,6 @@ def gen_configs(
                         "index_spec": IndexSpec(
                             d_name=d, i_name=var["index_name"], c_name=c_name
                         ),
-                        "method_config": config,
-                        'interactive_options':config
                     }
 
                     s = SessionParams(
@@ -626,7 +642,7 @@ def gen_configs(
                             **s_template,
                             **{
                                 k: v
-                                for (k, v) in var.items()
+                                for (k, v) in config.items()
                                 if k in SessionParams.__fields__.keys()
                             },
                             **update_s,
