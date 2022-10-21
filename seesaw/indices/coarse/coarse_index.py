@@ -35,7 +35,7 @@ class CoarseIndex(AccessMethod):
         return init_vec
 
     @staticmethod
-    def from_path(index_path: str):
+    def from_path(index_path: str, *, use_vec_index=False):
         from ...services import get_parquet, get_model_actor
 
         index_path = resolve_path(index_path)
