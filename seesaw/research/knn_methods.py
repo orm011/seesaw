@@ -334,8 +334,10 @@ def smoothen_scores(idx, term,  knndf, num_iters, prior_weight, **kwargs):
 
 
 class BaseLabelPropagationRanker:
-    def __init__(self, *, nvecs, calib_a=2., calib_b=-1., prior_weight=1., kval=5, edist=.1, num_iters=2, **other):
-        self.nvecs = nvecs
+    def __init__(self, *, knng : KNNGraph, calib_a=2., calib_b=-1., prior_weight=1., kval=5, edist=.1, num_iters=2, **other):
+        self.knng = knng
+        self.nvecs = knng.nvecs
+        nvecs = self.nvecs
         self.calib_a = calib_a
         self.calib_b = calib_b
         self.prior_weight = prior_weight
@@ -392,8 +394,7 @@ class BaseLabelPropagationRanker:
 
 class LabelPropagationRanker(BaseLabelPropagationRanker):
     def __init__(self, knng : KNNGraph, **super_args):
-        super().__init__(**super_args)
-        self.knng : KNNGraph = knng
+        super().__init__(knng=knng, **super_args)
         self.adj_mat, self.norm_w = prepare(self.knng, prior_weight=self.prior_weight, edist=self.edist)
 
     def _propagate(self, num_iters):
@@ -516,16 +517,15 @@ class LabelPropagationComposite(LabelPropagation):
         return new_fvalues
 
 
-class LabelPropagationRanker2(LabelPropagationRanker):
+class LabelPropagationRanker2(BaseLabelPropagationRanker):
     lp : LabelPropagation
 
     def __init__(self, *, knng_intra : KNNGraph = None, knng : KNNGraph, **other):
-        super().__init__(knng, **other)
+        super().__init__(knng=knng, **other)
         self.knng_intra = knng_intra
 
         kfun = lambda x : kernel(x, self.edist)
         self.weight_matrix = get_weight_matrix(knng, kfun)
-
         common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=self.num_iters)
         if knng_intra is None:
             self.lp = LabelPropagation(**common_params)
