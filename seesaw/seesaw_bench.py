@@ -440,6 +440,9 @@ def process_dict(obj, mode="benchmark"):
         
         r = bs.result
         res = {**b.dict(), **s.index_spec.dict(), **s.dict()}
+        res['session_params'] = s.dict()
+        res['bench_params'] = b.dict()
+
         if bs.result is not None:
             summary = get_metric_summary(bs.result)
             res.update(summary)
@@ -606,7 +609,6 @@ def gen_configs(
                 break
             for var in variants:
                 gconfigs = generate_method_configs(var, max_trials=var.get('max_samples', 1))
-                print(f'sampled {len(gconfigs)=}')
 
                 for i,config in enumerate(gconfigs):
                     update_b = {}
