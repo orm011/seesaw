@@ -403,7 +403,7 @@ class KnnBased(LoopBase):
         if p.interactive == 'knn_greedy':
             knn_model = SimpleKNNRanker(knng, init_scores=None)
         elif p.interactive == 'knn_prop':
-            knn_model = LabelPropagationRanker(knng, init_scores=None, nvecs=knng.nvecs, **p.interactive_options)
+            knn_model = LabelPropagationRanker(knng, init_scores=None, **p.interactive_options)
         elif p.interactive == 'knn_prop2':
             intra_knn_k = p.interactive_options.get('intra_knn_k', 0)
             if  intra_knn_k > 0:
@@ -416,7 +416,7 @@ class KnnBased(LoopBase):
                 print('using simple prop')
                 knng_frame = None
                 # knng_frame= knng_frame.restrict_k(k=p.interactive_options['knn_k'])
-            knn_model = LabelPropagationRanker2(knng_intra=knng_frame, knng=knng, nvecs=knng.nvecs, **p.interactive_options)
+            knn_model = LabelPropagationRanker2(knng_intra=knng_frame, knng=knng, **p.interactive_options)
         elif p.interactive == 'linear_prop':
             knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
         else:
