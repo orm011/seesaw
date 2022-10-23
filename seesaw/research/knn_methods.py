@@ -320,10 +320,11 @@ def prepare(knng : KNNGraph, *, edist, prior_weight):
 from sklearn.metrics import average_precision_score
 
 class BaseLabelPropagationRanker:
-    def __init__(self, *, knng : KNNGraph, calib_a=2., calib_b=-1., prior_weight=1., kval=5, edist=.1, num_iters=2, **other):
+    def __init__(self, *, knng : KNNGraph, normalize_scores, calib_a, calib_b, prior_weight, edist, num_iters, **other):
         self.knng = knng
         self.nvecs = knng.nvecs
         nvecs = self.nvecs
+        self.normalize_scores = normalize_scores
         self.calib_a = calib_a
         self.calib_b = calib_b
         self.prior_weight = prior_weight
@@ -339,12 +340,16 @@ class BaseLabelPropagationRanker:
     def set_base_scores(self, init_scores):
         assert self.nvecs == init_scores.shape[0]
         ## 1. normalize scores
-        mu = np.mean(init_scores)
-        centered_scores = init_scores - mu
-        std = np.std(centered_scores)
-        scaled_scores = centered_scores/std
+        if self.normalize_scores:
+            mu = np.mean(init_scores)
+            centered_scores = init_scores - mu
+            std = np.std(centered_scores)
+            scaled_scores = centered_scores/std
+            scores = scaled_scores
+        else:
+            scores = init_scores
 
-        self.prior_scores = sigmoid(self.calib_a*(scaled_scores + self.calib_b))
+        self.prior_scores = sigmoid(self.calib_a*(scores + self.calib_b))
         self._scores = self.prior_scores.copy()
         self._propagate(num_iters=self.num_iters)
 
