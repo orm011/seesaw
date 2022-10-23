@@ -402,22 +402,31 @@ class LabelPropagationRanker(BaseLabelPropagationRanker):
 
         return scores
 
-def get_weight_matrix(knng, kfun) -> sp.coo_array:
+def get_weight_matrix(knng, kfun, self_edges=True, normalized=False) -> sp.coo_array:
     knn_df = knng.knn_df 
     n = knng.nvecs
+    diag_iis = np.arange(n)
 
     ## use metric as weight
     weights = kfun(knn_df.distance)
-    out_w = sp.coo_matrix( (weights, (knn_df.src_vertex.values, knn_df.dst_vertex.values)), shape=(n,n))
+    out_w = sp.coo_array( (weights, (knn_df.src_vertex.values, knn_df.dst_vertex.values)), shape=(n,n))
     
-    ## knng does not include self-edges. add self-edges, as it makes more sense for propagation.
-    self_weight = kfun(0)
-    diag_iis = np.arange(n)
-    self_w = sp.coo_array( (np.ones(n) * self_weight, (diag_iis, diag_iis)), shape=(n,n))
-    
-    full_w = self_w + out_w
-    return full_w
+    if self_edges:
+        ## knng does not include self-edges. add self-edges
+        self_weight = kfun(0)
+        self_w = sp.coo_array( (np.ones(n) * self_weight, (diag_iis, diag_iis)), shape=(n,n))
+        out_w = self_w + out_w
 
+
+    if normalized:
+        Dvec = out_w.sum(axis=-1)
+        sqrt_Dvec = np.sqrt(Dvec)
+        sqrt_Dmat = sp.coo_array( (sqrt_Dvec, (diag_iis, diag_iis)), shape=(n,n) )
+
+        tmp = out_w.tocsr() @ sqrt_Dmat.tocsc() # type csr
+        out_w = sqrt_Dmat.tocsr() @ tmp.tocsc()
+
+    return out_w.tocsr()
 
 def _prepare_propagation_matrices(weight_matrix, reg_lambda):
     # fprime = (D + reg_lambda * I)^-1 (W @ f + reg_lambda * p)
