@@ -440,13 +440,15 @@ def _prepare_propagation_matrices(weight_matrix, reg_lambda):
     reg_inv_weights = 1./(weights + reg_lambda)
     normalizer_matrix = sp.coo_array( (reg_inv_weights, (np.arange(n), np.arange(n))), shape=(n,n) )
 
-    normalized_weights = normalizer_matrix @ weight_matrix
+    normalized_weights = normalizer_matrix.tocsr() @ weight_matrix.tocsc()
     prior_normalizer = reg_lambda * normalizer_matrix
     return normalized_weights.tocsr(), prior_normalizer.tocsr()
 
 
 class LabelPropagation:
     def __init__(self, *, weight_matrix, reg_lambda=1., max_iter=30, epsilon=1e-4, verbose=0):
+        assert reg_lambda >= 0
+
         self.weight_matrix = weight_matrix
         n = self.weight_matrix.shape[0]
         self.n = n
@@ -455,7 +457,6 @@ class LabelPropagation:
         self.verbose = verbose
         self.reg_lambda = reg_lambda
         
-        self.warm_values = np.zeros(n)
         self.max_iter = max_iter
         self.normalized_weights, self.prior_normalizer = _prepare_propagation_matrices(weight_matrix, reg_lambda)
         self.normalized_prior = None
@@ -468,14 +469,14 @@ class LabelPropagation:
         new_fvalues[label_ids] = label_values
         return new_fvalues
 
-    def fit_transform(self, *, label_ids, label_values, reg_values, warm_start=True):
+    def fit_transform(self, *, label_ids, label_values, reg_values, start_value=None):
         assert reg_values.shape[0] == self.n
         self.normalized_prior = self.prior_normalizer @ reg_values
 
-        if warm_start:
-            old_fvalues = self.warm_values.copy()
+        if start_value is not None:
+            old_fvalues = start_value.copy()
         else:
-            old_fvalues = reg_values
+            old_fvalues = reg_values.copy()
             
         old_fvalues[label_ids] = label_values
         
@@ -519,20 +520,20 @@ class LabelPropagationComposite(LabelPropagation):
 class LabelPropagationRanker2(BaseLabelPropagationRanker):
     lp : LabelPropagation
 
-    def __init__(self, *, knng_intra : KNNGraph = None, knng : KNNGraph, **other):
+    def __init__(self, *, knng_intra : KNNGraph = None, knng : KNNGraph, self_edges : bool, **other):
         super().__init__(knng=knng, **other)
         self.knng_intra = knng_intra
 
         kfun = lambda x : kernel(x, self.edist)
-        self.weight_matrix = get_weight_matrix(knng, kfun)
+        self.weight_matrix = get_weight_matrix(knng, kfun, self_edges=self_edges)
         common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=self.num_iters)
         if knng_intra is None:
             self.lp = LabelPropagation(**common_params)
         else:
-            self.weight_matrix_intra = get_weight_matrix(knng_intra, kfun)
-            self.lp = LabelPropagationComposite(weight_matrix_intra = self.weight_matrix_intra, **common_params) 
+            self.weight_matrix_intra = get_weight_matrix(knng_intra, kfun, self_edges=self_edges)
+            self.lp = LabelPropagationComposite(weight_matrix_intra = self.weight_matrix_intra, **common_params)
     
     def _propagate(self, num_iters):
         ids = np.nonzero(self.is_labeled.reshape(-1))
         labels = self.labels.reshape(-1)[ids]
-        return self.lp.fit_transform(label_ids=ids, label_values=labels, reg_values= self.prior_scores)
+        return self.lp.fit_transform(label_ids=ids, label_values=labels, reg_values= self.prior_scores, start_value=self._scores)
