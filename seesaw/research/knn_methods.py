@@ -134,13 +134,23 @@ class KNNGraph:
     
     @staticmethod
     def from_file(path, parallelism=0):
-
         pref_path = f'{path}/sym.parquet'
+
+        ## hack: use cache for large datasets sharing same knng, not for subsets 
+        if path.find('subset') == -1:
+            use_cache = True
+        else:
+            use_cache = False
+        
         if os.path.exists(pref_path):
-            df = parallel_read_parquet(pref_path, parallelism=parallelism)
+            if use_cache:
+                print('using cache', pref_path)
+                df = get_parquet(pref_path)
+            else:
+                print('not using cache', pref_path)
+                df = parallel_read_parquet(pref_path, parallelism=parallelism)
             nvecs = df.src_vertex.max() + 1
             return KNNGraph(df, nvecs)
-
         else:
             print('no sym.parquet found, computing')
             knn_df = parallel_read_parquet(f'{path}/forward.parquet', parallelism=parallelism)
@@ -148,7 +158,7 @@ class KNNGraph:
             nvecs = knn_df.src_vertex.max() + 1
             graph = KNNGraph(knn_df, nvecs)
             graph.save(path, num_blocks=1)
-            return graph
+            return KNNGraph.from_file(path, parallelism=parallelism)
 
 
     def rev_lookup(self, dst_vertex) -> pd.DataFrame:
