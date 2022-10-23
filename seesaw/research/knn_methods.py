@@ -317,31 +317,7 @@ def prepare(knng : KNNGraph, *, edist, prior_weight):
     adj_matrix = wmatrix.tocsr()
     return adj_matrix, norm_w
 
-def step(adj_mat, norm_w, prev_score, prior_weight, prior_score,  labels=None, label_weight=None):
-    subtot = adj_mat @ prev_score + prior_weight*prior_score + label_weight*labels
-    return subtot*norm_w
-
 from sklearn.metrics import average_precision_score
-
-def smoothen_scores(idx, term,  knndf, num_iters, prior_weight, **kwargs):
-    qvec = idx.string2vec(term).reshape(-1)
-    adj_mat, norm_w = prepare(knndf, prior_weight=prior_weight, **kwargs)
-    logit_prior = idx.vectors @ qvec
-    score_prior = sigmoid(logit_prior * 2)
-    prev_scores = score_prior
-    # ytrue = qgt[term].values 
-    # ap = average_precision_score(ytrue, prev_scores)
-    #print(ap)
-    for i in range(num_iters): # do more than 1 step
-        scores  =  step(adj_mat, norm_w, prev_score=prev_scores, 
-                        prior_score=score_prior, prior_weight=prior_weight)
-        # ap = average_precision_score(ytrue, scores)
-        delta = np.sqrt(np.square(scores - prev_scores).mean())
-        # print(f'{ap:.03f} {delta:.02e}')
-        prev_scores = scores
-
-    return scores
-
 
 class BaseLabelPropagationRanker:
     def __init__(self, *, knng : KNNGraph, calib_a=2., calib_b=-1., prior_weight=1., kval=5, edist=.1, num_iters=2, **other):
