@@ -328,7 +328,6 @@ class BaseLabelPropagationRanker:
         self.calib_b = calib_b
         self.prior_weight = prior_weight
         self.edist = edist
-        self.kval = kval
         self.num_iters = num_iters
 
         self.is_labeled = np.zeros(nvecs)
