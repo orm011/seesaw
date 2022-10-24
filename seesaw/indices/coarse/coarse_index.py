@@ -34,6 +34,9 @@ class CoarseIndex(AccessMethod):
         init_vec = init_vec / np.linalg.norm(init_vec)
         return init_vec
 
+    def score(self, tvec):
+        return self.vectors @ tvec.reshape(-1)
+
     @staticmethod
     def from_path(index_path: str, *, use_vec_index=False):
         from ...services import get_parquet, get_model_actor
@@ -112,10 +115,7 @@ class CoarseQuery(InteractiveQuery):
     def getXy(self, get_positions=False):
         positions = np.array(
             [self.index.all_indices.rank(idx) - 1 for idx in self.label_db.get_seen()]
-        )
-
-        if get_positions:
-            assert False, 'implement me'
+        ).astype('int')
 
         Xt = self.index.vectors[positions]
         yt = np.array(
@@ -123,5 +123,12 @@ class CoarseQuery(InteractiveQuery):
                 len(self.label_db.get(idx, format="box")) > 0
                 for idx in self.label_db.get_seen()
             ]
-        )
-        return Xt, yt
+        ).astype('bool')
+
+
+        if get_positions:
+            pos = positions[yt]
+            neg = positions[~yt]
+            return pos, neg
+        else:
+            return Xt, yt.astype('float')
