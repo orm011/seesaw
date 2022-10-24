@@ -1,10 +1,314 @@
 datasets:
-  # - bdd
-  - name: lvis
-    # categories: 
-    #   - zebra
-    # - coco
-  - objectnet
+  # # - bdd
+  # - name: lvis
+  #   # categories: 
+  #   #   - zebra
+  #   # - coco
+  # - name: objectnet
+- categories:
+  - bullhorn
+  - dove
+  - sawhorse
+  - puffer (fish)
+  - skullcap
+  - chap
+  - jewel
+  - safety pin
+  - nosebag (for animals)
+  - clarinet
+  - hourglass
+  - car battery
+  - tambourine
+  - bubble gum
+  - piggy bank
+  - ax
+  - chime
+  - cloak
+  - barbell
+  - poker chip
+  - triangle (musical instrument)
+  - bob
+  - thumbtack
+  - scraper
+  - hand glass
+  - lemonade
+  - coil
+  - bulletproof vest
+  - wooden leg
+  - mint candy
+  - dropper
+  - hair curler
+  - shawl
+  - earplug
+  - hatbox
+  - pan (metal container)
+  - clippers (for plants)
+  - pipe bowl
+  - clutch bag
+  - grocery bag
+  - gemstone
+  - ice skate
+  - hamper
+  - jelly bean
+  - puncher
+  - gag
+  - fleece
+  - bonnet
+  - boom microphone
+  - ice pack
+  - hairpin
+  - file (tool)
+  - breechcloth
+  - checkerboard
+  - rodent
+  - compass
+  - neckerchief
+  - shower cap
+  - pitchfork
+  - mammoth
+  - beetle
+  - die
+  - hardback book
+  - whistle
+  - marker
+  - Band Aid
+  - parchment
+  - palette
+  - pad
+  - broach
+  - flash
+  - handsaw
+  - nailfile
+  - golfcart
+  - Sharpie
+  - bobby pin
+  - underdrawers
+  - handcuff
+  - turtleneck (clothing)
+  - gargle
+  - lightning rod
+  - sugar bowl
+  - walking stick
+  - clothespin
+  - subwoofer
+  - jam
+  - flipper (footwear)
+  - detergent
+  - business card
+  - vodka
+  - atomizer
+  - funnel
+  - coloring material
+  - machine gun
+  - inhaler
+  - octopus (animal)
+  - domestic ass
+  - matchbox
+  - cincture
+  - cooking utensil
+  - cleat (for securing rope)
+  - water jug
+  - cube
+  - pudding
+  - drill
+  - dustpan
+  - batter (food)
+  - inkpad
+  - bedpan
+  - canister
+  - iron (for clothing)
+  - eel
+  - milestone
+  - lip balm
+  - plume
+  - shaker
+  - shield
+  - sugarcane (plant)
+  - taco
+  - penny (coin)
+  - cornmeal
+  - cylinder
+  - steak knife
+  - projectile (weapon)
+  - crabmeat
+  - root beer
+  - dishrag
+  - syringe
+  - chocolate milk
+  - dumbbell
+  - milk can
+  - drone
+  - candy bar
+  - binoculars
+  - water cooler
+  - passenger ship
+  - keg
+  - microscope
+  - packet
+  - postcard
+  - electric chair
+  - identity card
+  - garbage
+  - crayon
+  - hotplate
+  - thimble
+  - corkboard
+  - vinegar
+  - beachball
+  - curling iron
+  - hot-air balloon
+  - lawn mower
+  - cover
+  - chinaware
+  - paperweight
+  - pinwheel
+  - gargoyle
+  - playpen
+  - sherbert
+  - generator
+  - blimp
+  - telephoto lens
+  - eraser
+  - cigarette case
+  - wardrobe
+  - tobacco pipe
+  - ginger
+  - poncho
+  - beeper
+  - shot glass
+  - masher
+  - pendulum
+  - pistol
+  - joystick
+  - elevator car
+  - shark
+  - cream pitcher
+  - aerosol can
+  - motor vehicle
+  - thermos bottle
+  - convertible (automobile)
+  - cornbread
+  - trampoline
+  - fire alarm
+  - bow (weapon)
+  - seahorse
+  - locker
+  - stepladder
+  - spider
+  - fudge
+  - clip
+  - gravy boat
+  - flashlight
+  - sour cream
+  - timer
+  - clasp
+  - headset
+  - power shovel
+  - dishwasher detergent
+  - mitten
+  name: lvis
+- categories:
+  - toy
+  - removable blade
+  - can opener
+  - placemat
+  - nut for a screw
+  - hairclip
+  - eraser (white board)
+  - power bar
+  - water filter
+  - tarp
+  - multitool
+  - squeegee
+  - soap dispenser
+  - air freshener
+  - cellphone
+  - travel case
+  - bookend
+  - spray bottle
+  - bread knife
+  - squeeze bottle
+  - night light
+  - extension cable
+  - nail (fastener)
+  - webcam
+  - power cable
+  - jam
+  - letter opener
+  - dress pants
+  - makeup
+  - blouse
+  - scrub brush
+  - peeler
+  - document folder (closed)
+  - pet food container
+  - nightstand
+  - walker
+  - flashlight
+  - coffee table
+  - pillow
+  - monitor
+  - flour container
+  - dishrag or hand towel
+  - pill organizer
+  - tongs
+  - tablecloth
+  - shovel
+  - drying rack for plates
+  - sugar container
+  - bottle stopper
+  - trash bin
+  - table knife
+  - tray
+  - coffee grinder
+  - drinking cup
+  - standing lamp
+  - bed sheet
+  - mixing / salad bowl
+  - soup bowl
+  - stopper (sink/tub)
+  - portable heater
+  - laptop charger
+  - video camera
+  - plate
+  - tape measure
+  - brooch
+  - earring
+  - dust pan
+  - nail file
+  - blanket
+  - poster
+  - shampoo bottle
+  - butcher's knife
+  - button
+  - strainer
+  - plastic wrap
+  - tissue
+  - glue container
+  - sweater
+  - pop can
+  - beer can
+  - notepad
+  - measuring cup
+  - coaster
+  - ring
+  - cellphone charger
+  - briefcase
+  - rake
+  - skirt
+  - hand mirror
+  - usb cable
+  - earbuds
+  - weight (exercise)
+  - suitcase
+  - floss container
+  - detergent
+  - iron (for clothes)
+  - honey container
+  - marker
+  - dress shoe (women)
+  - sewing kit
+  name: objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
@@ -18,53 +322,138 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    - name: pseudo_lr_switch_ng
-      max_samples : 10
-      interactive: pseudo_lr
+    # - name: pseudo_lr_switch
+    #   max_samples : 10
+    #   interactive: pseudo_lr
+    #   interactive_options:
+    #     switch_over: True
+    #     log_reg_params:
+    #       class_weights: 1.
+    #       scale: centered
+    #       reg_lambda: 1. # enough pseudolabels
+    #       max_iter: 200.
+    #       lr: 1
+    #     label_prop_params:
+    #       normalize_scores : False
+    #       knn_k: 10
+    #       knn_path: ''
+    #       calib_a: 10.
+    #       calib_b: -0.5
+    #       prior_weight: 1.
+    #       edist: .1
+    #       num_iters: 5
+    #     sample_size: 5000
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: greater
+    - name: seesaw_log_reg
+      max_samples: 10
+      interactive: log_reg2
       interactive_options:
-        switch_over: True
-        log_reg_params:
-          class_weights: 1.
-          scale: centered
-          reg_lambda: 10. # enough pseudolabels
-          max_iter: 200.
-          lr: 1
-        label_prop_params:
-          knn_k: 20
-          knn_path: ''
-          calib_a: 
-            choose: [1.] #[.2, .5, 1., 2.]
-          calib_b: 
-            choose: [-2.] #, -1., -.5, 0., .5]
-          prior_weight: 1.
-          edist: .1
-          num_iters: 5
-        sample_size: 5000
-      index_name: multiscale
+        class_weights: 
+          choose: [1.]
+        scale: centered
+        reg_lambda: 
+          choose: [3.3]
+        max_iter: 200.
+        lr: 1.
+        fit_intercept: false
+      index_name: coarse
       agg_method: avg_score
       aug_larger: greater
-    - name: pseudo_lr_ng
+    - name: seesaw_all_classic
+      interactive: pytorch
+      method_config: 
+          minibatch_size: 1000
+          learning_rate: 0.01
+          max_examples: 1000
+          loss_margin: 0.02
+          num_epochs: 4
+          model_type: cosine
+          warm_start: warm
+      index_name: coarse
+      agg_method: avg_score
+      aug_larger: greater
+    - name: pseudo_lr
+      max_samples: 5
       interactive: pseudo_lr
       interactive_options:
         switch_over: False
+        real_sample_weight: 
+            choose: [1.]
         log_reg_params:
-          class_weights: 1.
+          class_weights: 
+            choose: [1.]
           scale: centered
-          reg_lambda: 10. # enough pseudolabels
+          reg_lambda: 
+            choose: [10.] 
           max_iter: 200.
           lr: 1
         label_prop_params:
-          knn_k: 20
+          self_edges : 
+            choose: [True]
+          normalized_weights :
+            choose : [False]
+          normalize_scores : False
+          knn_k: 
+            choose: [20]
           knn_path: ''
           calib_a: 
-            choose: [1.] #[.2, .5, 1., 2.]
+            choose: [10.]
           calib_b: 
-            choose: [-2.] #, -1., -.5, 0., .5]
-          prior_weight: 1.
-          edist: .1
-          num_iters: 5
-        sample_size: 5000
-      index_name: multiscale
+            choose: [-0.5]
+          prior_weight: 
+            choose: [.5] # good for unnormalized
+            # choose: [.2] # good for normalized
+          edist: 
+            choose: [0.05]
+          num_iters: 
+            choose: [10]
+        sample_size: 
+            choose : [5000]
+      index_name: coarse
+      # multiscale
       agg_method: avg_score
       aug_larger: greater
-
+    - name: knn_prop2
+      max_samples: 20
+      interactive: knn_prop2
+      interactive_options:
+        self_edges : 
+          choose: [True]
+        normalized_weights :
+          choose : [False]
+        normalize_scores : False
+        knn_k: 
+          choose: [20]
+        knn_path: ''
+        calib_a: 
+          choose: [10.]
+        calib_b: 
+          choose: [-0.5]
+        prior_weight: 
+          choose: [.5] # good for unnormalized
+          # choose: [.2] # good for normalized
+        edist: 
+          choose: [0.05]
+        num_iters: 
+          choose: [10]
+      index_name: coarse
+      # multiscale
+      agg_method: avg_score
+      aug_larger: greater
+    # - name: knn_prop
+    #   max_samples: 5
+    #   interactive: knn_prop
+    #   interactive_options:
+    #     normalize_scores : False
+    #     knn_k: 10
+    #     knn_path: ''
+    #     calib_a: 10.
+    #     calib_b: -0.5
+    #     prior_weight: 1.
+    #     edist: .1
+    #     num_iters: 5
+    #   index_name: multiscale
+    #   agg_method: avg_score
+    #   aug_larger: greater
