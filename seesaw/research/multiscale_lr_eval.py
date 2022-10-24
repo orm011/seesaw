@@ -1,4 +1,4 @@
-from seesaw.seesaw_session import get_subset
+#from seesaw.seesaw_session import get_subset
 from seesaw.query_interface import LabelDB
 from seesaw.indices.multiscale.multiscale_index import get_pos_negs_all_v2
 from seesaw.seesaw_bench import fill_imdata
@@ -13,7 +13,7 @@ from seesaw.dataset_search_terms import category2query
 from seesaw.logistic_regression import LogisticRegresionPT
 
 
-def get_metrics(qstr, vec, df):
+def get_metrics(vec, df, frame_pooling):
     results = []
     Xs = df.vectors.to_numpy()
     
@@ -22,7 +22,14 @@ def get_metrics(qstr, vec, df):
     else:
         scores = vec.predict_proba(Xs).reshape(-1)
 
-    ys = df['ys'].values
+    df = df.assign(scores=scores)
+
+    ys  = df['ys'].values
+
+    if frame_pooling:
+        aggdf = df.groupby('dbidx')[['scores', 'ys']].max()
+        scores = aggdf['scores'].values
+        ys = aggdf['ys'].values
 
     ap = average_precision_score(ys, scores)
     roc_auc = roc_auc_score(ys, scores)
@@ -32,7 +39,7 @@ def get_metrics(qstr, vec, df):
     orders = np.argsort(-scores)
     a = np.nonzero(ys[orders])[0]
 
-    results.append({'qstr':qstr, 'npos':ys.sum(), 'ap':ap, 'ndcg':ndcg, 
+    results.append({'npos':ys.sum(), 'ap':ap, 'ndcg':ndcg, 
                     'rank_first':a[0],
                     'rank_second':a[1],
                     'rank_third':a[2],
@@ -42,44 +49,35 @@ def get_metrics(qstr, vec, df):
     return pd.DataFrame(results)
 
 from ray.data.extensions import TensorArray
+import seesaw.indices.coarse
+import seesaw.dataset_manager
+from seesaw.dataset_manager import GlobalDataManager
+from seesaw.box_utils import left_iou_join
 
-def eval_multiscale_lr(objds, idx, category):
-    subidx, boxes, present, positive = get_subset(objds, idx, category)
-    bx = boxes[boxes.category == category]
-    
-    ldb = LabelDB()
-    for dbidx, gp in bx.groupby('dbidx'):
-        bxlist = [Box(**b) for b in gp.to_dict(orient="records")]
-        ldb.put(dbidx, bxlist)
-
-    for dbidx in set(present) - set(positive):
-        ldb.put(dbidx, [])
-        
-    pos, neg = get_pos_negs_all_v2(ldb, vec_meta=subidx.vector_meta)
-    
-    indices = np.concatenate([pos, neg])
-    ys = np.concatenate([np.ones(np.array(pos).shape[0]), np.zeros(np.array(neg).shape[0])])
-    vec_meta = subidx.vector_meta.iloc[indices]
-    vecs = subidx.vectors[indices]
-    vec_meta = vec_meta.assign(vectors=TensorArray(vecs), ys=ys)
-    
+def train_test_split_framewise(vec_meta):
     image_labels = vec_meta.groupby('dbidx').ys.max().reset_index()
     tr_idcs, tst_idcs = train_test_split(image_labels['dbidx'].values, stratify=image_labels['ys'].values)
     train_meta = vec_meta[vec_meta.dbidx.isin(set(tr_idcs))]
     test_meta = vec_meta[vec_meta.dbidx.isin(set(tst_idcs))]
+    return train_meta, test_meta
+
+def eval_multiscale_lr(root, idxname, category):
+    gdm = GlobalDataManager(root)
+    ds = gdm.get_dataset('lvis').load_subset(category)
+    idx = ds.load_index(idxname,  options=dict(use_vec_index=False))
+
+    boxes, _ = ds.load_ground_truth()
+
+    vec_meta = left_iou_join(idx.vector_meta, boxes)
+    vec_meta = vec_meta.assign(vectors=TensorArray(idx.vectors), ys=vec_meta.max_iou > 0)    
+    train_meta, test_meta = train_test_split_framewise(vec_meta)
     
-    qstr = category2query(dataset=objds.dataset_name, cat=category)
-    reg_vec = idx.string2vec(qstr)
     lr = LogisticRegresionPT(class_weights='balanced', scale='centered', reg_lambda = 10., verbose=True, fit_intercept=False, 
                          regularizer_vector='norm')
     
-    lr.fit(train_meta.vectors.to_numpy(), train_meta.ys.values.reshape(-1,1))
-    
-    dfs1 = [get_metrics(category, reg_vec, train_meta).assign(split='train', method='clip'),  
-        get_metrics(category, reg_vec, test_meta).assign(split='test', method='clip')]
-
+    lr.fit(train_meta.vectors.to_numpy(), train_meta.ys.values.reshape(-1,1).astype('float'))    
     dfs2 = [
-        get_metrics(category, lr, train_meta).assign(split='train', method='lr'),  
-        get_metrics(category, lr, test_meta).assign(split='test', method='lr')
+        get_metrics(lr, train_meta, frame_pooling=True).assign(split='train', method='lr'),  
+        get_metrics(lr, test_meta, frame_pooling=True).assign(split='test', method='lr')
     ]
-    return pd.concat(dfs1 + dfs2, ignore_index=True)
+    return pd.concat(dfs2, ignore_index=True).assign(category=category)
