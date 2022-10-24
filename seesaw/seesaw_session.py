@@ -435,6 +435,7 @@ class KnnBased(LoopBase):
         scores = self.q.index.score(tvec)
         self.state.knn_model.set_base_scores(scores)
 
+
     def next_batch(self):
 
         """
@@ -455,9 +456,12 @@ class KnnBased(LoopBase):
         for (i,dbidx) in enumerate(candidates.dbidx.values):
             meta_df = q.index.vector_meta.query(f'dbidx == {dbidx}')
             meta_df = meta_df.assign(score=raw_scores[meta_df.index.values])
-            tup = score_frame2(meta_df, aug_larger=p.aug_larger, agg_method=p.agg_method)                
-            frame_scores[i] = tup.score.iloc[0]
-            activations.append(tup)
+            if meta_df.shape[0] == 1:
+                frame_scores[i] = meta_df.score.iloc[0]
+            else:
+                tup = score_frame2(meta_df, aug_larger=p.aug_larger, agg_method=p.agg_method)                
+                frame_scores[i] = tup.score.iloc[0]
+                activations.append(tup)
 
         candidates = candidates.assign(frame_scores=frame_scores)
         c = candidates.sort_values('frame_scores', ascending=False)
