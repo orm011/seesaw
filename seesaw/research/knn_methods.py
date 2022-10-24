@@ -419,7 +419,7 @@ def get_weight_matrix(knng, kfun, self_edges=True, normalized=False) -> sp.coo_a
 
 
     if normalized:
-        Dvec = out_w.sum(axis=-1)
+        Dvec = out_w.sum(axis=-1).reshape(-1)
         sqrt_Dvec = np.sqrt(Dvec)
         sqrt_Dmat = sp.coo_array( (sqrt_Dvec, (diag_iis, diag_iis)), shape=(n,n) )
 
@@ -520,17 +520,17 @@ class LabelPropagationComposite(LabelPropagation):
 class LabelPropagationRanker2(BaseLabelPropagationRanker):
     lp : LabelPropagation
 
-    def __init__(self, *, knng_intra : KNNGraph = None, knng : KNNGraph, self_edges : bool, **other):
+    def __init__(self, *, knng_intra : KNNGraph = None, knng : KNNGraph, self_edges : bool, normalized_weights : bool, **other):
         super().__init__(knng=knng, **other)
         self.knng_intra = knng_intra
 
         kfun = lambda x : kernel(x, self.edist)
-        self.weight_matrix = get_weight_matrix(knng, kfun, self_edges=self_edges)
+        self.weight_matrix = get_weight_matrix(knng, kfun, self_edges=self_edges, normalized=normalized_weights)
         common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=self.num_iters)
         if knng_intra is None:
             self.lp = LabelPropagation(**common_params)
         else:
-            self.weight_matrix_intra = get_weight_matrix(knng_intra, kfun, self_edges=self_edges)
+            self.weight_matrix_intra = get_weight_matrix(knng_intra, kfun, self_edges=self_edges, normalized=normalized_weights)
             self.lp = LabelPropagationComposite(weight_matrix_intra = self.weight_matrix_intra, **common_params)
     
     def _propagate(self, num_iters):
