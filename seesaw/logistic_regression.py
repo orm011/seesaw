@@ -35,10 +35,16 @@ class LogisticRegModule(nn.Module):
             return logits
     
     def _step(self, batch):
-        X,y=batch # note y can be a floating point
+        if len(batch) == 2:
+            X,y=batch # note y can be a floating point
+            weight=None
+        else:
+            assert len(batch) == 3
+            X,y,weight = batch
+            
         logits = self(X, y)
-        weighted_celoss = F.binary_cross_entropy_with_logits(logits, y, 
-                                    reduction='none', pos_weight=self.pos_weight)     
+        weighted_celoss = F.binary_cross_entropy_with_logits(logits, y, weight=weight,
+                                    reduction='none', pos_weight=self.pos_weight)
         return weighted_celoss
         
     
@@ -147,7 +153,7 @@ class LogisticRegresionPT:
     def get_intercept(self):
         return self._get_intercept().detach().numpy()
     
-    def fit(self, X, y):
+    def fit(self, X, y, sample_weights=None):
         self.n_examples = X.shape[0]
         npos = (y == 1).sum()
         nneg = (y == 0).sum() 
@@ -171,7 +177,12 @@ class LogisticRegresionPT:
         if self.regularizer_vector is None:
             self.regularizer_vector = torch.zeros_like(self.model_.linear.weight)
 
-        ds = TensorDataset(torch.from_numpy(X),torch.from_numpy(y))
+        if sample_weights is not None:
+            sample_weights = torch.from_numpy(sample_weights)
+            ds = TensorDataset(torch.from_numpy(X), torch.from_numpy(y), sample_weights)
+        else:
+            ds = TensorDataset(torch.from_numpy(X), torch.from_numpy(y))
+            
         dl = DataLoader(ds, batch_size=len(ds), shuffle=True)
         self.trainer_ = BasicTrainer(mod=self.model_, max_epochs=1)
         self.losses_ = self.trainer_.fit(dl)

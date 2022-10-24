@@ -354,6 +354,8 @@ class PseudoLabelLR(PointBased):
         self.label_prop_params = self.options['label_prop_params']
         self.log_reg_params = self.options['log_reg_params']
         self.switch_over = self.options.get('switch_over', False)
+        self.real_sample_weight = self.options['real_sample_weight']
+        assert self.real_sample_weight >= 1.
 
         knng_path = q.index.get_knng_path()
         knng = KNNGraph.from_file(knng_path)
@@ -368,9 +370,13 @@ class PseudoLabelLR(PointBased):
 
     def refine(self):
         self.knn_based.refine() # label prop
-        X,y = makeXy(self.index, self.knn_based.state.knn_model, sample_size=self.options['sample_size'])
+        X, y, is_real = makeXy(self.index, self.knn_based.state.knn_model, sample_size=self.options['sample_size'])
         model = LogisticRegresionPT(**self.log_reg_params)
-        model.fit(X, y.reshape(-1,1)) # y 
+
+        weights = np.ones_like(y)
+        weights[is_real > 0] = self.real_sample_weight
+
+        model.fit(X, y.reshape(-1,1), weights.reshape(-1,1)) # y 
         self.curr_vec = model.get_coeff().reshape(-1)
 
     def next_batch(self):

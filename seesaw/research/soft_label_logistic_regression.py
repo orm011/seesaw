@@ -97,10 +97,11 @@ def makeXy(idx, lr, sample_size, pseudoLabel=True):
 
         Xsamp = idx.vectors[rsample]
         ysamp = scores[rsample]
+        is_real = np.zeros(ylab.shape[0] + ysamp.shape[0])
+        is_real[:ylab.shape[0]] = 1
         
         X = np.concatenate((Xlab, Xsamp))
         y = np.concatenate((ylab, ysamp))
-        
         # if quantile_transform:
         #     ls = QuantileTransformer()
         #     ls.fit(scores.reshape(-1,1))
@@ -108,8 +109,9 @@ def makeXy(idx, lr, sample_size, pseudoLabel=True):
     else:
         X = Xlab
         y = ylab
+        is_real = np.ones_like(y)
         
-    return X,y
+    return X,y,is_real
 
 
 _default_linear_args=dict(C=10., solver_flags=dict(solver=cp.MOSEK, verbose=False))
