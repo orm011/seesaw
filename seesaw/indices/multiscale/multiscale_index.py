@@ -336,6 +336,17 @@ def get_boxes(vec_meta):
     )  ## multiplication makes this type double but this is too much.
     return boxes
 
+from seesaw.box_utils import left_iou_join
+
+def get_pos_negs_all_v3(label_db: LabelDB, vec_meta: pd.DataFrame):
+    idxs = label_db.get_seen()
+    vec_meta = vec_meta[vec_meta.dbidx.isin(idxs)]
+    boxdf = label_db.get_box_df()
+    vec_meta_new = left_iou_join(vec_meta, boxdf)
+    vec_meta_new = vec_meta_new.assign(ys = (vec_meta_new.max_iou > 0).astype('float'))
+    pos = vec_meta_new.index[vec_meta_new.ys > 0].values
+    neg = vec_meta_new.index[vec_meta_new.ys == 0].values
+    return pos, neg
 
 def get_pos_negs_all_v2(label_db: LabelDB, vec_meta: pd.DataFrame):
     idxs = label_db.get_seen()
@@ -708,7 +719,7 @@ class BoxFeedbackQuery(InteractiveQuery):
         # self.acc_neg = []
 
     def getXy(self, get_positions=False):
-        pos, neg = get_pos_negs_all_v2(self.label_db, self.index.vector_meta)
+        pos, neg = get_pos_negs_all_v3(self.label_db, self.index.vector_meta)
         if get_positions:
             return pos, neg
 

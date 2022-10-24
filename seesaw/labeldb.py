@@ -12,6 +12,26 @@ class LabelDB:
     def put(self, dbidx: int, boxes: List[Box]):
         self.ldata[dbidx] = boxes
 
+    def get_box_df(self):
+        empty_df = pd.DataFrame([], columns=["dbidx", "x1", "x2", "y1", "y2"]).astype("float32")
+        empty_df = empty_df.assign(dbidx=empty_df.dbidx.astype('int32'))
+
+        dfs = [ empty_df ]
+
+        for dbidx,v in self.ldata.items():
+            if v == []:
+                continue
+            
+            df = pd.DataFrame([b.dict() for b in v])[
+                    ["x1", "x2", "y1", "y2"]].astype("float32")
+            df = df.assign(dbidx=dbidx)
+            df = df.assign(dbidx=df.dbidx.astype('int32'))
+            dfs.append(df)
+
+        c = pd.concat(dfs, ignore_index=True)
+        return c
+
+
     def get(self, dbidx: int, format: str):
         dbidx = int(dbidx)
         if dbidx not in self.ldata:

@@ -398,3 +398,20 @@ def join_labels(boxdf, labeldf, min_gt_contained, sample_size=1):
         
     all_labels= pd.concat(gts, ignore_index=True)
     return all_labels
+
+def left_iou_join(vector_meta_df, boxes):
+    if vector_meta_df.shape[0] > 0:
+        gps = []
+        for dbidx, gp in vector_meta_df.groupby('dbidx'):
+            anyboxes = boxes[boxes.dbidx == dbidx]
+            max_iou = np.zeros(gp.shape[0])
+            if anyboxes.shape[0] != 0:
+                leftvals = box_join(gp, anyboxes[['x1', 'y1', 'x2', 'y2']]).groupby('iloc_left').iou.max()        
+                max_iou[leftvals.index.values] = leftvals.values
+
+            gp = gp.assign(max_iou=max_iou)
+            gps.append(gp)
+            
+        return pd.concat(gps)
+    else:
+        return vector_meta_df.assign(max_iou=np.array([]).astype('float32'))
