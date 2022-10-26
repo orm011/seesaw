@@ -1,5 +1,5 @@
 from seesaw.dataset_manager  import GlobalDataManager
-from seesaw.research.knn_methods import KNNGraph, uniquify_knn_graph
+from seesaw.research.knn_methods import KNNGraph, compute_inter_frame_knn_graph
 from seesaw.seesaw_session import get_subset
 import os
 
@@ -16,7 +16,7 @@ class IndexActor:
         
     def process_category(self, category):
         idx, _, _, _ = get_subset(self.ds, self.idx_top, c_name=category)
-        ppdf = uniquify_knn_graph(self.knng, idx)
+        ppdf = compute_inter_frame_knn_graph(self.knng, idx)
         odir = f'/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/data/lvis/indices/multiscale/subsets/{category}/dividx/'
         os.makedirs(odir, exist_ok=True)
         ppdf.to_parquet(f'{odir}/sym.parquet')
