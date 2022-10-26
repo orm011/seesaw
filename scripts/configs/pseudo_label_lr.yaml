@@ -346,99 +346,97 @@ variants:
     #   index_name: multiscale
     #   agg_method: avg_score
     #   aug_larger: greater
-    - name: seesaw_log_reg
-      max_samples: 10
-      interactive: log_reg2
-      interactive_options:
-        class_weights: 
-          choose: [1.]
-        scale: centered
-        reg_lambda: 
-          choose: [3.3]
-        max_iter: 200.
-        lr: 1.
-        fit_intercept: false
-      index_name: coarse
-      agg_method: avg_score
-      aug_larger: greater
-    - name: seesaw_all_classic
-      interactive: pytorch
-      method_config: 
-          minibatch_size: 1000
-          learning_rate: 0.01
-          max_examples: 1000
-          loss_margin: 0.02
-          num_epochs: 4
-          model_type: cosine
-          warm_start: warm
-      index_name: coarse
-      agg_method: avg_score
-      aug_larger: greater
-    - name: pseudo_lr
-      max_samples: 5
-      interactive: pseudo_lr
-      interactive_options:
-        switch_over: False
-        real_sample_weight: 
-            choose: [1.]
-        log_reg_params:
-          class_weights: 
-            choose: [1.]
-          scale: centered
-          reg_lambda: 
-            choose: [10.] 
-          max_iter: 200.
-          lr: 1
-        label_prop_params:
-          self_edges : 
-            choose: [True]
-          normalized_weights :
-            choose : [False]
-          normalize_scores : False
-          knn_k: 
-            choose: [20]
-          knn_path: ''
-          calib_a: 
-            choose: [10.]
-          calib_b: 
-            choose: [-0.5]
-          prior_weight: 
-            choose: [.5] # good for unnormalized
-            # choose: [.2] # good for normalized
-          edist: 
-            choose: [0.05]
-          num_iters: 
-            choose: [10]
-        sample_size: 
-            choose : [5000]
-      index_name: coarse
-      # multiscale
-      agg_method: avg_score
-      aug_larger: greater
+    # - name: seesaw_log_reg
+    #   max_samples: 10
+    #   interactive: log_reg2
+    #   interactive_options:
+    #     class_weights: 
+    #       choose: [1.]
+    #     scale: centered
+    #     reg_lambda: 
+    #       choose: [3.3]
+    #     max_iter: 200.
+    #     lr: 1.
+    #     fit_intercept: false
+    #   index_name: coarse
+    #   agg_method: avg_score
+    #   aug_larger: greater
+    # - name: seesaw_all
+    #   interactive: pytorch
+    #   method_config: 
+    #       minibatch_size: 1000
+    #       learning_rate: 0.01
+    #       max_examples: 1000
+    #       loss_margin: 0.02
+    #       num_epochs: 4
+    #       model_type: cosine
+    #       warm_start: warm
+    #   index_name: coarse
+    #   agg_method: avg_score
+    #   aug_larger: greater
+    # - name: pseudo_lr
+    #   max_samples: 5
+    #   interactive: pseudo_lr
+    #   interactive_options:
+    #     switch_over: False
+    #     real_sample_weight: 
+    #         choose: [1.]
+    #     log_reg_params:
+    #       class_weights: 
+    #         choose: [1.]
+    #       scale: centered
+    #       reg_lambda: 
+    #         choose: [10.] 
+    #       max_iter: 200.
+    #       lr: 1
+    #     label_prop_params:
+    #       self_edges : 
+    #         choose: [True]
+    #       normalized_weights :
+    #         choose : [False]
+    #       normalize_scores : False
+    #       knn_k: 
+    #         choose: [20]
+    #       knn_path: ''
+    #       calib_a: 
+    #         choose: [10.]
+    #       calib_b: 
+    #         choose: [-0.5]
+    #       prior_weight: 
+    #         choose: [.5] # good for unnormalized
+    #         # choose: [.2] # good for normalized
+    #       edist: 
+    #         choose: [0.05]
+    #       num_iters: 
+    #         choose: [10]
+    #     sample_size: 
+    #         choose : [5000]
+    #   index_name: coarse
+    #   # multiscale
+    #   agg_method: avg_score
+    #   aug_larger: greater
     - name: knn_prop2
       max_samples: 20
       interactive: knn_prop2
       interactive_options:
-        self_edges : 
-          choose: [True]
-        normalized_weights :
-          choose : [False]
-        normalize_scores : False
+        self_edges : True
+        normalized_weights : False
+        normalize_scores : True
         knn_k: 
           choose: [20]
         knn_path: ''
         calib_a: 
-          choose: [10.]
+          choose: [15.]
         calib_b: 
           choose: [-0.5]
         prior_weight: 
-          choose: [.5] # good for unnormalized
+          choose: [2.] # good for unnormalized
           # choose: [.2] # good for normalized
         edist: 
-          choose: [0.05]
+          choose: [.1]
         num_iters: 
-          choose: [10]
-      index_name: coarse
+          choose: [100]
+      index_name: multiscale
       # multiscale
       agg_method: avg_score
       aug_larger: greater
