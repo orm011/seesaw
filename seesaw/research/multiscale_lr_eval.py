@@ -13,18 +13,22 @@ from seesaw.dataset_search_terms import category2query
 from seesaw.logistic_regression import LogisticRegresionPT
 
 
-def get_metrics(vec, df, frame_pooling):
-    results = []
+def get_scores(vec, df):
     Xs = df.vectors.to_numpy()
     
     if isinstance(vec,np.ndarray):
         scores = Xs @ vec.reshape(-1)
-    else:
+    elif hasattr(vec, 'predict_proba'):
         scores = vec.predict_proba(Xs).reshape(-1)
+    else:
+        assert False
 
-    df = df.assign(scores=scores)
+    return scores
 
-    ys  = df['ys'].values
+def get_metrics(df, ys, scores, frame_pooling):
+    df = df.assign(scores=scores, ys=ys)
+    results = []
+    # ys  = df['ys'].values
 
     if frame_pooling:
         aggdf = df.groupby('dbidx')[['scores', 'ys']].max()
@@ -32,19 +36,21 @@ def get_metrics(vec, df, frame_pooling):
         ys = aggdf['ys'].values
 
     ap = average_precision_score(ys, scores)
-    roc_auc = roc_auc_score(ys, scores)
-    ndcg = ndcg_score(np.array([ys.astype('float')]), np.array([scores]))
-    ndcg30 = ndcg_score(np.array([ys.astype('float')]), np.array([scores]), k=30)
+#    roc_auc = roc_auc_score(ys, scores)
+#    ndcg = ndcg_score(np.array([ys.astype('float')]), np.array([scores]))
+#    ndcg30 = ndcg_score(np.array([ys.astype('float')]), np.array([scores]), k=30)
 
     orders = np.argsort(-scores)
     a = np.nonzero(ys[orders])[0]
-
-    results.append({'npos':ys.sum(), 'ap':ap, 'ndcg':ndcg, 
-                    'rank_first':a[0],
-                    'rank_second':a[1],
-                    'rank_third':a[2],
-                    'rank_tenth':a[9],
-                    'ndcg30':ndcg30, 'roc_auc':roc_auc})
+    npos  = ys.sum()
+    results.append({'ntotal':ys.shape[0], 'npos':npos, 'ap':ap, 
+    #'ndcg':ndcg, 
+                    'rank_first':a[0] if npos > 0 else np.nan,
+                    'rank_second':a[1] if npos > 1 else np.nan,
+                    'rank_third':a[2] if npos > 2 else np.nan,
+                    'rank_tenth':a[9] if npos > 10 else np.nan,
+#                    'ndcg30':ndcg30, 'roc_auc':roc_auc
+                    })
         
     return pd.DataFrame(results)
 
