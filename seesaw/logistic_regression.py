@@ -155,14 +155,14 @@ class LogisticRegresionPT:
     
     def fit(self, X, y, sample_weights=None):
         self.n_examples = X.shape[0]
-        npos = (y == 1).sum()
-        nneg = (y == 0).sum() 
 
         if self.scaler_:
             X = self.scaler_.fit_transform(X)
             self.mu_ = torch.from_numpy(self.scaler_.mean_).float()
 
         if self.class_weights == 'balanced':
+                npos = (y == 1).sum()
+                nneg = (y == 0).sum() 
                 pseudo_pos = max(npos, 1)
                 pseudo_neg = max(nneg, 1)
                 pos_weight = pseudo_neg / pseudo_pos
