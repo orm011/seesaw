@@ -216,23 +216,34 @@ class LabelPropagation:
         self.reg_lambda = reg_lambda
         
         self.max_iter = max_iter
-        self.normalized_weights, self.prior_normalizer = _prepare_propagation_matrices(weight_matrix, reg_lambda)
-        self.normalized_prior = None
+        self.weight_matrix = weight_matrix
+        # self.normalized_weights, self.prior_normalizer = _prepare_propagation_matrices(weight_matrix, reg_lambda)
+        # self.normalized_prior = None
+        self.reg_values = None
+        self.weight_sum = weight_matrix.sum(0)
 
     def _loss(self, label_ids, label_values):
         pass
         
     def _step(self, old_fvalues, label_ids, label_values):
-        new_fvalues = self.normalized_weights @ old_fvalues + self.normalized_prior
-        assert old_fvalues.min() <= new_fvalues.min(), 'propgation should smoothen scores toward the middle. check weights'
-        assert new_fvalues.max() <= old_fvalues.max(), 'averaged scores should lie within previous scores. check weights '
+        weighted_fvalues = self.weight_matrix @ old_fvalues + (self.reg_lambda * self.reg_values)
+        new_fvalues = weighted_fvalues / (self.weight_sum + self.reg_lambda)
+
+        # we have seen bugs where the values seem to diverge due to faulty normalization.
+        ## each final score is a weighted average of all the neighbors and its prior. therefore it is always within the two extremes
+
+        lower_bounds = np.minimum(old_fvalues.min(), self.reg_values)
+        upper_bounds = np.maximum(old_fvalues.max(), self.reg_values)
+
+        assert (lower_bounds <= new_fvalues).all(), 'propgation should smoothen scores toward the middle. check weights'
+        assert (new_fvalues <= upper_bounds).all(), 'averaged scores should lie within previous scores. check weights '
 
         new_fvalues[label_ids] = label_values
         return new_fvalues
 
     def fit_transform(self, *, label_ids, label_values, reg_values, start_value=None):
         assert reg_values.shape[0] == self.n
-        self.normalized_prior = self.prior_normalizer @ reg_values
+        self.reg_values = reg_values
 
         if start_value is not None:
             old_fvalues = start_value.copy()
@@ -287,8 +298,9 @@ class LabelPropagationRanker2(BaseLabelPropagationRanker):
         super().__init__(knng=knng, **other)
         self.knng_intra = knng_intra
 
-        kfun = lambda x : kernel(x, self.edist)
-        self.weight_matrix = get_weight_matrix(knng, kfun, self_edges=self_edges, normalized=normalized_weights)
+        kfun = rbf_kernel(self.edist)
+        print(f'{knng.knn_df.distance.min()=}')
+        self.weight_matrix = get_weight_matrix(knng.knn_df, kfun, self_edges=self_edges, normalized=normalized_weights)
         common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=self.num_iters)
         if knng_intra is None:
             self.lp = LabelPropagation(**common_params)
