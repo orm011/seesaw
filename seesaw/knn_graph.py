@@ -1,49 +1,79 @@
-from seesaw.services import parallel_read_parquet
+from seesaw.services import parallel_read_parquet, get_parquet
 import pandas as pd
 import numpy as np
 import pynndescent
 import scipy.sparse as sp
 import os
 
-def kernel(cosine_distance, edist):
-    # edist = cosine distance needed to reduce neighbor weight to 1/e.
-    # for cosine sim, the similarity ranges from -1 to 1. 
+
+def rbf_kernel(edist):
+    assert edist > 0
+    """ edist is how far the distance has to grow for the weight to fall from max of 1. to 1/e """
     spread = 1./edist
-    return np.exp(-cosine_distance*spread)
 
+    def kernel(arr):
+        ## arr is given as cosine distance =  1 - cossim, ranging from 0 to 2
+        assert arr.min() >= -.01
+        assert arr.max() <= 2.01
+        return np.exp(-arr*spread).astype('float32')
 
-def get_weight_matrix(knng, kfun, self_edges=True, normalized=False) -> sp.coo_array:
-    df = knng.knn_df.query('is_forward') # remove pure reverse edges, we will add them below
-    n = knng.nvecs
-    diag_iis = np.arange(n)
+    return kernel
 
-    ## use metric as weight
-    weights = kfun(df.distance)/(df.is_forward.astype('float') + df.is_reverse.astype('float'))
-    ## division accounts for those edges that appear twice
+def knn_kernel(edist=2.1):
+    assert edist > 0.
+    """edist is distance beyond which we will discard points. 2 means not discarded"""
+    def kernel(arr):
+        return (arr <= edist).astype('float32')
 
-    out_w = sp.coo_array( (weights, (df.src_vertex.values, df.dst_vertex.values)), shape=(n,n))
-    out_w = (out_w + out_w.T) # making symmetric
+    return kernel
+
+def get_weight_matrix(knn_df, kfun, self_edges=True, normalized=False) -> sp.coo_array:
+    df = knn_df
+    n = knn_df.src_vertex.unique().shape[0]
     
-    if self_edges:
-        ## knng does not include self-edges. add self-edges
-        self_weight = kfun(np.zeros(1))
-        self_w = sp.coo_array( (np.ones(n) * self_weight, (diag_iis, diag_iis)), shape=(n,n))
-        out_w = self_w + out_w
+    # some edges in the df are k nn edges for both vertices, and both views will show up  in the df.
+    # while some edges are only for one of the vertices. 
+    # when adding the matrix below, those repeated edges will show up with a count of 2.
+    adjacency_m = sp.coo_array( (np.ones(df.shape[0]), (df.src_vertex.values, df.dst_vertex.values)), shape=(n,n))
+    symmetric_adj = adjacency_m.T + adjacency_m
+    
+    ## use metric as weight
+    edge_weight_array = kfun(df.distance.values)
+    assert (edge_weight_array > 0).all(), 'edge weights mut be positive'
+    # edge weights must be positive bc zero values break sparse matrix rep. assumptions
 
+    weight_mat =  sp.coo_array( (edge_weight_array, (df.src_vertex.values, df.dst_vertex.values)), shape=(n,n))
+    symmetric_weight = weight_mat.T + weight_mat
+    
+    weight_values = symmetric_weight[symmetric_weight.nonzero()]
+    edge_counts = symmetric_adj[symmetric_adj.nonzero()]
+    adjusted_values = weight_values/edge_counts
+    
+    ## fix double counted values
+    symmetric_weight[symmetric_weight.nonzero()] = adjusted_values
+    out_w = symmetric_weight
+    
+    diag_iis = np.arange(n)
+    
+    assert np.isclose(kfun(np.zeros(1)), np.ones(1)) # sanity check on kfun
 
+    ## assert diagonal is set to 1s
+    ## this checks we are dealing ok with repeated edges ok
+    assert np.isclose(out_w.diagonal(), 1.).all()
+
+    if not self_edges:
+        out_w.setdiag(0.) # mutates out_w
+    
     if normalized:
+        ## D^-1/2 @ W @ D^-1/2
         Dvec = out_w.sum(axis=-1).reshape(-1)
-        sqrt_Dvec = np.sqrt(Dvec)
-        sqrt_Dmat = sp.coo_array( (sqrt_Dvec, (diag_iis, diag_iis)), shape=(n,n) )
+        sqrt_invDmat = sp.coo_array( (1./np.sqrt(Dvec), (diag_iis, diag_iis)), shape=(n,n) )
+        tmp = out_w.tocsr() @ sqrt_invDmat.tocsc() # type csr
+        out_w = sqrt_invDmat.tocsr() @ tmp.tocsc()
+            
+    assert np.isclose(out_w.sum(axis=0), out_w.sum(axis=1)).all(), 'expect symmetric in any scenario'
 
-        tmp = out_w.tocsr() @ sqrt_Dmat.tocsc() # type csr
-        out_w = sqrt_Dmat.tocsr() @ tmp.tocsc()
-
-    assert np.isclose(out_w.sum(axis=0), out_w.sum(axis=1)).all(), 'expect symmetric'
     return out_w
-
-
-
 
 def get_lookup_ranges(sorted_col, nvecs):
     cts = sorted_col.value_counts().sort_index()
@@ -51,32 +81,76 @@ def get_lookup_ranges(sorted_col, nvecs):
     ind_ptr = counts_filled.cumsum().values
     return ind_ptr
 
+def post_process_graph_df(df, nvec):
+    """ ensures graph has self edges, that edges are ranked, and that the datatypes are similar in all
+    """
+    ## make distances stop at 0, rather than sometimes cross slightly below
+    ## check df column names and types
+    for col in ['src_vertex', 'dst_vertex']:
+        df = df.assign(**{col:df[col].astype('int32')})
+    df = df.assign(distance=np.clip(df.distance.values.astype('float32'), a_min=0., a_max=None))
 
 
-def compute_exact_knn(vectors, kmax):
+    df = df[df.src_vertex != df.dst_vertex] # filter out existing self-edges (they sometimes appear non deterministically)
+    ranks = df.groupby('src_vertex').distance.rank('first').astype('int32') # rank starts at 1
+    df = df.assign(dst_rank=ranks)
+
+    ### re-add self edges to everything to every node so the number of vertices is always well defined from the 
+    ## edges themselves after filtering to k nn.
+    self_df = pd.DataFrame({'src_vertex':np.arange(nvec).astype('int32'), 
+                            'dst_vertex':np.arange(nvec).astype('int32'),
+                            'distance':np.zeros(nvec).astype('float32'),
+                            'dst_rank':np.zeros(nvec).astype('int32'), 
+                            # rank 0 neighbor to itself regardless of whether the dataset has duplicates 
+                            # so we never lose diagonal
+                           })
+    
+    df = pd.concat([df, self_df], ignore_index=True)
+    df = df.sort_values(['src_vertex', 'dst_rank']).reset_index(drop=True)
+    return df
+
+def compute_exact_knn(vectors, n_neighbors):
+    kmax = n_neighbors
     k = min(kmax + 1,vectors.shape[0])
     all_pairs = 1. - (vectors @ vectors.T)
     topk = np.argsort(all_pairs, axis=-1)
-    n = all_pairs.shape[0]
+
     dst_vertex = topk[:,:k]
-    src_vertex = np.repeat(np.arange(n).reshape(-1,1), repeats=k, axis=1)
+    src_vertex,_ = np.indices(dimensions=dst_vertex.shape)
 
-    assert(dst_vertex.shape == src_vertex.shape)
+    src_vertex = src_vertex.reshape(-1)
+    dst_vertex = dst_vertex.reshape(-1)
+    distance = all_pairs[(src_vertex, dst_vertex)]
 
-    distances_sq = np.take_along_axis(all_pairs, dst_vertex, axis=-1)
-    assert(src_vertex.shape == distances_sq.shape)
-    df1 = pd.DataFrame(dict(src_vertex=src_vertex.reshape(-1).astype('int32'), dst_vertex=dst_vertex.reshape(-1).astype('int32'), 
-                  distance=distances_sq.reshape(-1).astype('float32')))
+    # distances_sq = np.take_along_axis(all_pairs, dst_vertex, axis=-1)
+    # assert(src_vertex.shape == distances_sq.shape)
+    df = pd.DataFrame(dict(src_vertex=src_vertex.astype('int32'),
+                           dst_vertex=dst_vertex.astype('int32'), 
+                            distance=distance.astype('float32')))
     
-    ## remove same vertex
-    df1 = df1[df1.src_vertex != df1.dst_vertex]
+
+    df = post_process_graph_df(df, nvec=vectors.shape[0])
+    return df
+
+def compute_knn_from_nndescent(vectors, *, n_neighbors, n_jobs=-1, low_memory=False, **kwargs):
+    """ returns a graph and also the index """
+    ## diversify prob: 1 is less accurate than 0. throws some edges away
+    # multiplier: larger is better, note it multiplies vs n_neighbors. helps avoid getting stuck
+    # nneighbors > 50 recommended for dot product accuracy.
+    index2 = pynndescent.NNDescent(vectors, n_neighbors=n_neighbors+1, metric='dot', 
+                                    diversify_prob=0., pruning_degree_multiplier=3.,
+                                   n_jobs=n_jobs, low_memory=low_memory, **kwargs)
+    positions, distances = index2.neighbor_graph
     
-    ## add dst rank
-    df1 = df1.assign(dst_rank=df1.groupby(['src_vertex']).distance.rank('first').sub(1).astype('int32'))
-    
-    ## filter any extra neighbors
-    df1 = df1[df1.dst_rank < kmax]
-    return df1
+    nvec, nneigh = positions.shape
+    iis, _ = np.indices(dimensions=(nvec, nneigh))
+    df = pd.DataFrame({ 'src_vertex':iis.reshape(-1).astype('int32'),
+                        'dst_vertex':positions.reshape(-1).astype('int32'), 
+                        'distance':distances.reshape(-1).astype('float32'),
+                    })
+
+    df = post_process_graph_df(df, nvec)
+    return df
 
 def compute_inter_frame_knn_graph(knng, idx): 
     dbidxs = idx.vector_meta.dbidx.astype('int32').values
@@ -144,83 +218,37 @@ def reprocess_df(df0):
     df_all = df_all.drop_duplicates(['src_vertex', 'dst_vertex']).reset_index(drop=True)
     return df_all
 
+import pyroaring as pr
+
 class KNNGraph:
-    def __init__(self, knn_df, nvecs):
+    def __init__(self, knn_df, nvecs=None):
         self.knn_df = knn_df
-        self.nvecs = nvecs
-        self.k = knn_df.dst_rank.max() + 1        
+
+        ks = knn_df.groupby('src_vertex').dst_rank.max()
+        self._ks = ks 
+        self.k = ks.min()
+        self.maxk = ks.median()
+        self.nvecs = ks.shape[0]
         self.ind_ptr = get_lookup_ranges(knn_df.src_vertex, self.nvecs)
 
-    def restrict_k(self, *, k):
-        if k < self.k:
+    def _check_rep(self):
+        srcs = pr.BitMap(self.knn_df.src_vertex.unique())
+        dsts = pr.BitMap(self.knn_df.dst_vertex.unique())
+        assert srcs == dsts, 'self edges should guarantee this'
+        assert self._ks.index.max() + 1 == len(srcs), 'self edges guarantee this'
+
+    def restrict_k(self, *, k, ):
+        if k < self.maxk:
             knn_df = self.knn_df.query(f'dst_rank < {k}').reset_index(drop=True)
-            return KNNGraph(knn_df, self.nvecs)
-        elif k > self.k:
+            return KNNGraph(knn_df)
+        elif k > self.maxk:
             assert False, f'can only do up to k={self.k} neighbors based on input df'
         else:
             return self
-
-    def forward_graph(self):
-        knn_df = self.knn_df
-        return KNNGraph(knn_df[knn_df.is_forward], self.nvecs)
-    
-    def reverse_graph(self):
-        knn_df = self.knn_df
-        return KNNGraph(knn_df[knn_df.is_reverse], self.nvecs)
-
+          
     @staticmethod
-    def from_vectors(vectors, *, n_neighbors, n_jobs=-1, low_memory=False, **kwargs):
-        """ returns a graph and also the index """
-        index2 = pynndescent.NNDescent(vectors, n_neighbors=n_neighbors+1, metric='dot', n_jobs=n_jobs, low_memory=low_memory, **kwargs)
-        positions, distances = index2.neighbor_graph
-        # identity = (positions == np.arange(positions.shape[0]).reshape(-1,1))
-        # any_identity = identity.sum(axis=1) > 0
-        # exclude = identity
-        # exclude[~any_identity, -1] = 1 # if there is no identity in the top k+1, exclude the k+1
-        # assert (exclude.sum(axis=1) == 1).all()
-        # positions1 = positions[~exclude].reshape(-1,n_neighbors)
-        # distances1 = distances[~exclude].reshape(-1,n_neighbors)
-        
-        nvec, nneigh = positions.shape
-        iis, _ = np.indices(dimensions=(nvec, nneigh))
-        df = pd.DataFrame({ 'src_vertex':iis.reshape(-1).astype('int32'),
-                            'dst_vertex':positions.reshape(-1).astype('int32'), 
-                            'distance':distances.reshape(-1).astype('float32'),
-                        })
-
-        # print('postprocessing df')
-        # knn_df = reprocess_df(knn_df)
-        df[df.src_vertex != df.dst_vertex] # filter out self-edges (they appear non deterministically)
-        # compute rank after filtering out self-edges
-        ranks = df.groupby('src_vertex').distance.rank('first').sub(1).astype('int32')
-
-        # some edges appear in both lists already, some do not.
-        df = df.assign(dst_rank=ranks)
-
-        knn_df.groupby('src_vertex').distance.rank('first').
-
-        knn_graph = KNNGraph(knn_df, nvecs=vectors.shape[0])
-        return knn_graph, index2
-
-                
-    def save(self, path, num_blocks=10, overwrite=False):
-        import ray.data
-        import shutil
-
-        if os.path.exists(path) and overwrite:
-            shutil.rmtree(path)
-
-        os.makedirs(path, exist_ok=True)
-
-        if num_blocks > 1:
-            ds = ray.data.from_pandas(self.knn_df).lazy()
-            ds.repartition(num_blocks=num_blocks).write_parquet(f'{path}/sym.parquet')
-        else:
-            self.knn_df.to_parquet(f'{path}/sym.parquet')            
-    
-    @staticmethod
-    def from_file(path, parallelism=0):
-        pref_path = f'{path}/sym.parquet'
+    def from_file(path):
+        pref_path = f'{path}/forward.parquet'
 
         ## hack: use cache for large datasets sharing same knng, not for subsets 
         if path.find('subset') == -1:
@@ -228,26 +256,16 @@ class KNNGraph:
         else:
             use_cache = False
         
-        if os.path.exists(pref_path):
-            if use_cache:
-                print('using cache', pref_path)
-                df = get_parquet(pref_path)
-            else:
-                print('not using cache', pref_path)
-                df = parallel_read_parquet(pref_path, parallelism=parallelism)
-            nvecs = df.src_vertex.max() + 1
-            # for some reason dst_rank is wrong sometimes. just recompute it
-            df = df.assign(dst_rank=(df.groupby('src_vertex').distance.rank('first') - 1).astype('int32'))
-            return KNNGraph(df, nvecs)
+        if use_cache:
+            print('using cache', pref_path)
+            df = get_parquet(pref_path)
         else:
-            print('no sym.parquet found, computing')
-            knn_df = parallel_read_parquet(f'{path}/forward.parquet', parallelism=parallelism)
-            knn_df = reprocess_df(knn_df)
-            nvecs = knn_df.src_vertex.max() + 1
-            graph = KNNGraph(knn_df, nvecs)
-            graph.save(path, num_blocks=1)
-            return KNNGraph.from_file(path, parallelism=parallelism)
+            print('not using cache', pref_path)
+            # also don't use parallelism in that case
+            df = parallel_read_parquet(pref_path, parallelism=0)
 
+        # TODO: add some sanity checks?
+        return KNNGraph(df)
 
     def rev_lookup(self, dst_vertex) -> pd.DataFrame:
         return self.knn_df.iloc[self.ind_ptr[dst_vertex]:self.ind_ptr[dst_vertex+1]]
