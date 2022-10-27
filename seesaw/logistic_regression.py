@@ -10,7 +10,6 @@ from .basic_trainer import BasicTrainer
 
 import math
 from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
 
 class LogisticRegModule(nn.Module):
     def __init__(self, *, dim,  pos_weight=1., reg_weight=1., fit_intercept=True,  verbose=False, max_iter=100, lr=1., regularizer_function=None):
