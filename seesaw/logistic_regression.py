@@ -71,7 +71,7 @@ class LogisticRegModule(nn.Module):
         return opt.LBFGS(self.parameters(), max_iter=self.max_iter, lr=self.lr, line_search_fn='strong_wolfe')
 
 
-class LogisticRegresionPT: 
+class LogisticRegressionPT: 
     def __init__(self, class_weights, scale='centered',  reg_lambda=1., verbose=False, 
             regularizer_vector=None,  fit_intercept=False, **kwargs):
         ''' reg type: nparray means use that vector '''

@@ -216,7 +216,7 @@ class TextualLoop(LoopBase):
         print("done with update", losses)
 
 
-from .logistic_regression import LogisticRegresionPT
+from .logistic_regression import LogisticRegressionPT
 class LogReg2(PointBased):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
         super().__init__(gdm, q, params)
@@ -224,7 +224,7 @@ class LogReg2(PointBased):
     # def set_text_vec(self) # let super do this
     def refine(self):
         Xt, yt = self.q.getXy()
-        model = LogisticRegresionPT(regularizer_vector=self.state.tvec, **self.params.interactive_options)
+        model = LogisticRegressionPT(regularizer_vector=self.state.tvec, **self.params.interactive_options)
         model.fit(Xt, yt.reshape(-1,1))
         self.curr_vec = model.get_coeff()
 
@@ -371,7 +371,7 @@ class PseudoLabelLR(PointBased):
     def refine(self):
         self.knn_based.refine() # label prop
         X, y, is_real = makeXy(self.index, self.knn_based.state.knn_model, sample_size=self.options['sample_size'])
-        model = LogisticRegresionPT(regularizer_vector=self.state.tvec,  **self.log_reg_params)
+        model = LogisticRegressionPT(regularizer_vector=self.state.tvec,  **self.log_reg_params)
 
         weights = np.ones_like(y)
         weights[is_real > 0] = self.real_sample_weight

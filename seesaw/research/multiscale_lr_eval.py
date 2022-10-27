@@ -10,7 +10,7 @@ from seesaw.basic_types import Box
 from sklearn.model_selection import train_test_split
 
 from seesaw.dataset_search_terms import category2query
-from seesaw.logistic_regression import LogisticRegresionPT
+from seesaw.logistic_regression import LogisticRegressionPT
 
 
 def get_scores(vec, df):
@@ -78,7 +78,7 @@ def eval_multiscale_lr(root, idxname, category):
     vec_meta = vec_meta.assign(vectors=TensorArray(idx.vectors), ys=vec_meta.max_iou > 0)    
     train_meta, test_meta = train_test_split_framewise(vec_meta)
     
-    lr = LogisticRegresionPT(class_weights='balanced', scale='centered', reg_lambda = 10., verbose=True, fit_intercept=False, 
+    lr = LogisticRegressionPT(class_weights='balanced', scale='centered', reg_lambda = 10., verbose=True, fit_intercept=False, 
                          regularizer_vector='norm')
     
     lr.fit(train_meta.vectors.to_numpy(), train_meta.ys.values.reshape(-1,1).astype('float'))    
