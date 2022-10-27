@@ -380,7 +380,9 @@ variants:
       interactive_options:
         switch_over: False
         real_sample_weight: 
-            choose: [1.]
+          choose: [1.]
+        sample_size: 
+          choose : [2000]
         log_reg_params:
           class_weights: 
             choose: [1.]
@@ -389,17 +391,18 @@ variants:
             choose: [10.] 
           max_iter: 200.
           lr: 1
+          fit_intercept: false
         label_prop_params:
           self_edges : True
           normalized_weights : False
           normalize_scores : False
           knn_k: 
             choose: [20]
-          knn_path: 'nndescent60'
+          knn_path: nndescent60
           calib_a: 
-            choose: [0.]
+            choose: [10.]
           calib_b: 
-            choose: [0.]
+            choose: [-0.4]
           prior_weight: 
             choose: [1.] # good for unnormalized
             # choose: [.2] # good for normalized
@@ -407,8 +410,6 @@ variants:
             choose: [.1]
           num_iters: 
             choose: [100]
-        sample_size: 
-            choose : [5000]
       index_name: multiscale
       # multiscale
       agg_method: avg_score
@@ -417,23 +418,23 @@ variants:
     #   max_samples: 20
     #   interactive: knn_prop2
     #   interactive_options:
-        # self_edges : True
-        # normalized_weights : False
-        # normalize_scores : False
-        # knn_k: 
-        #   choose: [20]
-        # knn_path: 'nndescent60'
-        # calib_a: 
-        #   choose: [0.]
-        # calib_b: 
-        #   choose: [0.]
-        # prior_weight: 
-        #   choose: [1.] # good for unnormalized
-        #   # choose: [.2] # good for normalized
-        # edist: 
-        #   choose: [.1]
-        # num_iters: 
-        #   choose: [100]
+    #     self_edges : True
+    #     normalized_weights : False
+    #     normalize_scores : False
+    #     knn_k: 
+    #       choose: [20]
+    #     knn_path: nndescent60
+    #     calib_a: 
+    #       choose: [10.]
+    #     calib_b: 
+    #       choose: [-0.4]
+    #     prior_weight: 
+    #       choose: [1.] # good for unnormalized
+    #       # choose: [.2] # good for normalized
+    #     edist: 
+    #       choose: [.1]
+    #     num_iters: 
+    #       choose: [100]
     #   index_name: multiscale
     #   # multiscale
     #   agg_method: avg_score
