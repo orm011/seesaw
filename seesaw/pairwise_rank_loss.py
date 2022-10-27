@@ -5,6 +5,21 @@ import torch.autograd
 import torch.optim
 import numpy as np
 
+def all_pairs_margin_ranking_loss(target, *, scores, margin=0., return_all_pairs=False, return_inversions=False):
+    assert target.shape == scores.shape
+    pair_targets = (target.reshape(-1,1) - target.reshape(1,-1)).sign() # want -1 or 1 or 0
+    scores1 = scores.reshape(-1,1).repeat(1,scores.shape[0])
+        
+    losses = F.margin_ranking_loss(scores1, scores1.t(), target=pair_targets, margin=margin, reduction='none')
+    if return_inversions:
+        losses = (losses.sign() > 0).float()
+    
+    if return_all_pairs:
+        return losses
+    
+    losses = losses.mean(dim=-1).reshape(scores.shape) # one per element
+    return losses
+
 
 def _positive_inversions(labs):
     return np.cumsum(~labs) * labs
@@ -51,7 +66,7 @@ class RankAndLoss(torch.autograd.Function):
         desc_order = torch.argsort(-scores)
 
         ordered_scores = scores[desc_order]
-        ordered_labels = labels[desc_order]
+        ordered_labels = labels[desc_order] 
 
         hardest_neg = (~ordered_labels).nonzero()[0].item()
         hardest_pos = ordered_labels.nonzero()[-1].item()
