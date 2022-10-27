@@ -13,9 +13,11 @@ def rbf_kernel(edist):
 
     def kernel(arr):
         ## arr is given as cosine distance =  1 - cossim, ranging from 0 to 2
-        assert arr.min() >= -.01
-        assert arr.max() <= 2.01
-        return np.exp(-arr*spread).astype('float32')
+        assert arr.min() >= -.0001
+        assert arr.max() <= 2.0001
+        
+        dist = arr.astype('float64')*spread
+        return np.exp(-dist)
 
     return kernel
 
@@ -27,10 +29,12 @@ def knn_kernel(edist=2.1):
 
     return kernel
 
-def get_weight_matrix(knn_df, kfun, self_edges=True, normalized=False) -> sp.coo_array:
-    df = knn_df
-    n = knn_df.src_vertex.unique().shape[0]
+def get_weight_matrix(df, kfun, self_edges=True, normalized=False) -> sp.coo_array:
+    n = df.src_vertex.unique().shape[0]
     
+
+    vertices = df[df.src_vertex == df.dst_vertex]
+    assert vertices.shape[0] == n, f'{vertices.shape[0]=}, {n=}'
     # some edges in the df are k nn edges for both vertices, and both views will show up  in the df.
     # while some edges are only for one of the vertices. 
     # when adding the matrix below, those repeated edges will show up with a count of 2.
@@ -50,7 +54,7 @@ def get_weight_matrix(knn_df, kfun, self_edges=True, normalized=False) -> sp.coo
     adjusted_values = weight_values/edge_counts
     
     ## fix double counted values
-    symmetric_weight[symmetric_weight.nonzero()] = adjusted_values
+    symmetric_weight[symmetric_weight.nonzero()] = adjusted_values.copy()
     out_w = symmetric_weight
     
     diag_iis = np.arange(n)
@@ -59,7 +63,8 @@ def get_weight_matrix(knn_df, kfun, self_edges=True, normalized=False) -> sp.coo
 
     ## assert diagonal is set to 1s
     ## this checks we are dealing ok with repeated edges ok
-    assert np.isclose(out_w.diagonal(), 1.).all()
+    isclose = np.isclose(out_w.diagonal(), 1., atol=1e-5)
+    assert isclose.all()
 
     if not self_edges:
         out_w.setdiag(0.) # mutates out_w
@@ -264,6 +269,7 @@ class KNNGraph:
             # also don't use parallelism in that case
             df = parallel_read_parquet(pref_path, parallelism=0)
 
+        df = df.assign(distance=np.clip(df.distance.values, a_min=0, a_max=None).astype('float32'))
         # TODO: add some sanity checks?
         return KNNGraph(df)
 

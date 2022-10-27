@@ -299,7 +299,6 @@ class LabelPropagationRanker2(BaseLabelPropagationRanker):
         self.knng_intra = knng_intra
 
         kfun = rbf_kernel(self.edist)
-        print(f'{knng.knn_df.distance.min()=}')
         self.weight_matrix = get_weight_matrix(knng.knn_df, kfun, self_edges=self_edges, normalized=normalized_weights)
         common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=self.num_iters)
         if knng_intra is None:
