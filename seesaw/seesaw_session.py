@@ -357,7 +357,7 @@ class PseudoLabelLR(PointBased):
         self.real_sample_weight = self.options['real_sample_weight']
         assert self.real_sample_weight >= 1.
 
-        knng_path = q.index.get_knng_path()
+        knng_path = q.index.get_knng_path(self.label_prop_params['knn_path'])
         knng = KNNGraph.from_file(knng_path)
         self.knng_sym = knng.restrict_k(k=self.label_prop_params['knn_k'])
         label_prop = LabelPropagationRanker2(knng=self.knng_sym, **self.label_prop_params)
