@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as opt
 from .basic_trainer import BasicTrainer
+import numpy as np
 
 import math
 from sklearn.preprocessing import StandardScaler
@@ -69,8 +70,6 @@ class LogisticRegModule(nn.Module):
     def configure_optimizers(self):
         return opt.LBFGS(self.parameters(), max_iter=self.max_iter, lr=self.lr, line_search_fn='strong_wolfe')
 
-import numpy as np
-from sklearn.decomposition import PCA
 
 class LogisticRegresionPT: 
     def __init__(self, class_weights, scale='centered',  reg_lambda=1., verbose=False, 
@@ -168,12 +167,16 @@ class LogisticRegresionPT:
         else:
             pos_weight = self.class_weights
         
-        self.model_ = LogisticRegModule(dim=X.shape[1], pos_weight=pos_weight, 
+        self.model_ = LogisticRegModule(dim=X.shape[1], 
+                        pos_weight=pos_weight, 
                         reg_weight=self.reg_lambda/self.n_examples,
-                        fit_intercept=self.fit_intercept, #(npos > 0 and nneg > 0), # only fit intercept if there are both signs
-                        regularizer_function=self._regularizer_func, **self.kwargs)
+                        fit_intercept=self.fit_intercept, 
+                        ## for some reason the weight vector we get when we are forced to not use intercept is better than
+                        ## when we use the intercept.
+                        regularizer_function=self._regularizer_func, 
+                        **self.kwargs)
         
-        if self.regularizer_vector is None:
+        if self.regularizer_vector is None: 
             self.regularizer_vector = torch.zeros_like(self.model_.linear.weight)
 
         if sample_weights is not None:
@@ -186,18 +189,15 @@ class LogisticRegresionPT:
         self.trainer_ = BasicTrainer(mod=self.model_, max_epochs=1)
         self.losses_ = self.trainer_.fit(dl)
 
-        is_nan = False        
         for i,loss in enumerate(self.losses_):
             if math.isnan(loss) or math.isinf(loss):
-                if self.verbose:
-                    print(f'warning: loss diverged at step {i=} {loss=:.03f}. you may want to consider scaling and centering')
-                is_nan = True
-                break
+                print(f'warning: loss diverged at step {i=} {loss=:.03f}')
+                raise ValueError('regression training failed with a nan')
         
-        if not is_nan:
-            niter = len(self.losses_)
-            if self.verbose:
-                print(f'converged after {niter} iterations. {self.losses_[-1]=}')
+        niter = len(self.losses_)
+        final_loss = self.losses_[-1]
+        if self.verbose:
+            print(f'regression converged after {niter} iterations. {final_loss=}')
                 
     def predict_proba(self, X):
         if self.scaler_:
