@@ -371,7 +371,7 @@ class PseudoLabelLR(PointBased):
     def refine(self):
         self.knn_based.refine() # label prop
         X, y, is_real = makeXy(self.index, self.knn_based.state.knn_model, sample_size=self.options['sample_size'])
-        model = LogisticRegresionPT(**self.log_reg_params)
+        model = LogisticRegresionPT(regularizer_vector=self.state.tvec,  **self.log_reg_params)
 
         weights = np.ones_like(y)
         weights[is_real > 0] = self.real_sample_weight
