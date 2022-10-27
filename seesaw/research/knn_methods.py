@@ -127,7 +127,8 @@ class BaseLabelPropagationRanker:
         else:
             scores = init_scores
 
-        self.prior_scores = scores # sigmoid(self.calib_a*(scores + self.calib_b))
+        # self.prior_scores = scores # TODO: flag?
+        self.prior_scores = sigmoid(self.calib_a*(scores + self.calib_b))
         self._scores = self.prior_scores.copy()
         self._scores = self._propagate(num_iters=self.num_iters)
 
