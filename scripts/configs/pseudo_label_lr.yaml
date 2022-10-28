@@ -346,21 +346,21 @@ variants:
     #   index_name: multiscale
     #   agg_method: avg_score
     #   aug_larger: greater
-    # - name: seesaw_log_reg
-    #   max_samples: 10
-    #   interactive: log_reg2
-    #   interactive_options:
-    #     class_weights: 
-    #       choose: [1.]
-    #     scale: centered
-    #     reg_lambda: 
-    #       choose: [3.3]
-    #     max_iter: 200.
-    #     lr: 1.
-    #     fit_intercept: false
-    #   index_name: coarse
-    #   agg_method: avg_score
-    #   aug_larger: greater
+    - name: log_reg2
+      max_samples: 10
+      interactive: log_reg2
+      interactive_options:
+        class_weights: 
+          choose: [1.]
+        scale: centered
+        reg_lambda: 
+          choose: [.1, 1., 3.3, 10.]
+        max_iter: 200.
+        lr: 1.
+        fit_intercept: false
+      index_name: multiscale
+      agg_method: avg_score
+      aug_larger: greater
     # - name: seesaw_all
     #   interactive: pytorch
     #   method_config: 
@@ -382,20 +382,22 @@ variants:
         real_sample_weight: 
           choose: [1.]
         sample_size: 
-          choose : [2000]
+          choose : [10000]
         log_reg_params:
           class_weights: 
             choose: [1.]
           scale: centered
           reg_lambda: 
-            choose: [10.] 
+            choose: [.1, .3, 1.] 
           max_iter: 200.
           lr: 1
           fit_intercept: false
         label_prop_params:
-          self_edges : True
+          self_edges : 
+            choose: [False, True]
           normalized_weights : False
-          normalize_scores : False
+          normalize_scores : 
+            choose: [False, True]
           knn_k: 
             choose: [20]
           knn_path: nndescent60
@@ -414,43 +416,30 @@ variants:
       # multiscale
       agg_method: avg_score
       aug_larger: greater
-    # - name: knn_prop2
-    #   max_samples: 20
-    #   interactive: knn_prop2
-    #   interactive_options:
-    #     self_edges : True
-    #     normalized_weights : False
-    #     normalize_scores : False
-    #     knn_k: 
-    #       choose: [20]
-    #     knn_path: nndescent60
-    #     calib_a: 
-    #       choose: [10.]
-    #     calib_b: 
-    #       choose: [-0.4]
-    #     prior_weight: 
-    #       choose: [1.] # good for unnormalized
-    #       # choose: [.2] # good for normalized
-    #     edist: 
-    #       choose: [.1]
-    #     num_iters: 
-    #       choose: [100]
-    #   index_name: multiscale
-    #   # multiscale
-    #   agg_method: avg_score
-    #   aug_larger: greater
-    # - name: knn_prop
-    #   max_samples: 5
-    #   interactive: knn_prop
-    #   interactive_options:
-    #     normalize_scores : False
-    #     knn_k: 10
-    #     knn_path: ''
-    #     calib_a: 10.
-    #     calib_b: -0.5
-    #     prior_weight: 1.
-    #     edist: .1
-    #     num_iters: 5
-    #   index_name: multiscale
-    #   agg_method: avg_score
-    #   aug_larger: greater
+    - name: knn_prop2
+      max_samples: 20
+      interactive: knn_prop2
+      interactive_options:
+        self_edges : 
+          choose: [False, True]
+        normalized_weights : 
+          choose: [False, True]
+        normalize_scores : False
+        knn_k: 
+          choose: [20]
+        knn_path: nndescent60
+        calib_a: 
+          choose: [10.]
+        calib_b: 
+          choose: [-0.4]
+        prior_weight: 
+          choose: [1., 2.] # good for unnormalized
+          # choose: [.2] # good for normalized
+        edist: 
+          choose: [.1]
+        num_iters: 
+          choose: [100]
+      index_name: multiscale
+      # multiscale
+      agg_method: avg_score
+      aug_larger: greater
