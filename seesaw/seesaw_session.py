@@ -55,7 +55,7 @@ class LoopBase:
         self.index = self.q.index
 
     def set_text_vec(self, tvec):
-        pass
+        raise NotImplementedError('implement me in subclass')
 
     @staticmethod
     def from_params(gdm, q, params):
@@ -78,10 +78,10 @@ class LoopBase:
         return cls(gdm, q, params)
 
     def next_batch(self):
-        pass
+        raise NotImplementedError('implement me in subclass')
 
     def refine(self):
-        pass
+        raise NotImplementedError('implement me in sublcass')
 
 class PointBased(LoopBase):
     def __init__(self, gdm, q, params):
@@ -93,7 +93,7 @@ class PointBased(LoopBase):
         self.curr_vec = vec
 
     def refine(self):
-        pass # modify in subclasses
+        raise NotImplementedError('implement in subclass')
 
     def next_batch(self):
         s = self.state
@@ -127,7 +127,7 @@ class TextualLoop(LoopBase):
             # s.model = OnlineModel(param_dict, p.method_config)
 
     def set_text_vec(self, tvec):
-        pass
+        raise NotImplementedError('implement me')
 
     def refine(self):
         p = self.params
@@ -458,7 +458,6 @@ class KnnBased(LoopBase):
     def set_text_vec(self, tvec):
         scores = self.q.index.score(tvec)
         self.state.knn_model.set_base_scores(scores)
-
 
     def next_batch(self):
 
