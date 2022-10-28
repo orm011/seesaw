@@ -374,57 +374,37 @@ variants:
     #   index_name: coarse
     #   agg_method: avg_score
     #   aug_larger: greater
-    - name: pseudo_lr
-      max_samples: 5
-      interactive: pseudo_lr
-      interactive_options:
-        switch_over: False
-        real_sample_weight: 
-          choose: [1.]
-        sample_size: 
-          choose : [10000]
-        log_reg_params:
-          class_weights: 
-            choose: [1.]
-          scale: centered
-          reg_lambda: 
-            choose: [.1, .3, 1.] 
-          max_iter: 200.
-          lr: 1
-          fit_intercept: false
-        label_prop_params:
-          self_edges : 
-            choose: [False, True]
-          normalized_weights : False
-          normalize_scores : 
-            choose: [False, True]
-          knn_k: 
-            choose: [20]
-          knn_path: nndescent60
-          calib_a: 
-            choose: [10.]
-          calib_b: 
-            choose: [-0.4]
-          prior_weight: 
-            choose: [1.] # good for unnormalized
-            # choose: [.2] # good for normalized
-          edist: 
-            choose: [.1]
-          num_iters: 
-            choose: [100]
-      index_name: multiscale
-      # multiscale
-      agg_method: avg_score
-      aug_larger: greater
+    # - name: pseudo_lr
+    #   max_samples: 5
+    #   interactive: pseudo_lr
+    #   interactive_options:
+    #     switch_over: False
+    #     real_sample_weight: 
+    #       choose: [1.]
+    #     sample_size: 
+    #       choose : [10000]
+    #     log_reg_params:
+    #       class_weights: 
+    #         choose: [1.]
+    #       scale: centered
+    #       reg_lambda: 
+    #         choose: [.1, .3, 1.] 
+    #       max_iter: 200.
+    #       lr: 1
+    #       fit_intercept: false
+    #     label_prop_params:
+    #   index_name: multiscale
+    #   # multiscale
+    #   agg_method: avg_score
+    #   aug_larger: greater
     - name: knn_prop2
       max_samples: 20
       interactive: knn_prop2
       interactive_options:
-        self_edges : 
-          choose: [False, True]
-        normalized_weights : 
-          choose: [False, True]
+        self_edges : True
+        normalized_weights : False
         normalize_scores : False
+        sigmoid_before_propagate: True
         knn_k: 
           choose: [20]
         knn_path: nndescent60
@@ -433,12 +413,10 @@ variants:
         calib_b: 
           choose: [-0.4]
         prior_weight: 
-          choose: [1., 2.] # good for unnormalized
+          choose: [.1, 1., 2., 10.] # good for unnormalized
           # choose: [.2] # good for normalized
         edist: 
           choose: [.1]
-        num_iters: 
-          choose: [100]
       index_name: multiscale
       # multiscale
       agg_method: avg_score
