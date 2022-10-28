@@ -72,8 +72,8 @@ class LogisticRegModule(nn.Module):
 
 
 class LogisticRegressionPT: 
-    def __init__(self, *, class_weights, scale,  reg_lambda, verbose, 
-            regularizer_vector,  fit_intercept, **kwargs):
+    def __init__(self, *, class_weights, scale,  reg_lambda,  
+            regularizer_vector,  fit_intercept, verbose=False, **kwargs):
         ''' reg type: nparray means use that vector '''
         assert scale in ['centered', None]
         self.class_weights = class_weights
@@ -177,6 +177,7 @@ class LogisticRegressionPT:
                             ## for some reason the weight vector we get when we are forced to not use intercept is better than
                             ## when we use the intercept.
                             regularizer_function=self._regularizer_func, 
+                            verbose=self.verbose,
                             **self.kwargs)
 
             # self.trainer_ = BasicTrainer(mod=self.model_, max_epochs=1)
