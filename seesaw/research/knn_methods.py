@@ -89,7 +89,7 @@ def prepare(knng : KNNGraph, *, edist, prior_weight):
 
 from sklearn.metrics import average_precision_score
 
-def normalize_scores(scores, epsilon = .1):
+def normalize_scores(scores, epsilon):
     assert epsilon < .5
     gap = scores.max() - scores.min()
     if gap == 0: # center at .5 is all scores the same
@@ -101,22 +101,27 @@ def normalize_scores(scores, epsilon = .1):
 
 
 class BaseLabelPropagationRanker:
-    def __init__(self, *, knng : KNNGraph, normalize_scores, sigmoid_scores, calib_a, calib_b, prior_weight, edist, num_iters, **other):
+    def __init__(self, *, knng : KNNGraph, normalize_scores, sigmoid_before_propagate, calib_a, calib_b, prior_weight, edist, normalize_epsilon = None, **other):
         self.knng = knng
         self.nvecs = knng.nvecs
         nvecs = self.nvecs
         self.normalize_scores = normalize_scores
+
+        if self.normalize_scores:
+            assert normalize_epsilon is not None
+            self.epsilon = normalize_epsilon
+
         self.calib_a = calib_a
         self.calib_b = calib_b
         self.prior_weight = prior_weight
         self.edist = edist
-        self.num_iters = num_iters
-        self.epsilon = .3
-        self.sigmoid_scores = sigmoid_scores
+        self.sigmoid_before_propagate = sigmoid_before_propagate
 
         self.is_labeled = np.zeros(nvecs)
         self.labels = np.zeros(nvecs)
-        self._scores = None
+
+        self.prior_scores = None
+        self._current_scores = None
 
         self.all_indices = pr.FrozenBitMap(range(nvecs))
 
@@ -125,19 +130,17 @@ class BaseLabelPropagationRanker:
         ## 1. normalize scores to fit between 0.1 and 0.9
 
         if self.normalize_scores:
-            scores = normalize_scores(init_scores, epsilon=self.epsilon)
-        else:
-            scores = init_scores
+            init_scores = normalize_scores(init_scores, epsilon=self.epsilon)
 
-        # self.prior_scores = scores # TODO: flag?
-        if self.sigmoid_scores:
-            self.prior_scores = sigmoid(self.calib_a*(scores + self.calib_b))
+        if self.sigmoid_before_propagate:# affects the size of the scores wrt. 0, 1 labels from user.
+            ## also affects the regularization target things are pushed back to.
+            self.prior_scores = sigmoid(self.calib_a*(init_scores + self.calib_b))
         else:
-            self.prior_scores = scores 
-        self._scores = self.prior_scores.copy()
-        self._scores = self._propagate(num_iters=self.num_iters)
+            self.prior_scores = init_scores 
 
-    def _propagate(self, num_iters):
+        self._current_scores = self._propagate(self.prior_scores)
+
+    def _propagate(self, scores):
         raise NotImplementedError('implement me')
 
     def update(self, idxs, labels):
@@ -148,11 +151,11 @@ class BaseLabelPropagationRanker:
             self.labels[idx] = label  # make 0 or 1
             self.is_labeled[idx] = 1
                 
-        pscores = self._propagate(self.num_iters)
-        self._scores = pscores
+        pscores = self._propagate(self.prior_scores)
+        self._current_scores = pscores
 
     def current_scores(self):
-        return self._scores
+        return self._current_scores
 
     def top_k(self, k, unlabeled_only=True):
         if unlabeled_only:
@@ -167,7 +170,7 @@ class BaseLabelPropagationRanker:
 
 
 class LabelPropagation:
-    def __init__(self, weight_matrix, *, reg_lambda : float, max_iter : int, epsilon=1e-4, verbose=0):
+    def __init__(self, weight_matrix, *, reg_lambda : float, max_iter : int, epsilon=1e-5, verbose=0):
         assert reg_lambda >= 0
 
         self.weight_matrix = weight_matrix
@@ -254,21 +257,21 @@ class LabelPropagationComposite(LabelPropagation):
 class LabelPropagationRanker2(BaseLabelPropagationRanker):
     lp : LabelPropagation
 
-    def __init__(self, *, knng_intra : KNNGraph = None, knng : KNNGraph, self_edges : bool, normalized_weights : bool, verbose : int, **other):
+    def __init__(self, *, knng_intra : KNNGraph = None, knng : KNNGraph, self_edges : bool, normalized_weights : bool, verbose : int = 0, **other):
         super().__init__(knng=knng, **other)
         self.knng_intra = knng_intra
 
         kfun = rbf_kernel(self.edist)
         self.weight_matrix = get_weight_matrix(knng.knn_df, kfun, self_edges=self_edges, normalized=normalized_weights)
-        common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=self.num_iters, verbose=verbose)
+        common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=300, verbose=verbose)
         if knng_intra is None:
             self.lp = LabelPropagation(**common_params)
         else:
             self.weight_matrix_intra = get_weight_matrix(knng_intra, kfun, self_edges=self_edges, normalized=normalized_weights)
             self.lp = LabelPropagationComposite(weight_matrix_intra = self.weight_matrix_intra, **common_params)
     
-    def _propagate(self, num_iters):
+    def _propagate(self,  scores):
         ids = np.nonzero(self.is_labeled.reshape(-1))
         labels = self.labels.reshape(-1)[ids]
-        scores = self.lp.fit_transform(label_ids=ids, label_values=labels, reg_values= self.prior_scores, start_value=self._scores)
+        scores = self.lp.fit_transform(label_ids=ids, label_values=labels, reg_values= self.prior_scores, start_value=scores)
         return scores
