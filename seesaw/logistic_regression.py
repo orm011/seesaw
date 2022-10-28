@@ -72,8 +72,8 @@ class LogisticRegModule(nn.Module):
 
 
 class LogisticRegressionPT: 
-    def __init__(self, class_weights, scale='centered',  reg_lambda=1., verbose=False, 
-            regularizer_vector=None,  fit_intercept=False, **kwargs):
+    def __init__(self, *, class_weights, scale,  reg_lambda, verbose, 
+            regularizer_vector,  fit_intercept, **kwargs):
         ''' reg type: nparray means use that vector '''
         assert scale in ['centered', None]
         self.class_weights = class_weights
