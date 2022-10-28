@@ -351,35 +351,25 @@ class SeesawLoop(PointBased):
             assert False
 
 def makeXy(idx, lr, sample_size, pseudoLabel=True):
-
-    Xlab = idx.vectors[(lr.is_labeled > 0) ]
-    ylab = lr.labels[(lr.is_labeled > 0) ]
+    is_labeled = lr.is_labeled > 0
+    X = idx.vectors[is_labeled]
+    y = lr.labels[is_labeled]
+    is_real = np.ones_like(y)
     
-    rsize = sample_size - Xlab.shape[0]
-
-    scores = lr.current_scores()
-    rsample = np.random.permutation(idx.vectors.shape[0])[:rsize]
-
     if pseudoLabel:
+        vec2 = idx.vectors[~is_labeled]
+        ylab2 = lr.current_scores()[~is_labeled]
+        rsample = np.random.permutation(vec2.shape[0])[:sample_size]
 
-        Xsamp = idx.vectors[rsample]
-        ysamp = scores[rsample]
-        is_real = np.zeros(ylab.shape[0] + ysamp.shape[0])
-        is_real[:ylab.shape[0]] = 1
+        Xsamp = vec2[rsample]
+        ysamp = ylab2[rsample]
+        is_real_samp = np.zeros_like(ysamp)
         
-        X = np.concatenate((Xlab, Xsamp))
-        y = np.concatenate((ylab, ysamp))
-        # if quantile_transform:
-        #     ls = QuantileTransformer()
-        #     ls.fit(scores.reshape(-1,1))
-        #     y = ls.transform(y.reshape(-1,1)).reshape(-1)
-    else:
-        X = Xlab
-        y = ylab
-        is_real = np.ones_like(y)
+        X = np.concatenate((X, Xsamp))
+        y = np.concatenate((y, ysamp))
+        is_real = np.concatenate((is_real, is_real_samp))
         
     return X,y,is_real
-
 
 class PseudoLabelLR(PointBased):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
