@@ -218,13 +218,22 @@ from .logistic_regression import LogisticRegressionPT
 class LogReg2(PointBased):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
         super().__init__(gdm, q, params)
+        self.model = None
+
+    def set_text_vec(self, vec):
+        super().set_text_vec(vec)
+        if self.model is not None:
+            raise NotImplementedError('need to change regularizer vec in model once initialized')
 
     # def set_text_vec(self) # let super do this
     def refine(self):
         Xt, yt = self.q.getXy()
-        model = LogisticRegressionPT(regularizer_vector=self.state.tvec, **self.params.interactive_options)
-        model.fit(Xt, yt.reshape(-1,1))
-        self.curr_vec = model.get_coeff()
+        
+        if self.model is None:
+            self.model = LogisticRegressionPT(regularizer_vector=self.state.tvec, **self.params.interactive_options)
+
+        self.model.fit(Xt, yt.reshape(-1,1))
+        self.curr_vec = self.model.get_coeff()
 
 class SeesawLoop(PointBased):
     def __init__(
