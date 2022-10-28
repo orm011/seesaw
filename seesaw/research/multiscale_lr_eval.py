@@ -25,10 +25,10 @@ def get_scores(vec, df):
 
     return scores
 
-def get_metrics(df, ys, scores, frame_pooling):
-    df = df.assign(scores=scores, ys=ys)
+def get_metrics(df, scores, frame_pooling):
+    df = df.assign(scores=scores)
     results = []
-    # ys  = df['ys'].values
+    ys  = df['ys'].values
 
     if frame_pooling:
         aggdf = df.groupby('dbidx')[['scores', 'ys']].max()
@@ -49,6 +49,7 @@ def get_metrics(df, ys, scores, frame_pooling):
                     'rank_second':a[1] if npos > 1 else np.nan,
                     'rank_third':a[2] if npos > 2 else np.nan,
                     'rank_tenth':a[9] if npos > 10 else np.nan,
+                    'frame_pooling':frame_pooling
 #                    'ndcg30':ndcg30, 'roc_auc':roc_auc
                     })
         
@@ -60,30 +61,34 @@ import seesaw.dataset_manager
 from seesaw.dataset_manager import GlobalDataManager
 from seesaw.box_utils import left_iou_join
 
-def train_test_split_framewise(vec_meta):
+def train_test_split_framewise(vec_meta, random_state):
     image_labels = vec_meta.groupby('dbidx').ys.max().reset_index()
-    tr_idcs, tst_idcs = train_test_split(image_labels['dbidx'].values, stratify=image_labels['ys'].values)
+    tr_idcs, tst_idcs = train_test_split(image_labels['dbidx'].values, stratify=image_labels['ys'].values, random_state=random_state)
     train_meta = vec_meta[vec_meta.dbidx.isin(set(tr_idcs))]
     test_meta = vec_meta[vec_meta.dbidx.isin(set(tst_idcs))]
     return train_meta, test_meta
 
-def eval_multiscale_lr(root, idxname, category):
+def eval_multiscale_lr(root, idxname, category, frame_pooling, random_state, **lropts):
     gdm = GlobalDataManager(root)
     ds = gdm.get_dataset('lvis').load_subset(category)
     idx = ds.load_index(idxname,  options=dict(use_vec_index=False))
 
     boxes, _ = ds.load_ground_truth()
+    boxes = boxes[boxes.category == category]
 
     vec_meta = left_iou_join(idx.vector_meta, boxes)
-    vec_meta = vec_meta.assign(vectors=TensorArray(idx.vectors), ys=vec_meta.max_iou > 0)    
-    train_meta, test_meta = train_test_split_framewise(vec_meta)
+    vec_meta = vec_meta.assign(vectors=TensorArray(idx.vectors), ys=(vec_meta.max_iou > 0).astype('float32'))
+    train_meta, test_meta = train_test_split_framewise(vec_meta, random_state)
+
+    lr = LogisticRegressionPT(**lropts)
     
-    lr = LogisticRegressionPT(class_weights='balanced', scale='centered', reg_lambda = 10., verbose=True, fit_intercept=False, 
-                         regularizer_vector='norm')
-    
-    lr.fit(train_meta.vectors.to_numpy(), train_meta.ys.values.reshape(-1,1).astype('float'))    
+    lr.fit(train_meta.vectors.to_numpy(), train_meta.ys.values.reshape(-1,1).astype('float'))
+
+    scores_train = get_scores(lr, train_meta)
+    scores_test = get_scores(lr, test_meta)
+
     dfs2 = [
-        get_metrics(lr, train_meta, frame_pooling=True).assign(split='train', method='lr'),  
-        get_metrics(lr, test_meta, frame_pooling=True).assign(split='test', method='lr')
+        get_metrics(train_meta, scores=scores_train, frame_pooling=frame_pooling).assign(split='train', method='lr'),  
+        get_metrics(test_meta, scores=scores_test, frame_pooling=frame_pooling).assign(split='test', method='lr')
     ]
     return pd.concat(dfs2, ignore_index=True).assign(category=category)
