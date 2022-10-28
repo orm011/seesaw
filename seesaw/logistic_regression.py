@@ -152,7 +152,7 @@ class LogisticRegressionPT:
         return self._get_intercept().detach().numpy()
     
     def fit(self, X, y, sample_weights=None):
-        self.n_examples = X.shape[0]
+        n_examples = X.shape[0]
 
         if self.scaler_:
             X = self.scaler_.fit_transform(X)
@@ -167,14 +167,25 @@ class LogisticRegressionPT:
         else:
             pos_weight = self.class_weights
         
-        self.model_ = LogisticRegModule(dim=X.shape[1], 
-                        pos_weight=pos_weight, 
-                        reg_weight=self.reg_lambda/self.n_examples,
-                        fit_intercept=self.fit_intercept, 
-                        ## for some reason the weight vector we get when we are forced to not use intercept is better than
-                        ## when we use the intercept.
-                        regularizer_function=self._regularizer_func, 
-                        **self.kwargs)
+        reg_weight = self.reg_lambda/n_examples
+
+        if self.model_ is None:
+            self.model_ = LogisticRegModule(dim=X.shape[1], 
+                            pos_weight=pos_weight, 
+                            reg_weight=reg_weight,
+                            fit_intercept=self.fit_intercept, 
+                            ## for some reason the weight vector we get when we are forced to not use intercept is better than
+                            ## when we use the intercept.
+                            regularizer_function=self._regularizer_func, 
+                            **self.kwargs)
+
+            # self.trainer_ = BasicTrainer(mod=self.model_, max_epochs=1)
+            self.trainer_ = BasicTrainer(mod=self.model_, max_epochs=1)
+
+        else: # warm start
+            assert self.class_weights != 'balanced', 'implement this case'
+            self.model_.reg_weight = reg_weight
+
         
         if self.regularizer_vector is None: 
             self.regularizer_vector = torch.zeros_like(self.model_.linear.weight)
@@ -186,7 +197,6 @@ class LogisticRegressionPT:
             ds = TensorDataset(torch.from_numpy(X), torch.from_numpy(y))
             
         dl = DataLoader(ds, batch_size=len(ds), shuffle=True)
-        self.trainer_ = BasicTrainer(mod=self.model_, max_epochs=1)
         self.losses_ = self.trainer_.fit(dl)
 
         for i,loss in enumerate(self.losses_):
