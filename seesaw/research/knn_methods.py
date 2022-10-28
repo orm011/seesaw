@@ -100,7 +100,7 @@ def normalize_scores(scores, epsilon = .1):
     return x
 
 class BaseLabelPropagationRanker:
-    def __init__(self, *, knng : KNNGraph, normalize_scores, calib_a, calib_b, prior_weight, edist, num_iters, **other):
+    def __init__(self, *, knng : KNNGraph, normalize_scores, sigmoid_scores, calib_a, calib_b, prior_weight, edist, num_iters, **other):
         self.knng = knng
         self.nvecs = knng.nvecs
         nvecs = self.nvecs
@@ -111,6 +111,7 @@ class BaseLabelPropagationRanker:
         self.edist = edist
         self.num_iters = num_iters
         self.epsilon = .3
+        self.sigmoid_scores = sigmoid_scores
 
         self.is_labeled = np.zeros(nvecs)
         self.labels = np.zeros(nvecs)
@@ -128,7 +129,10 @@ class BaseLabelPropagationRanker:
             scores = init_scores
 
         # self.prior_scores = scores # TODO: flag?
-        self.prior_scores = sigmoid(self.calib_a*(scores + self.calib_b))
+        if self.sigmoid_scores:
+            self.prior_scores = sigmoid(self.calib_a*(scores + self.calib_b))
+        else:
+            self.prior_scores = scores 
         self._scores = self.prior_scores.copy()
         self._scores = self._propagate(num_iters=self.num_iters)
 
@@ -161,49 +165,6 @@ class BaseLabelPropagationRanker:
         return topk_indices, raw_scores[topk_indices]
 
 
-class LabelPropagationRanker(BaseLabelPropagationRanker):
-    def __init__(self, knng : KNNGraph, **super_args):
-        super().__init__(knng=knng, **super_args)
-        self.adj_mat, self.norm_w = prepare(self.knng, prior_weight=self.prior_weight, edist=self.edist)
-
-    def _propagate(self, num_iters):
-        labeled_prior = self.prior_scores * (1-self.is_labeled) + self.labels * self.is_labeled
-        scores = self._scores # use previous scores as starting point
-        for _ in range(num_iters): 
-            prev_score = scores
-            subtot = (self.adj_mat @ prev_score) + self.prior_weight*labeled_prior
-            scores = subtot*self.norm_w
-
-            ## override scores with labels 
-            scores = scores * (1 - self.is_labeled) + self.labels * self.is_labeled
-            # norm = np.linalg.norm(prev_score - scores)
-            # print(f'norm delta : {norm}')
-
-        return scores
-
-def _prepare_propagation_matrices(weight_matrix, reg_lambda):
-    # fprime = (D + reg_lambda * I)^-1 (W @ f + reg_lambda * p)
-    # let inv_D = (D + reg_lambda * I)^-1
-    # fprime = (inv_D @ W) @ f + reg_lambda * (inv_D @ p)
-    # precompute (inv_D @ W) as   normalized weights 
-    # and 
-    # reg_lambda * (inv_D @ p) as normalized_prior
-    assert reg_lambda >= 0
-    n = weight_matrix.shape[0]
-
-    weights = weight_matrix.sum(axis=0) + reg_lambda
-    reg_inv_weights = 1./weights
-    normalizer_matrix = sp.coo_array( (reg_inv_weights, (np.arange(n), np.arange(n))), shape=(n,n) )
-
-    normalized_weights = normalizer_matrix.tocsr() @ weight_matrix.tocsc()
-    prior_normalizer = reg_lambda * normalizer_matrix
-
-    # assert np.isclose(normalized_weights.sum(axis=1), normalized_weights.sum(axis=0)).all()
-    # assert np.isclose(normalized#_weights.sum(axis=1) + reg_lambda, 1).all()
-
-    return normalized_weights.tocsr(), prior_normalizer.tocsr()
-
-
 class LabelPropagation:
     def __init__(self, weight_matrix, *, reg_lambda : float, max_iter : int, epsilon=1e-4, verbose=0):
         assert reg_lambda >= 0
@@ -217,9 +178,7 @@ class LabelPropagation:
         self.reg_lambda = reg_lambda
         
         self.max_iter = max_iter
-        self.weight_matrix = weight_matrix
-        # self.normalized_weights, self.prior_normalizer = _prepare_propagation_matrices(weight_matrix, reg_lambda)
-        # self.normalized_prior = None
+        self.weight_matrix = weight_matrix.tocsr()
         self.reg_values = None
         self.weight_sum = weight_matrix.sum(0)
 
@@ -277,10 +236,9 @@ class LabelPropagationComposite(LabelPropagation):
     def __init__(self, *, weight_matrix_intra, **other_kwargs):
         super().__init__(**other_kwargs)
         self.weight_matrix_intra = weight_matrix_intra
-        self.normalized_weights_intra, self.prior_normalizer_intra = _prepare_propagation_matrices(weight_matrix_intra, self.reg_lambda)
 
     def fit_transform(self, *, reg_values, **kwargs):
-        self.normalized_prior_intra = self.prior_normalizer_intra @ reg_values
+        self.normalized_prior_intra = reg_values
         return super().fit_transform(reg_values=reg_values, **kwargs)
 
     def _step(self, old_fvalues, label_ids, label_values):
