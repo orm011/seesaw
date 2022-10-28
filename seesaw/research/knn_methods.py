@@ -99,6 +99,7 @@ def normalize_scores(scores, epsilon = .1):
     x = x*(1-2*epsilon) + epsilon # shift to be between (epislon, 1-epsilon)
     return x
 
+
 class BaseLabelPropagationRanker:
     def __init__(self, *, knng : KNNGraph, normalize_scores, sigmoid_scores, calib_a, calib_b, prior_weight, edist, num_iters, **other):
         self.knng = knng
@@ -221,7 +222,7 @@ class LabelPropagation:
             if np.max((new_fvalues - old_fvalues)**2) < self.epsilon:
                 converged = True
                 if self.verbose > 0:
-                    print(f'converged after {i} iterations')
+                    print(f'prop. converged after {i} iterations')
                 break
             else:
                 old_fvalues = new_fvalues
@@ -253,13 +254,13 @@ class LabelPropagationComposite(LabelPropagation):
 class LabelPropagationRanker2(BaseLabelPropagationRanker):
     lp : LabelPropagation
 
-    def __init__(self, *, knng_intra : KNNGraph = None, knng : KNNGraph, self_edges : bool, normalized_weights : bool, **other):
+    def __init__(self, *, knng_intra : KNNGraph = None, knng : KNNGraph, self_edges : bool, normalized_weights : bool, verbose : int, **other):
         super().__init__(knng=knng, **other)
         self.knng_intra = knng_intra
 
         kfun = rbf_kernel(self.edist)
         self.weight_matrix = get_weight_matrix(knng.knn_df, kfun, self_edges=self_edges, normalized=normalized_weights)
-        common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=self.num_iters)
+        common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=self.num_iters, verbose=verbose)
         if knng_intra is None:
             self.lp = LabelPropagation(**common_params)
         else:
