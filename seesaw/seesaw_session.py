@@ -31,9 +31,7 @@ from .search_loop_models import adjust_vec, adjust_vec2
 from .util import *
 from .pairwise_rank_loss import VecState
 from .query_interface import *
-# from .textual_feedback_box import OnlineModel, join_vecs2annotations
-from .research.knn_methods import KNNGraph, LabelPropagationRanker, LabelPropagationRanker2, SimpleKNNRanker
-from .research.soft_label_logistic_regression import LinearScorer
+from .research.knn_methods import KNNGraph, LabelPropagationRanker2, SimpleKNNRanker
 from .indices.multiscale.multiscale_index import _get_top_dbidxs, score_frame2
 
 @dataclass
@@ -343,9 +341,36 @@ class SeesawLoop(PointBased):
         else:
             assert False
 
+def makeXy(idx, lr, sample_size, pseudoLabel=True):
 
-from .research.soft_label_logistic_regression import makeXy
-from .research.knn_methods import  LabelPropagationRanker
+    Xlab = idx.vectors[(lr.is_labeled > 0) ]
+    ylab = lr.labels[(lr.is_labeled > 0) ]
+    
+    rsize = sample_size - Xlab.shape[0]
+
+    scores = lr.current_scores()
+    rsample = np.random.permutation(idx.vectors.shape[0])[:rsize]
+
+    if pseudoLabel:
+
+        Xsamp = idx.vectors[rsample]
+        ysamp = scores[rsample]
+        is_real = np.zeros(ylab.shape[0] + ysamp.shape[0])
+        is_real[:ylab.shape[0]] = 1
+        
+        X = np.concatenate((Xlab, Xsamp))
+        y = np.concatenate((ylab, ysamp))
+        # if quantile_transform:
+        #     ls = QuantileTransformer()
+        #     ls.fit(scores.reshape(-1,1))
+        #     y = ls.transform(y.reshape(-1,1)).reshape(-1)
+    else:
+        X = Xlab
+        y = ylab
+        is_real = np.ones_like(y)
+        
+    return X,y,is_real
+
 
 class PseudoLabelLR(PointBased):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
@@ -409,7 +434,7 @@ class KnnBased(LoopBase):
         if p.interactive == 'knn_greedy':
             knn_model = SimpleKNNRanker(knng, init_scores=None)
         elif p.interactive == 'knn_prop':
-            knn_model = LabelPropagationRanker(knng, init_scores=None, **p.interactive_options)
+            raise ValueError('deprecated. use knn_prop2')
         elif p.interactive == 'knn_prop2':
             intra_knn_k = p.interactive_options.get('intra_knn_k', 0)
             if  intra_knn_k > 0:
