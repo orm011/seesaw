@@ -121,6 +121,7 @@ def compute_metrics(*, hit_indices, batch_size, nseen, ntotal, max_results):
         average_reciprocal_gap=average_reciprocal,
         nAP=nAP,
         rank_first=rank_first,
+        reciprocal_rank=1./rank_first,
         rank_second=rank_second,
         rank_third=rank_third,
         rank_tenth = rank_tenth,
