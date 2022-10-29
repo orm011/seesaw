@@ -628,28 +628,21 @@ def gen_configs(
                         }
                     )
 
-                    if d != 'lvis':
-                        c_name = None
-                    else:
-                        c_name = c
-
-                    update_s = {
-                        "index_spec": IndexSpec(
-                            d_name=d, i_name=var["index_name"], c_name=c_name
-                        ),
+                    s_merged = {
+                            **s_template,
+                            **config,
                     }
 
+                    s_merged['index_spec'] = IndexSpec(
+                            d_name=d, i_name=s_merged["index_name"], c_name=(c if d == 'lvis' else None)
+                        )
+
                     s = SessionParams(
-                        **{
-                            **s_template,
-                            **{
-                                k: v
-                                for (k, v) in config.items()
+                        **{k:v for (k,v) in s_merged.items()
                                 if k in SessionParams.__fields__.keys()
-                            },
-                            **update_s,
-                        }
+                            }
                     )
+
                     configs.append((b, s))
     return configs
 
