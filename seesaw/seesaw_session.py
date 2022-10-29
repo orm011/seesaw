@@ -60,12 +60,12 @@ class LoopBase:
     @staticmethod
     def from_params(gdm, q, params):
 
-        if params.interactive in ['knn_greedy', 'knn_prop', 'knn_prop2', 'linear_prop']:
+        if params.interactive in ['knn_greedy',  'knn_prop2']:
             return KnnBased.from_params(gdm, q, params)
         elif params.interactive in ['textual']:
             cls = TextualLoop
         elif params.interactive in ['plain']:
-            cls = PointBased
+            cls = Plain
         elif params.interactive in ['pytorch']:
             cls = SeesawLoop
         elif params.interactive == 'log_reg2':
@@ -112,6 +112,10 @@ class PointBased(LoopBase):
         )
 
         return b
+
+class Plain(PointBased):
+    def refine(self):
+        pass # no feedback
         
 class TextualLoop(LoopBase):
     def __init__(self, gdm, q, params):
@@ -377,7 +381,7 @@ class PseudoLabelLR(PointBased):
         self.options = self.params.interactive_options
         self.label_prop_params = self.options['label_prop_params']
         self.log_reg_params = self.options['log_reg_params']
-        self.switch_over = self.options.get('switch_over', False)
+        self.switch_over = self.options['switch_over']
         self.real_sample_weight = self.options['real_sample_weight']
         assert self.real_sample_weight >= 1.
 
@@ -432,11 +436,10 @@ class KnnBased(LoopBase):
 
         if p.interactive == 'knn_greedy':
             knn_model = SimpleKNNRanker(knng, init_scores=None)
-        elif p.interactive == 'knn_prop':
-            raise ValueError('deprecated. use knn_prop2')
         elif p.interactive == 'knn_prop2':
             intra_knn_k = p.interactive_options.get('intra_knn_k', 0)
             if  intra_knn_k > 0:
+                assert False
                 print('using composite prop')
                 knng_path_frame = knng_path + '/frame_sym.parquet'
                 knn_df_frame = parallel_read_parquet(knng_path_frame)
@@ -447,8 +450,6 @@ class KnnBased(LoopBase):
                 knng_frame = None
                 # knng_frame= knng_frame.restrict_k(k=p.interactive_options['knn_k'])
             knn_model = LabelPropagationRanker2(knng_intra=knng_frame, knng=knng, **p.interactive_options)
-        elif p.interactive == 'linear_prop':
-            knn_model = LinearScorer(idx=self.q.index, knng_sym=knng, init_scores=None, **p.interactive_options)
         else:
             assert False
 
