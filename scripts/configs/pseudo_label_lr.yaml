@@ -1,366 +1,336 @@
 datasets:
   # # - bdd
-  # - name: lvis
-  #   # categories: 
-  #   #   - zebra
-  #   # - coco
-  # - name: objectnet
-- categories:
-  - bullhorn
-  - dove
-  - sawhorse
-  - puffer (fish)
-  - skullcap
-  - chap
-  - jewel
-  - safety pin
-  - nosebag (for animals)
-  - clarinet
-  - hourglass
-  - car battery
-  - tambourine
-  - bubble gum
-  - piggy bank
-  - ax
-  - chime
-  - cloak
-  - barbell
-  - poker chip
-  - triangle (musical instrument)
-  - bob
-  - thumbtack
-  - scraper
-  - hand glass
-  - lemonade
-  - coil
-  - bulletproof vest
-  - wooden leg
-  - mint candy
-  - dropper
-  - hair curler
-  - shawl
-  - earplug
-  - hatbox
-  - pan (metal container)
-  - clippers (for plants)
-  - pipe bowl
-  - clutch bag
-  - grocery bag
-  - gemstone
-  - ice skate
-  - hamper
-  - jelly bean
-  - puncher
-  - gag
-  - fleece
-  - bonnet
-  - boom microphone
-  - ice pack
-  - hairpin
-  - file (tool)
-  - breechcloth
-  - checkerboard
-  - rodent
-  - compass
-  - neckerchief
-  - shower cap
-  - pitchfork
-  - mammoth
-  - beetle
-  - die
-  - hardback book
-  - whistle
-  - marker
-  - Band Aid
-  - parchment
-  - palette
-  - pad
-  - broach
-  - flash
-  - handsaw
-  - nailfile
-  - golfcart
-  - Sharpie
-  - bobby pin
-  - underdrawers
-  - handcuff
-  - turtleneck (clothing)
-  - gargle
-  - lightning rod
-  - sugar bowl
-  - walking stick
-  - clothespin
-  - subwoofer
-  - jam
-  - flipper (footwear)
-  - detergent
-  - business card
-  - vodka
-  - atomizer
-  - funnel
-  - coloring material
-  - machine gun
-  - inhaler
-  - octopus (animal)
-  - domestic ass
-  - matchbox
-  - cincture
-  - cooking utensil
-  - cleat (for securing rope)
-  - water jug
-  - cube
-  - pudding
-  - drill
-  - dustpan
-  - batter (food)
-  - inkpad
-  - bedpan
-  - canister
-  - iron (for clothing)
-  - eel
-  - milestone
-  - lip balm
-  - plume
-  - shaker
-  - shield
-  - sugarcane (plant)
-  - taco
-  - penny (coin)
-  - cornmeal
-  - cylinder
-  - steak knife
-  - projectile (weapon)
-  - crabmeat
-  - root beer
-  - dishrag
-  - syringe
-  - chocolate milk
-  - dumbbell
-  - milk can
-  - drone
-  - candy bar
-  - binoculars
-  - water cooler
-  - passenger ship
-  - keg
-  - microscope
-  - packet
-  - postcard
-  - electric chair
-  - identity card
-  - garbage
-  - crayon
-  - hotplate
-  - thimble
-  - corkboard
-  - vinegar
-  - beachball
-  - curling iron
-  - hot-air balloon
-  - lawn mower
-  - cover
-  - chinaware
-  - paperweight
-  - pinwheel
-  - gargoyle
-  - playpen
-  - sherbert
-  - generator
-  - blimp
-  - telephoto lens
-  - eraser
-  - cigarette case
-  - wardrobe
-  - tobacco pipe
-  - ginger
-  - poncho
-  - beeper
-  - shot glass
-  - masher
-  - pendulum
-  - pistol
-  - joystick
-  - elevator car
-  - shark
-  - cream pitcher
-  - aerosol can
-  - motor vehicle
-  - thermos bottle
-  - convertible (automobile)
-  - cornbread
-  - trampoline
-  - fire alarm
-  - bow (weapon)
-  - seahorse
-  - locker
-  - stepladder
-  - spider
-  - fudge
-  - clip
-  - gravy boat
-  - flashlight
-  - sour cream
-  - timer
-  - clasp
-  - headset
-  - power shovel
-  - dishwasher detergent
-  - mitten
-  name: lvis
-- categories:
-  - toy
-  - removable blade
-  - can opener
-  - placemat
-  - nut for a screw
-  - hairclip
-  - eraser (white board)
-  - power bar
-  - water filter
-  - tarp
-  - multitool
-  - squeegee
-  - soap dispenser
-  - air freshener
-  - cellphone
-  - travel case
-  - bookend
-  - spray bottle
-  - bread knife
-  - squeeze bottle
-  - night light
-  - extension cable
-  - nail (fastener)
-  - webcam
-  - power cable
-  - jam
-  - letter opener
-  - dress pants
-  - makeup
-  - blouse
-  - scrub brush
-  - peeler
-  - document folder (closed)
-  - pet food container
-  - nightstand
-  - walker
-  - flashlight
-  - coffee table
-  - pillow
-  - monitor
-  - flour container
-  - dishrag or hand towel
-  - pill organizer
-  - tongs
-  - tablecloth
-  - shovel
-  - drying rack for plates
-  - sugar container
-  - bottle stopper
-  - trash bin
-  - table knife
-  - tray
-  - coffee grinder
-  - drinking cup
-  - standing lamp
-  - bed sheet
-  - mixing / salad bowl
-  - soup bowl
-  - stopper (sink/tub)
-  - portable heater
-  - laptop charger
-  - video camera
-  - plate
-  - tape measure
-  - brooch
-  - earring
-  - dust pan
-  - nail file
-  - blanket
-  - poster
-  - shampoo bottle
-  - butcher's knife
-  - button
-  - strainer
-  - plastic wrap
-  - tissue
-  - glue container
-  - sweater
-  - pop can
-  - beer can
-  - notepad
-  - measuring cup
-  - coaster
-  - ring
-  - cellphone charger
-  - briefcase
-  - rake
-  - skirt
-  - hand mirror
-  - usb cable
-  - earbuds
-  - weight (exercise)
-  - suitcase
-  - floss container
-  - detergent
-  - iron (for clothes)
-  - honey container
-  - marker
-  - dress shoe (women)
-  - sewing kit
-  name: objectnet
+  - name: lvis
+  # #   # categories: 
+  # #   #   - zebra
+  # #   # - coco
+  - name: objectnet
+# - categories:
+#   - ax
+#   - dropper
+#   - fleece
+#   - mammoth
+#   - boom microphone
+#   - coil
+#   - playpen
+#   - batter (food)
+#   - pipe bowl
+#   - rodent
+#   - file (tool)
+#   - barbell
+#   - skullcap
+#   - cloak
+#   - eel
+#   - jewel
+#   - crabmeat
+#   - puffer (fish)
+#   - dove
+#   - breechcloth
+#   - chap
+#   - coloring material
+#   - hair curler
+#   - gag
+#   - bob
+#   - clarinet
+#   - chime
+#   - pan (metal container)
+#   - milk can
+#   - bullhorn
+#   - tambourine
+#   - pitchfork
+#   - wooden leg
+#   - car battery
+#   - cincture
+#   - pinwheel
+#   - corkboard
+#   - triangle (musical instrument)
+#   - clutch bag
+#   - bobby pin
+#   - handcuff
+#   - scraper
+#   - pad
+#   - ice pack
+#   - nosebag (for animals)
+#   - beetle
+#   - dishrag
+#   - domestic ass
+#   - ice skate
+#   - binoculars
+#   - parchment
+#   - nailfile
+#   - Sharpie
+#   - gargle
+#   - flipper (footwear)
+#   - clothespin
+#   - neckerchief
+#   - lemonade
+#   - hamper
+#   - cornmeal
+#   - hand glass
+#   - marker
+#   - broach
+#   - bonnet
+#   - clasp
+#   - hatbox
+#   - hourglass
+#   - detergent
+#   - bedpan
+#   - Band Aid
+#   - bow (weapon)
+#   - palette
+#   - earplug
+#   - flash
+#   - shower cap
+#   - passenger ship
+#   - underdrawers
+#   - pendulum
+#   - atomizer
+#   - postcard
+#   - compass
+#   - pudding
+#   - poker chip
+#   - taco
+#   - beeper
+#   - motor vehicle
+#   - vinegar
+#   - safety pin
+#   - fudge
+#   - cream pitcher
+#   - cube
+#   - handsaw
+#   - inhaler
+#   - jam
+#   - canister
+#   - timer
+#   - pistol
+#   - cylinder
+#   - gargoyle
+#   - keg
+#   - shot glass
+#   - generator
+#   - fire alarm
+#   - dishwasher detergent
+#   - telephoto lens
+#   - grocery bag
+#   - hairpin
+#   - clip
+#   - lightning rod
+#   - inkpad
+#   - clippers (for plants)
+#   - water jug
+#   - masher
+#   - cleat (for securing rope)
+#   - steak knife
+#   - joystick
+#   - vodka
+#   - sawhorse
+#   - hardback book
+#   - syringe
+#   - crayon
+#   - electric chair
+#   - beachball
+#   - turtleneck (clothing)
+#   - thumbtack
+#   - power shovel
+#   - matchbox
+#   - sugar bowl
+#   - sour cream
+#   - microscope
+#   - flashlight
+#   - octopus (animal)
+#   - ginger
+#   - subwoofer
+#   - curling iron
+#   - cornbread
+#   - chinaware
+#   - cover
+#   - projectile (weapon)
+#   - hotplate
+#   - candy bar
+#   - thimble
+#   - cooking utensil
+#   - blimp
+#   - plume
+#   - puncher
+#   - cigarette case
+#   - milestone
+#   - drone
+#   - convertible (automobile)
+#   - shield
+#   - spider
+#   - lawn mower
+#   - lip balm
+#   - shawl
+#   - machine gun
+#   - sherbert
+#   - dumbbell
+#   - poncho
+#   - headset
+#   - water cooler
+#   - shaker
+#   - drill
+#   - mint candy
+#   - jelly bean
+#   - locker
+#   - gravy boat
+#   - mitten
+#   - trampoline
+#   - gemstone
+#   - thermos bottle
+#   - aerosol can
+#   - sugarcane (plant)
+#   - bulletproof vest
+#   - wardrobe
+#   - whistle
+#   - paperweight
+#   - bubble gum
+#   - garbage
+#   - stepladder
+#   - walking stick
+#   - identity card
+#   - penny (coin)
+#   - business card
+#   - checkerboard
+#   - tobacco pipe
+#   - golfcart
+#   - chocolate milk
+#   - piggy bank
+#   - packet
+#   - iron (for clothing)
+#   - elevator car
+#   - dustpan
+#   - root beer
+#   - shark
+#   - seahorse
+#   - funnel
+#   - eraser
+#   - die
+#   - hot-air balloon
+#   name: lvis
+# - categories:
+#   - toy
+#   - removable blade
+#   - can opener
+#   - placemat
+#   - nut for a screw
+#   - hairclip
+#   - eraser (white board)
+#   - power bar
+#   - water filter
+#   - tarp
+#   - multitool
+#   - squeegee
+#   - soap dispenser
+#   - air freshener
+#   - cellphone
+#   - travel case
+#   - bookend
+#   - spray bottle
+#   - bread knife
+#   - squeeze bottle
+#   - night light
+#   - extension cable
+#   - nail (fastener)
+#   - webcam
+#   - power cable
+#   - jam
+#   - letter opener
+#   - dress pants
+#   - makeup
+#   - blouse
+#   - scrub brush
+#   - peeler
+#   - document folder (closed)
+#   - pet food container
+#   - nightstand
+#   - walker
+#   - flashlight
+#   - coffee table
+#   - pillow
+#   - monitor
+#   - flour container
+#   - dishrag or hand towel
+#   - pill organizer
+#   - tongs
+#   - tablecloth
+#   - shovel
+#   - drying rack for plates
+#   - sugar container
+#   - bottle stopper
+#   - trash bin
+#   - table knife
+#   - tray
+#   - coffee grinder
+#   - drinking cup
+#   - standing lamp
+#   - bed sheet
+#   - mixing / salad bowl
+#   - soup bowl
+#   - stopper (sink/tub)
+#   - portable heater
+#   - laptop charger
+#   - video camera
+#   - plate
+#   - tape measure
+#   - brooch
+#   - earring
+#   - dust pan
+#   - nail file
+#   - blanket
+#   - poster
+#   - shampoo bottle
+#   - butcher's knife
+#   - button
+#   - strainer
+#   - plastic wrap
+#   - tissue
+#   - glue container
+#   - sweater
+#   - pop can
+#   - beer can
+#   - notepad
+#   - measuring cup
+#   - coaster
+#   - ring
+#   - cellphone charger
+#   - briefcase
+#   - rake
+#   - skirt
+#   - hand mirror
+#   - usb cable
+#   - earbuds
+#   - weight (exercise)
+#   - suitcase
+#   - floss container
+#   - detergent
+#   - iron (for clothes)
+#   - honey container
+#   - marker
+#   - dress shoe (women)
+#   - sewing kit
+#   name: objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
   index_options: 
     use_vec_index: False
+  index_name: multiscale
+#  agg_method: avg_score
+  agg_method: plain_score
+  aug_larger: greater
 shared_bench_params: # see BenchParams
   max_feedback: null
   box_drop_prob: 0. 
   max_results: 10 # max positive results
-  n_batches : 30 # max batches
+  n_batches : 60 # max batches
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    # - name: pseudo_lr_switch
-    #   max_samples : 10
-    #   interactive: pseudo_lr
-    #   interactive_options:
-    #     switch_over: True
-    #     log_reg_params:
-    #       class_weights: 1.
-    #       scale: centered
-    #       reg_lambda: 1. # enough pseudolabels
-    #       max_iter: 200.
-    #       lr: 1
-    #     label_prop_params:
-    #       normalize_scores : False
-    #       knn_k: 10
-    #       knn_path: ''
-    #       calib_a: 10.
-    #       calib_b: -0.5
-    #       prior_weight: 1.
-    #       edist: .1
-    #       num_iters: 5
-    #     sample_size: 5000
-    #   index_name: multiscale
-    #   agg_method: avg_score
-    #   aug_larger: greater
-    - name: log_reg2
-      max_samples: 10
-      interactive: log_reg2
-      interactive_options:
-        class_weights: 
-          choose: [1.]
-        scale: centered
-        reg_lambda: 
-          choose: [10.]
-        max_iter: 200.
-        lr: 1.
-        fit_intercept: false
-      index_name: multiscale
-      agg_method: avg_score
-      aug_larger: greater
+    # - name: baseline
+    #   interactive: plain
+    # - name: baseline
+    #   interactive: plain
+    #   index_name: coarse
     # - name: seesaw_all
     #   interactive: pytorch
     #   method_config: 
@@ -371,67 +341,68 @@ variants:
     #       num_epochs: 4
     #       model_type: cosine
     #       warm_start: warm
-    #   index_name: coarse
-    #   agg_method: avg_score
-    #   aug_larger: greater
-    - name: pseudo_lr
-      max_samples: 10
-      interactive: pseudo_lr
-      interactive_options:
-        switch_over: False
-        real_sample_weight: 
-          choose: [1.]
-        sample_size: 
-          choose : [3000, 10000]
-        log_reg_params:
-          class_weights: 
-            choose: [1.]
-          scale: centered
-          reg_lambda: 
-            choose: [.1, .3, 1., 10.] 
-          max_iter: 200.
-          lr: 1
-          fit_intercept: false
-        label_prop_params:
-          self_edges : True
-          normalized_weights : False
-          normalize_scores : False
-          sigmoid_before_propagate: True
-          knn_k: 
-            choose: [20]
-          knn_path: nndescent60
-          calib_a: 
-            choose: [10.]
-          calib_b: 
-            choose: [-0.4]
-          prior_weight: 
-            choose: [1.] # good for unnormalized
-          edist: 
-            choose: [.1]
-      index_name: multiscale
-      # multiscale
-      agg_method: avg_score
-      aug_larger: greater
-    # - name: knn_prop2
-    #   max_samples: 20
-    #   interactive: knn_prop2
+    # - name: log_reg2
+    #   max_samples: 10
+    #   interactive: log_reg2
     #   interactive_options:
-    #     self_edges : True
-    #     normalized_weights : False
-    #     normalize_scores : False
-    #     sigmoid_before_propagate: True
-    #     knn_k: 
-    #       choose: [20]
-    #     knn_path: nndescent60
-    #     calib_a: 
-    #       choose: [10.]
-    #     calib_b: 
-    #       choose: [-0.4]
-    #     prior_weight: 
-    #       choose: [1.] # good for unnormalized
-    #     edist: 
-    #       choose: [.1]
-      # index_name: multiscale
-      # # multiscale
-      # agg_method: avg_score
-      # aug_larger: greater
+    #     class_weights: 
+    #       choose: [1.]
+    #     scale: centered
+    #     reg_lambda: 
+    #       choose: [1.]
+    #     max_iter: 200.
+    #     lr: 1.
+    #     fit_intercept: false
+    # - name: pseudo_lr_switch
+    #   max_samples: 10
+    #   interactive: pseudo_lr
+    #   interactive_options:
+    #     switch_over: True
+    #     real_sample_weight: 
+    #       choose: [1.]
+    #     sample_size: 
+    #       choose : [10000]
+    #     log_reg_params:
+    #       class_weights: 
+    #         choose: [1.]
+    #       scale: centered
+    #       reg_lambda: 
+    #         choose: [.1, .3, 1., 10.] 
+    #       max_iter: 200.
+    #       lr: 1
+    #       fit_intercept: false
+    #     label_prop_params:
+    #       self_edges : True
+    #       normalized_weights : False
+    #       normalize_scores : False
+    #       sigmoid_before_propagate: True
+    #       knn_k: 
+    #         choose: [20]
+    #       knn_path: nndescent60
+    #       calib_a: 
+    #         choose: [10.]
+    #       calib_b: 
+    #         choose: [-0.4]
+    #       prior_weight: 
+    #         choose: [1.] # good for unnormalized
+    #       edist: 
+    #         choose: [.1]
+    - name: knn_prop2
+      max_samples: 20
+      interactive: knn_prop2
+      interactive_options:
+        self_edges : True
+        normalized_weights : False
+        normalize_scores : False
+        sigmoid_before_propagate: True
+        knn_k: 
+          choose: [20]
+        knn_path: nndescent60
+        calib_a: 
+          choose: [10.]
+        calib_b: 
+          choose: [-0.4]
+        prior_weight: 
+          choose: [1.] # good for unnormalized
+        edist: 
+          choose: [.05]
