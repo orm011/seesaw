@@ -1,4 +1,4 @@
-from seesaw.rank_loss import ref_signed_inversions, ref_pairwise_rank_loss, ref_pairwise_rank_loss_gradient
+from seesaw.rank_loss import quick_pairwise_gradient, ref_signed_inversions, ref_pairwise_rank_loss, ref_pairwise_rank_loss_gradient
 import torch
 
 ## run this with pytest  -vvl  ./seesaw/seesaw/test_rank_loss.py
@@ -159,8 +159,8 @@ _test_cases = [
     ),
 
     # mixed case with duplicate targets
-    dict(target = [0., 0., 1., 1.],
-         scores = [.0, .2, .1, .3],
+    dict(target = [0, 0, 1, 1],
+         scores = [0,.2,.1,.3],
          margin = 0.,
          inversions = [ [0,  0,  0, 0], 
                         [0,  0, -1, 0],
@@ -174,8 +174,20 @@ _test_cases = [
                       ],
 
          gradient = [0, 1., -1., 0.], # second vector has zero gradient, but other two have larger
-    )
+    ),
 
+    # degenerate score case
+    dict( target = [0, 1, 2],
+            scores = [0, 0, 0],
+            margin = 0,
+            inversions = [
+                    [0, -1, -1],
+                    [1, 0, -1],
+                    [1, 1, 0],
+            ],
+            rank_loss = torch.zeros((3,3)),
+            gradient = [2, 0, -2],
+    )
 ]
 
 def get_test_cases():
@@ -203,3 +215,11 @@ def test_ref_pairwise_rank_loss_gradient():
         computed = ref_pairwise_rank_loss_gradient(test['target'], scores=test['scores'], margin=test['margin'])
         expected = test['gradient']
         assert torch.isclose(computed, expected).all(), f'{computed=} {expected=}'
+
+
+def test_quick_pairwise_rank_loss_gradient_zero_margin():
+    for test in get_test_cases():
+        if test['margin'] == 0:
+            computed = quick_pairwise_gradient(test['target'], scores=test['scores'], margin=test['margin'])
+            expected = test['gradient']
+            assert torch.isclose(computed, expected).all(), f'{computed=} {expected=}'
