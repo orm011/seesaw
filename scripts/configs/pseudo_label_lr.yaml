@@ -353,56 +353,89 @@ variants:
     #     max_iter: 200.
     #     lr: 1.
     #     fit_intercept: false
-    # - name: pseudo_lr_switch
+    # - name: prop2logreg
     #   max_samples: 10
-    #   interactive: pseudo_lr
+    #   interactive: switch_over
     #   interactive_options:
-    #     switch_over: True
-    #     real_sample_weight: 
-    #       choose: [1.]
-    #     sample_size: 
-    #       choose : [10000]
-    #     log_reg_params:
-    #       class_weights: 
-    #         choose: [1.]
-    #       scale: centered
-    #       reg_lambda: 
-    #         choose: [.1, .3, 1., 10.] 
-    #       max_iter: 200.
-    #       lr: 1
-    #       fit_intercept: false
-    #     label_prop_params:
-    #       self_edges : True
-    #       normalized_weights : False
-    #       normalize_scores : False
-    #       sigmoid_before_propagate: True
-    #       knn_k: 
-    #         choose: [20]
-    #       knn_path: nndescent60
-    #       calib_a: 
-    #         choose: [10.]
-    #       calib_b: 
-    #         choose: [-0.4]
-    #       prior_weight: 
-    #         choose: [1.] # good for unnormalized
-    #       edist: 
-    #         choose: [.1]
-    - name: knn_prop2
-      max_samples: 20
-      interactive: knn_prop2
+    #     method0:
+    #       interactive: knn_prop2
+    #       interactive_options:
+    #         self_edges : True
+    #         normalized_weights : False
+    #         normalize_scores : False
+    #         sigmoid_before_propagate: True
+    #         knn_k: 
+    #           choose: [20]
+    #         knn_path: nndescent60
+    #         calib_a: 
+    #           choose: [10.]
+    #         calib_b: 
+    #           choose: [-0.4]
+    #         prior_weight: 
+    #           choose: [1.] # good for unnormalized
+    #         edist: 
+    #           choose: [.05]
+    #     method1:
+    #       interactive: log_reg2
+    #       interactive_options:
+    #         class_weights: 
+    #           choose: [1.]
+    #         scale: centered
+    #         reg_lambda: 
+    #           choose: [1.]
+    #         max_iter: 200.
+    #         lr: 1.
+    #         fit_intercept: false
+    - name: pseudo_lr_switch
+      max_samples: 10
+      interactive: pseudo_lr
       interactive_options:
-        self_edges : True
-        normalized_weights : False
-        normalize_scores : False
-        sigmoid_before_propagate: True
-        knn_k: 
-          choose: [20]
-        knn_path: nndescent60
-        calib_a: 
-          choose: [10.]
-        calib_b: 
-          choose: [-0.4]
-        prior_weight: 
-          choose: [1.] # good for unnormalized
-        edist: 
-          choose: [.05]
+        switch_over: True
+        real_sample_weight: 
+          choose: [1.]
+        sample_size: 
+          choose : [10000]
+        log_reg_params:
+          class_weights: 
+            choose: [1.]
+          scale: centered
+          reg_lambda: 
+            choose: [.3] 
+          max_iter: 200.
+          lr: 1
+          fit_intercept: false
+        label_prop_params:
+          self_edges : True
+          normalized_weights : False
+          normalize_scores : False
+          sigmoid_before_propagate: True
+          knn_k: 
+            choose: [20]
+          knn_path: nndescent60
+          calib_a: 
+            choose: [10.]
+          calib_b: 
+            choose: [-0.4]
+          prior_weight: 
+            choose: [1.] # good for unnormalized
+          edist: 
+            choose: [.05]
+    # - name: knn_prop2
+    #   max_samples: 20
+    #   interactive: knn_prop2
+    #   interactive_options:
+    #     self_edges : True
+    #     normalized_weights : False
+    #     normalize_scores : False
+    #     sigmoid_before_propagate: True
+    #     knn_k: 
+    #       choose: [20]
+    #     knn_path: nndescent60
+    #     calib_a: 
+    #       choose: [10.]
+    #     calib_b: 
+    #       choose: [-0.4]
+    #     prior_weight: 
+    #       choose: [1.] # good for unnormalized
+    #     edist: 
+    #       choose: [.05]
