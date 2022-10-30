@@ -143,7 +143,7 @@ def compute_knn_from_nndescent(vectors, *, n_neighbors, n_jobs=-1, low_memory=Fa
     # multiplier: larger is better, note it multiplies vs n_neighbors. helps avoid getting stuck
     # nneighbors > 50 recommended for dot product accuracy.
     index2 = pynndescent.NNDescent(vectors, n_neighbors=n_neighbors+1, metric='dot', 
-                                    diversify_prob=0., pruning_degree_multiplier=3.,
+                                    diversify_prob=0., pruning_degree_multiplier=4.,
                                    n_jobs=n_jobs, low_memory=low_memory, **kwargs)
     positions, distances = index2.neighbor_graph
     
