@@ -74,6 +74,10 @@ def ref_pairwise_rank_loss_gradient(target, *, scores, margin):
 
 def _quick_pairwise_gradient_sorted(sorted_targets, scores):
     ## assumes targets,scores are sorted in lexicographic order
+    ## when targets are unequal but scores are equal, in order to encourage divergence, 
+    ## and to match reference, gradient needs tobe non zero.
+    ## which means that the reverse_indices should not be equal to the given ones
+
     _, final_indices = torch.sort(scores, stable=True)
     _, reverse_indices = torch.sort(final_indices)
     ## reverse_indices is where current scores ought to go in the list (scatter)    
@@ -92,10 +96,10 @@ def lexicographic_sort(a, b, return_indices=False):
     indices_all = indices1[indices2]
     return a3, b3, indices_all
 
-def quick_pairwise_gradient(target, *, scores):
+def quick_pairwise_gradient(target, *, scores, margin):
+    assert margin == 0.
     starget, sscores, sindex = lexicographic_sort(target, scores)
     _, invsindex = torch.sort(sindex)
     grads = _quick_pairwise_gradient_sorted(starget, sscores)
-    
     ## now return gradient in the input order
     return grads[invsindex].float()
