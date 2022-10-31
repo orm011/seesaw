@@ -73,14 +73,20 @@ def ref_pairwise_rank_loss_gradient(target, *, scores, margin):
 
 
 def _quick_pairwise_gradient_sorted(sorted_targets, scores):
-    ## assumes targets,scores are sorted in lexicographic order
-    ## when targets are unequal but scores are equal, in order to encourage divergence, 
-    ## and to match reference, gradient needs tobe non zero.
-    ## which means that the reverse_indices should not be equal to the given ones
+    ## assumes input targets,scores are sorted in lexicographic order
 
-    _, final_indices = torch.sort(scores, stable=True)
+    # initially we just did:
+    # _, final_indices = torch.sort(scores, stable=True)
+    ## but when targets are unequal but scores are equal, in order to encourage divergence, 
+    ## and to match reference, gradient needs to be non zero (boundary case)
+
+    ## Implies the sorting of scores at this stage should not be stable, but anti-stable.
+    ## where equal values get permuted in reverse, we can achieve this by
+    ## sorting scores in lexicographic score, -target order as opposed to only score.
+    final_scores, _, final_indices = lexicographic_sort(scores, -sorted_targets, return_indices=True)
     _, reverse_indices = torch.sort(final_indices)
-    ## reverse_indices is where current scores ought to go in the list (scatter)    
+
+    ## reverse_indices is 0 based rank of current scores to go in the list (scatter indices)
     ## net_reversals is the the number of positions they need to change in relative terms, and 
     # it is equal to the gradient wrt hinge loss (with margin 0)
     net_reversals = reverse_indices - torch.arange(reverse_indices.shape[0])
