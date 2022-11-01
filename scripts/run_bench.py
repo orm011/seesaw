@@ -75,7 +75,10 @@ for i,yl in enumerate(yls):
             max_classes_per_dataset=1,
         )
         print(f"dryrun mode will only run {len(cfgs)} tests from from {args.configs[i]}")
-        all_cfgs.extend(cfgs)
+        
+        
+    all_cfgs.extend(cfgs)
+    
 
 cfgdf = pd.DataFrame.from_records([{**p.dict(), **p.index_spec.dict(), **b.dict()} for (b,p) in all_cfgs])
 totals = cfgdf.groupby(['name', 'd_name', 'i_name', 'ground_truth_category', 'sample_id']).size()
@@ -106,7 +109,7 @@ if args.dryrun:
 else:
     def closure(): # put all actor stuff within scope so maybe it gets destroyed before getting summaries?
         random.shuffle(all_cfgs) # randomize task order to kind-of balance work
-        ds = ray.data.from_items(all_cfgs, parallelism=800)
+        ds = ray.data.from_items(all_cfgs, parallelism=1000)
         actor_options = dict(num_cpus=args.num_cpus, memory=5 * (2**30))
         ## use a small batch size so that maybe failures affect as few classes as possible?
         _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(10,300), **actor_options).take_all()
