@@ -115,18 +115,23 @@ def quick_pairwise_gradient_zero_margin(target, *, scores):
     return grads[invsindex].float()
 
 
-class CheapPairwiseRankingLoss(torch.autograd.Function):
+class _CheapPairwiseRankingLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, target, scores):
         grads = quick_pairwise_gradient_zero_margin(target, scores=scores)
         ctx.save_for_backward(grads)
-        return 1.
+        ## not really margin loss, but net inversions  still informative
+        return grads.abs() # vector 
 
     @staticmethod
-    def backward(ctx, grad_output):
+    def backward(ctx, grad_output): # output is vector
         (grads,) = ctx.saved_tensors
 
+        ## grad output propagates any scaling done after
         grad_target = None
         grad_scores = grads*grad_output
 
         return grad_target, grad_scores
+
+def cheap_pairwise_rank_loss(target, *, scores):
+    return _CheapPairwiseRankingLoss.apply(target, scores)
