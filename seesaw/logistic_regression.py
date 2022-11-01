@@ -11,6 +11,60 @@ import numpy as np
 
 import math
 from sklearn.preprocessing import StandardScaler
+from seesaw.rank_loss import cheap_pairwise_rank_loss
+
+class RankingRegModule(nn.Module):
+    def __init__(self, *, dim, reg_weight=1., verbose=False, max_iter=100, lr=1., regularizer_function=None):
+        super().__init__()
+        self.linear = nn.Linear(dim, 1, bias=False)
+        self.regularizer_function = regularizer_function            
+        self.reg_weight = reg_weight
+        self.max_iter = max_iter
+        self.lr = lr
+        self.verbose = verbose
+        
+    def get_coeff(self):
+        return self.linear.weight.detach().numpy()
+
+    def forward(self, X):
+        return self.linear(X)
+    
+    def _step(self, batch):
+        if len(batch) == 2:
+            X,y=batch # note y can be a floating point
+            weight=None
+        else:
+            assert len(batch) == 3
+            X,y,weight = batch
+            raise NotImplementedError('handle weights later on')
+            
+        scores = self(X)
+        return cheap_pairwise_rank_loss(y, scores=scores)
+    
+    def training_step(self, batch, batch_idx):
+        inversions = self._step(batch)
+        if self.regularizer_function is None:
+            reg = self.linear.weight.norm()
+        else:
+            reg = self.regularizer_function()
+        
+        loss = inversions.sum()/len(batch[0])**2 + self.reg_weight*reg
+        ret = {'loss':loss, 'reg':reg, 'inversions':inversions}
+
+        if self.verbose:
+            print('wnorm', self.linear.weight.norm().detach().item())
+            print(f'{ret=}')
+
+
+    def validation_step(self, batch, batch_idx):
+        loss = self._step(batch)
+        return {'loss':loss}
+
+    def configure_optimizers(self):
+        return opt.LBFGS(self.parameters(), max_iter=self.max_iter, lr=self.lr, line_search_fn='strong_wolfe')
+
+
+
 
 class LogisticRegModule(nn.Module):
     def __init__(self, *, dim,  pos_weight=1., reg_weight=1., fit_intercept=True,  verbose=False, max_iter=100, lr=1., regularizer_function=None):
