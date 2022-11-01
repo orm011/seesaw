@@ -46,16 +46,16 @@ class KNNMaker:
 
 
 combinations = []
-for dataset_name in ('coco'):
-    for index_name in ('multiscale',):
+for dataset_name in ('lvis',):
+    for index_name in ('multiscalemed',):
         combinations.append((dataset_name, index_name, None))
 
 # all_subsets = qgt.columns.values
-ds = ray.data.from_items(combinations, parallelism=min(len(combinations), 200))
+ds = ray.data.from_items(combinations, parallelism=min(len(combinations), 1))
 
-num_cpus = 74
+num_cpus = 90
 fn_args = dict(num_cpus=num_cpus)
-ray_remote_args=dict(num_cpus=num_cpus, num_gpus=2)
+ray_remote_args=dict(num_cpus=num_cpus, num_gpus=0)
 from ray.data.dataset import ActorPoolStrategy
 
-x = ds.map_batches(KNNMaker, batch_size=1, compute=ActorPoolStrategy(1, 100), fn_constructor_kwargs=fn_args, **ray_remote_args).take_all()
+x = ds.map_batches(KNNMaker, batch_size=1, compute=ActorPoolStrategy(1, 1), fn_constructor_kwargs=fn_args, **ray_remote_args).take_all()
