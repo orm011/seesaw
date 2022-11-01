@@ -125,9 +125,9 @@ class CacheStub:
 
         return obj
 
-    def read_parquet(self, path: str, columns=None):
+    def read_parquet(self, path: str, columns=None, parallelism=-1):
         def _init_fun():
-            return parallel_read_parquet(path, columns)
+            return parallel_read_parquet(path, columns, parallelism = parallelism)
 
         return self._with_lock(path, _init_fun)
 

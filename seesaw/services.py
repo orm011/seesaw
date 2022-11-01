@@ -8,9 +8,12 @@ import ray
 def get_cache() -> CacheStub:
     return CacheStub("actor#cache")
 
-def get_parquet(parquet_path: str, columns = None) -> pd.DataFrame:
-    cache = get_cache()
-    return cache.read_parquet(parquet_path, columns)
+def get_parquet(parquet_path: str, columns = None, parallelism=-1, cache=True) -> pd.DataFrame:
+    if cache:
+        cache = get_cache()
+        return cache.read_parquet(parquet_path, columns, parallelism=parallelism)
+    else:
+        return parallel_read_parquet(parquet_path, columns, parallelism=parallelism)
 
 def get_model_actor(model_path: str) -> ModelStub:
     import ray
