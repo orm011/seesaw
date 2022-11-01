@@ -36,6 +36,10 @@ def _get_fixed_metadata(schema):
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+def arrow_to_df(tab):
+    fixed_meta = _get_fixed_metadata(tab.schema)
+    return tab.replace_schema_metadata(fixed_meta).to_pandas()
+
 def parallel_read_parquet(path, columns=None, parallelism=-1) -> pd.DataFrame:
     """uncached version"""
     if parallelism != 0:
