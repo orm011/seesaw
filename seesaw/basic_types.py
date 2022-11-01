@@ -91,6 +91,7 @@ class SessionState(BaseModel):
 
 class BenchParams(BaseModel):
     name: str
+    sample_id : Optional[str] = None # for hparam tuning
     ground_truth_category: str
     qstr: str
     provide_textual_feedback: bool = False

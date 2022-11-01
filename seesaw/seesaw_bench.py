@@ -573,7 +573,7 @@ def generate_method_configs(base_config, max_trials):
     for i,cfgelt in enumerate(seen_configs):
         cfg = asdict(cfgelt)
         if len(seen_configs) > 1:
-            cfg['name'] = f"{cfg['name']}_sample_{i:02d}"
+            cfg['sample_id'] = f"sample_{i:02d}"
         ans.append(cfg)
 
     return ans
