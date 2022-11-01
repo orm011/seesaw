@@ -1,4 +1,7 @@
-from seesaw.rank_loss import quick_pairwise_gradient, ref_signed_inversions, ref_pairwise_rank_loss, ref_pairwise_rank_loss_gradient
+from seesaw.rank_loss import (quick_pairwise_gradient_zero_margin,
+           ref_signed_inversions, ref_pairwise_rank_loss, ref_pairwise_rank_loss_gradient,
+                )
+
 import torch
 
 ## run this with pytest  -vvl  ./seesaw/seesaw/test_rank_loss.py
@@ -191,12 +194,15 @@ _test_cases = [
 ]
 
 def get_test_cases():
-    ret = []
-    for d in _test_cases:
-        d2 = {k:(v.float() if torch.is_tensor(v) else torch.tensor(v).float())
-                 for (k,v) in d.items() }
-        ret.append(d2)
-    return ret
+     ret = []
+     for (i,d) in enumerate(_test_cases):
+          d2 = {}
+          d2['test_number'] = i
+          d2update = { k:(v.float() if torch.is_tensor(v) else torch.tensor(v).float()) for (k,v) in d.items() }               
+          d2.update(d2update)
+          ret.append(d2)
+
+     return ret
     
 def test_ref_inversions():
     for test in get_test_cases():
@@ -220,6 +226,6 @@ def test_ref_pairwise_rank_loss_gradient():
 def test_quick_pairwise_rank_loss_gradient_zero_margin():
     for test in get_test_cases():
         if test['margin'] == 0:
-            computed = quick_pairwise_gradient(test['target'], scores=test['scores'], margin=test['margin'])
+            computed = quick_pairwise_gradient_zero_margin(test['target'], scores=test['scores'])
             expected = test['gradient']
             assert torch.isclose(computed, expected).all(), f'{computed=} {expected=}'

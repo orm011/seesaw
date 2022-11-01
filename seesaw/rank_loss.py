@@ -83,7 +83,7 @@ def _quick_pairwise_gradient_sorted(sorted_targets, scores):
     ## Implies the sorting of scores at this stage should not be stable, but anti-stable.
     ## where equal values get permuted in reverse, we can achieve this by
     ## sorting scores in lexicographic score, -target order as opposed to only score.
-    final_scores, _, final_indices = lexicographic_sort(scores, -sorted_targets, return_indices=True)
+    _, _, final_indices = lexicographic_sort(scores, -sorted_targets, return_indices=True)
     _, reverse_indices = torch.sort(final_indices)
 
     ## reverse_indices is 0 based rank of current scores to go in the list (scatter indices)
@@ -102,10 +102,31 @@ def lexicographic_sort(a, b, return_indices=False):
     indices_all = indices1[indices2]
     return a3, b3, indices_all
 
-def quick_pairwise_gradient(target, *, scores, margin):
-    assert margin == 0.
+def quick_pairwise_gradient_zero_margin(target, *, scores):
+    ''' computes the gradient of the pair-wise rank loss at the given inputs
+        but in linear space and nlog time, by using a few sort passes.
+
+        for now can only do margin=0.
+    '''
     starget, sscores, sindex = lexicographic_sort(target, scores)
     _, invsindex = torch.sort(sindex)
     grads = _quick_pairwise_gradient_sorted(starget, sscores)
     ## now return gradient in the input order
     return grads[invsindex].float()
+
+
+class CheapPairwiseRankingLoss(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, target, scores):
+        grads = quick_pairwise_gradient_zero_margin(target, scores=scores)
+        ctx.save_for_backward(grads)
+        return 1.
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (grads,) = ctx.saved_tensors
+
+        grad_target = None
+        grad_scores = grads*grad_output
+
+        return grad_target, grad_scores
