@@ -257,20 +257,11 @@ class KNNGraph:
 
         ## hack: use cache for large datasets sharing same knng, not for subsets 
         if path.find('subset') == -1:
-            use_cache = True
+            cache = True
         else:
-            use_cache = False
-        
-        if use_cache:
-            print('using cache', pref_path)
-            df = get_parquet(pref_path)
-        else:
-            print('not using cache', pref_path)
-            # also don't use parallelism in that case
-            df = parallel_read_parquet(pref_path, parallelism=0)
+            cache = False
 
-        df = df.assign(distance=np.clip(df.distance.values, a_min=0, a_max=None).astype('float32'))
-        # TODO: add some sanity checks?
+        df = get_parquet(pref_path, parallelism=0, cache=cache)
         return KNNGraph(df)
 
     def rev_lookup(self, dst_vertex) -> pd.DataFrame:
