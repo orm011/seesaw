@@ -44,7 +44,7 @@ ray.init("auto", namespace="seesaw", log_to_driver=False, ignore_reinit_error=Tr
 gdm = GlobalDataManager(args.root_dir)
 os.chdir(gdm.root)
 
-names = set([])
+names = set()
 all_cfgs = []
 for i,yl in enumerate(yls):
     if args.dryrun:
@@ -54,8 +54,9 @@ for i,yl in enumerate(yls):
 
     variants = yl['variants']
     for v in variants:
-        if v["name"] in names:
+        if (v["name"])  in names:
             assert False, f'repeated variant name "{v["name"]}" will make it harder to compare variants afterwards'
+        
         names.add(v["name"])
 
     datasets = yl['datasets']
@@ -102,12 +103,15 @@ if args.dryrun:
     br = BatchRunner(redirect_output=False)
     br(all_cfgs)
 else:
-    random.shuffle(all_cfgs) # randomize task order to kind-of balance work
-    ds = ray.data.from_items(all_cfgs, parallelism=800)
-    actor_options = dict(num_cpus=args.num_cpus, memory=5 * (2**30))
-    ## use a small batch size so that maybe failures affect as few classes as possible?
-    _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(10,300), **actor_options).take_all()
+    def closure(): # put all actor stuff within scope so maybe it gets destroyed before getting summaries?
+        random.shuffle(all_cfgs) # randomize task order to kind-of balance work
+        ds = ray.data.from_items(all_cfgs, parallelism=800)
+        actor_options = dict(num_cpus=args.num_cpus, memory=5 * (2**30))
+        ## use a small batch size so that maybe failures affect as few classes as possible?
+        _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(10,300), **actor_options).take_all()
+
+    closure()
 
 print("done with benchmark. computing summary")
-get_all_session_summaries(results_dir, force_recompute=True)
+get_all_session_summaries(results_dir, force_recompute=True, parallel=not args.dryrun)
 print("done with summary.")
