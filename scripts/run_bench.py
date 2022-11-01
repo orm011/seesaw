@@ -44,29 +44,13 @@ ray.init("auto", namespace="seesaw", log_to_driver=False, ignore_reinit_error=Tr
 gdm = GlobalDataManager(args.root_dir)
 os.chdir(gdm.root)
 
-names = set()
+combos = set()
 all_cfgs = []
 for i,yl in enumerate(yls):
-    if args.dryrun:
-        nclasses = 1
-    else:
-        nclasses=math.inf
-
     variants = yl['variants']
-    for v in variants:
-        if (v["name"])  in names:
-            assert False, f'repeated variant name "{v["name"]}" will make it harder to compare variants afterwards'
-        
-        names.add(v["name"])
-
     datasets = yl['datasets']
     shared_session_params = yl['shared_session_params']
     shared_bench_params = yl['shared_bench_params']
-    if args.dryrun:
-        shared_bench_params['n_batches'] = 5
-        shared_bench_params['max_results'] = 3
-
-        # batch_size['n_batches'] = 5
 
     cfgs = gen_configs(
         gdm,
@@ -74,19 +58,36 @@ for i,yl in enumerate(yls):
         variants=variants,
         s_template=shared_session_params,
         b_template=shared_bench_params,
-        max_classes_per_dataset=nclasses,
+        max_classes_per_dataset=math.inf,
     )
-
     print(f"{len(cfgs)} generated from {args.configs[i]}")
 
-    all_cfgs.extend(cfgs)
+    if args.dryrun: # limit size of benchmark and classes per dataset
+        shared_bench_params['n_batches'] = 5
+        shared_bench_params['max_results'] = 4
+
+        cfgs = gen_configs(
+            gdm,
+            datasets=datasets,
+            variants=variants,
+            s_template=shared_session_params,
+            b_template=shared_bench_params,
+            max_classes_per_dataset=1,
+        )
+        print(f"dryrun mode will only run {len(cfgs)} tests from from {args.configs[i]}")
+        all_cfgs.extend(cfgs)
+
+cfgdf = pd.DataFrame.from_records([{**p.dict(), **p.index_spec.dict(), **b.dict()} for (b,p) in all_cfgs])
+totals = cfgdf.groupby(['name', 'd_name', 'i_name', 'ground_truth_category', 'sample_id']).size()
+## assert no duplicates with same name, other than different categories, or indices
+assert (totals == 1).all()
 
 
 key = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 exp_name = key
 results_dir = f"{args.output_dir}/bench_{exp_name}/"
 os.makedirs(results_dir, exist_ok=True)
-print(f"outputting benchmark results to file:/{results_dir}")
+print(f"outputting benchmark results to file:\n/{results_dir}")
 
 class BatchRunner:
     def __init__(self, redirect_output=True):
@@ -112,6 +113,9 @@ else:
 
     closure()
 
-print("done with benchmark. computing summary")
+
+print("done with benchmark.")
+print(f"benchmark results are in:\n/{results_dir}")
+print(f"computing results summary...")
 get_all_session_summaries(results_dir, force_recompute=True, parallel=not args.dryrun)
-print("done with summary.")
+print(f"done saving summary")
