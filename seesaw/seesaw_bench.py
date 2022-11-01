@@ -421,10 +421,10 @@ def parse_batch(batch):
 
 
 from ray.data.datasource import FastFileMetadataProvider
-def load_session_data(base_dir):
+def load_session_data(base_dir, parallelism=-1):
     summary_paths = glob.glob(base_dir + "/**/summary.json", recursive=True)
     r = ray.data.read_binary_files(summary_paths, include_paths=True, 
-                meta_provider=FastFileMetadataProvider(), parallelism=50)
+                meta_provider=FastFileMetadataProvider(), parallelism=parallelism).lazy()
     res = r.map_batches(parse_batch, batch_size=20)
     return res
 
