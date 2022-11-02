@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 
 def ref_signed_inversions(target, *, scores, margin):
     ''' computes the inversions (number of inversions) for the given scores,
@@ -32,7 +31,7 @@ def ref_signed_inversions(target, *, scores, margin):
     return all_pairs
 
 
-def ref_pairwise_rank_loss(target, *, scores, margin, aggregate='none'):
+def ref_pairwise_rank_loss(target, *, scores, margin, aggregate='none', return_max_inversions=False):
     ''' target is the right score (can be binary or not)
         scores are an output
         
@@ -51,10 +50,16 @@ def ref_pairwise_rank_loss(target, *, scores, margin, aggregate='none'):
     # remove constant term for elements with identical targets, as it does not contribute to gradient.
     loss_ij -= margin*(target_ij == 0).float()
 
+
     if aggregate == 'none':
         return loss_ij
     elif aggregate == 'sum':
-        return loss_ij.div(2).sum()
+        losses_sum =loss_ij.sum(0)
+        if return_max_inversions:
+            max_inversions = (target_ij != 0).sum(0)
+            return losses_sum, max_inversions
+        else:
+            return losses_sum
     else:
         assert False
 
@@ -68,7 +73,7 @@ def ref_pairwise_rank_loss_gradient(target, *, scores, margin):
     scores = scores.clone().detach().requires_grad_(True)
     loss = ref_pairwise_rank_loss(target, scores=scores, margin=margin, aggregate='sum')
 
-    loss.backward()
+    loss.sum().backward()
     return scores.grad.clone()
 
 
@@ -102,7 +107,7 @@ def lexicographic_sort(a, b, return_indices=False):
     indices_all = indices1[indices2]
     return a3, b3, indices_all
 
-def quick_pairwise_gradient_zero_margin(target, *, scores):
+def quick_pairwise_gradient_zero_margin(target, *, scores, return_max_inversions=False):
     ''' computes the gradient of the pair-wise rank loss at the given inputs
         but in linear space and nlog time, by using a few sort passes.
 
@@ -110,27 +115,43 @@ def quick_pairwise_gradient_zero_margin(target, *, scores):
     '''
     starget, sscores, sindex = lexicographic_sort(target, scores)
     _, invsindex = torch.sort(sindex)
-    grads = _quick_pairwise_gradient_sorted(starget, sscores)
+    grads = _quick_pairwise_gradient_sorted(starget, sscores).float()
+    
+    _, pos, counts = torch.unique_consecutive(starget, return_counts=True, return_inverse=True)
+    # pos encodes which value
+    max_reversals = (target.shape[0] - counts[pos]).float()
+
+    total_pairs = counts.sum().pow(2) - counts.pow(2).sum()
     ## now return gradient in the input order
-    return grads[invsindex].float()
+
+    if return_max_inversions:
+        return 2*grads[invsindex], max_reversals[invsindex], total_pairs
+    else:
+        return 2*grads[invsindex]
 
 
 class _CheapPairwiseRankingLoss(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, target, scores):
-        grads = quick_pairwise_gradient_zero_margin(target, scores=scores)
-        ctx.save_for_backward(grads)
-        ## not really margin loss, but net inversions  still informative
-        return grads.abs() # vector 
+    def forward(ctx, target, scores, normalized=True):
+        grads, _, total_pairs = quick_pairwise_gradient_zero_margin(target, scores=scores, return_max_inversions=True)
+
+        if not normalized:
+            factor = 1.
+        else:
+            factor = 1./total_pairs
+
+        ctx.save_for_backward(grads, factor)
+        
+        ## not really margin loss, but net inversions are still informative
+        return grads.abs() * factor
 
     @staticmethod
     def backward(ctx, grad_output): # output is vector
-        (grads,) = ctx.saved_tensors
+        (grads,factor) = ctx.saved_tensors
 
         ## grad output propagates any scaling done after
+        grad_scores = (grads*factor) * grad_output
         grad_target = None
-        grad_scores = grads*grad_output
-
         return grad_target, grad_scores
 
 def cheap_pairwise_rank_loss(target, *, scores):
