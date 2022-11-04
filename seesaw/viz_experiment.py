@@ -1,9 +1,10 @@
 from torch.nn import functional as F
 import torch
 import torch.distributions as dist
-import plotly.graph_objects as go
 from .knn_graph import compute_exact_knn, get_weight_matrix, rbf_kernel
 from sklearn.decomposition import PCA
+import plotly.graph_objects as go
+
 
 class MixtureModelDistribution:
     def __init__(self,*, n_dim, n_classes, unit_length=True):
