@@ -4,11 +4,15 @@ import torch.distributions as dist
 from .knn_graph import compute_exact_knn, get_weight_matrix, rbf_kernel
 from sklearn.decomposition import PCA
 import plotly.graph_objects as go
-
+import numpy as np
 
 class MixtureModelDistribution:
     def __init__(self,*, n_dim, n_classes, unit_length=True):
-        
+
+        class_probs = dist.Dirichlet(torch.ones(n_classes)).sample()
+        class_probs = torch.sort(class_probs)[0] # - is the least popular
+        self.class_dist = dist.Categorical(class_probs)
+
         unit_mu = F.normalize(torch.ones(n_dim), dim=-1)
         spread = unit_mu.min()/10
         meta_dist = dist.MultivariateNormal(loc=unit_mu, covariance_matrix=(spread**2)*torch.eye(n_dim))
@@ -20,9 +24,6 @@ class MixtureModelDistribution:
         self.class_conditional_dist = [dist.MultivariateNormal(loc=self.mus[i], covariance_matrix=covars[i]) 
                                         for i in range(n_classes)]
         
-        class_probs = dist.Dirichlet(torch.ones(n_classes)).sample()
-        class_probs = torch.sort(class_probs)[0] # - is the least popular
-        self.class_dist = dist.Categorical(class_probs)
 
         
     def sample(self, *, n_samples):
@@ -39,7 +40,7 @@ class GraphPlot:
         self.Xplot = self.pca.fit_transform(self.X)
 
         self.labels = labels
-        self.knng = compute_exact_knn(X, n_neighbors=3, metric='dot')
+        self.knng = compute_exact_knn(X, n_neighbors=3)
         self._init_plot_objects()
         
     def _init_plot_objects(self):
