@@ -7,7 +7,7 @@ shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
   index_options: 
-  use_vec_index: False # for bdd and coco.
+    use_vec_index: False # for bdd and coco.
 #  agg_method: avg_score
   index_name : coarse
   agg_method: plain_score
