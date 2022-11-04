@@ -68,21 +68,26 @@ def train_test_split_framewise(vec_meta, random_state):
     test_meta = vec_meta[vec_meta.dbidx.isin(set(tst_idcs))]
     return train_meta, test_meta
 
-def eval_multiscale_lr(*, root, dataset, idxname, category, frame_pooling, random_state, RegressionClass, **   lropts):
-    gdm = GlobalDataManager(root)
-    if dataset == 'lvis':
-        ds = gdm.get_dataset(dataset).load_subset(category)
-    else:
-        ds = gdm.get_dataset(dataset)
+def eval_multiscale_lr(ds, *, idxname, category, frame_pooling, random_state, change_score_scale, RegressionClass, **   lropts):
+    if ds.path.find('lvis') >= 0:
+        ds = ds.load_subset(category)
 
     idx = ds.load_index(idxname,  options=dict(use_vec_index=False))
-
     boxes, _ = ds.load_ground_truth()
     boxes = boxes[boxes.category == category]
 
     vec_meta = left_iou_join(idx.vector_meta, boxes)
     vec_meta = vec_meta.assign(vectors=TensorArray(idx.vectors), ys=(vec_meta.max_iou > 0).astype('float32'))
     train_meta, test_meta = train_test_split_framewise(vec_meta, random_state)
+
+    if change_score_scale:
+        pseudo_label, fully_labeled = train_test_split_framewise(train_meta, random_state+1)
+
+        ys = pseudo_label.ys.values
+        ys = ys/10. + .3
+        pseudo_label = pseudo_label.assign(ys=ys)
+
+        train_meta = pd.concat([pseudo_label, fully_labeled], ignore_index=True)
 
     lr = RegressionClass(**lropts)
     
@@ -92,7 +97,7 @@ def eval_multiscale_lr(*, root, dataset, idxname, category, frame_pooling, rando
     scores_test = get_scores(lr, test_meta)
 
     dfs2 = [
-        get_metrics(train_meta, scores=scores_train, frame_pooling=frame_pooling).assign(split='train', method='lr'),  
+       # get_metrics(train_meta, scores=scores_train, frame_pooling=frame_pooling).assign(split='train', method='lr'),  
         get_metrics(test_meta, scores=scores_test, frame_pooling=frame_pooling).assign(split='test', method='lr')
     ]
     return pd.concat(dfs2, ignore_index=True).assign(category=category)

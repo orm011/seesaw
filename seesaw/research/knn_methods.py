@@ -214,14 +214,20 @@ class LabelPropagation:
         new_fvalues[label_ids] = label_values
         return new_fvalues
 
-    def fit_transform(self, *, label_ids, label_values, reg_values, start_value=None):
-        assert reg_values.shape[0] == self.n
-        self.reg_values = reg_values
+    def fit_transform(self, *, label_ids, label_values, reg_values = None, start_value=None):
+        if reg_values is not None:
+            assert reg_values.shape[0] == self.n
+            self.reg_values = reg_values
+        else:
+            assert self.reg_lambda == 0
+            self.reg_values = np.zeros(self.weight_matrix.shape[0])
 
         if start_value is not None:
             old_fvalues = start_value.copy()
-        else:
+        elif reg_values is not None:
             old_fvalues = reg_values.copy()
+        else:
+            old_fvalues = np.ones(self.weight_matrix.shape[0])*.0
             
         old_fvalues[label_ids] = label_values
         
