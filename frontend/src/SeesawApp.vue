@@ -404,6 +404,7 @@ export default defineComponent({
     mounted (){
         window.VueApp = this;
         let params = new URLSearchParams(window.location.search)
+        this.front_end_type = params.get('frontend')
 
         if (window.location.pathname === '/session_info'){
             let session_path = params.get('path')
@@ -505,16 +506,17 @@ export default defineComponent({
        }
       },
       set_frontend_type(mode){
-        switch (mode) {
-                case 'default':
-                  this.front_end_type = 'plain';
-                  break;
-                case 'pytorch':
-                case 'fine':
-                default:
-                  this.front_end_type = 'pytorch';
-                  break
-            }
+        // set it directly from url
+        // switch (mode) {
+        //         case 'default':
+        //           this.front_end_type = 'plain';
+        //           break;
+        //         case 'pytorch':
+        //         case 'fine':
+        //         default:
+        //           this.front_end_type = 'pytorch';
+        //           break
+        //     }
       } ,
       changeInput(input){
         console.log("change Input" + input); 
