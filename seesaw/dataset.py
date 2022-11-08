@@ -89,6 +89,13 @@ class BaseDataset: # common interface for datasets and their subsets
     def get_url(self, dbidx, host) -> str:
         raise NotImplementedError
 
+    def get_urls(self, dbidxs, host='/'):
+        urls = []
+        for dbidx in dbidxs:
+            url = self.get_url(dbidx, host=host)
+            urls.append(url)
+        return urls
+
     def as_ray_dataset(self, limit=None, parallelism=-1) -> ray.data.Dataset:
         raise NotImplementedError
 
@@ -146,8 +153,10 @@ class SeesawDataset(BaseDataset):
     def load_subset(self, subset_name):
         return SeesawDatasetSubset.load_from_path(self, f'{self.path}/subsets/{subset_name}')
 
-    def get_url(self, dbidx, host='localhost.localdomain:10000') -> str:
-        return f"http://{host}/{self.image_root}/{self.paths[dbidx]}"
+    def get_url(self, dbidx, host='/') -> str:
+        path= f'{host}/{self.image_root}/{self.paths[dbidx]}'
+        ## remove any extra slashes etc
+        return os.path.normpath(path)
 
     def as_ray_dataset(ds, limit=None, parallelism=-1) -> ray.data.Dataset:
         """ with schema {dbidx: int64, binary: object}
