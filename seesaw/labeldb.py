@@ -19,7 +19,7 @@ class LabelDB:
         dfs = [ empty_df ]
 
         for dbidx,v in self.ldata.items():
-            if v == []:
+            if v == [] or v is None:
                 continue
             
             df = pd.DataFrame([b.dict() for b in v])[
