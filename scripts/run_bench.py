@@ -52,24 +52,28 @@ for i,yl in enumerate(yls):
     shared_session_params = yl['shared_session_params']
     shared_bench_params = yl['shared_bench_params']
 
-    cfgs = gen_configs(
+    base_configs = expand_configs(variants)
+    print(f"{len(base_configs)=}")
+
+    cfgs = generate_benchmark_configs(
         gdm,
         datasets=datasets,
-        variants=variants,
+        base_configs=base_configs,
         s_template=shared_session_params,
         b_template=shared_bench_params,
         max_classes_per_dataset=math.inf,
     )
+
     print(f"{len(cfgs)} generated from {args.configs[i]}")
 
     if args.dryrun: # limit size of benchmark and classes per dataset
         shared_bench_params['n_batches'] = 5
         shared_bench_params['max_results'] = 4
 
-        cfgs = gen_configs(
+        cfgs = generate_benchmark_configs(
             gdm,
             datasets=datasets,
-            variants=variants,
+            base_configs=base_configs,
             s_template=shared_session_params,
             b_template=shared_bench_params,
             max_classes_per_dataset=1,
