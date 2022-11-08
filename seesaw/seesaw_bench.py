@@ -500,104 +500,10 @@ def compute_stats(summ):
 
 from .basic_types import IndexSpec
 from .dataset_search_terms import category2query
-from .configs import get_default_config
-
-
-import numpy as np
-import copy
-from collections import namedtuple
 import numpy as np
 import math
 
-def space_size(base_config):
-    szs = []
-    for _,v in base_config.items():
-        if isinstance(v, dict) and 'choose' in v.keys() and isinstance(v['choose'], list):
-            assert len(v) == 1
-            szs.append(len(v['choose']))
-        elif isinstance(v, dict):
-            szs.append(space_size(v))
-        else:
-            szs.append(1)
-            
-    return math.prod(szs)
-
-import random
-    
-
-## want to: 
-# 1. sample n things (top level)
-# 2. estimate size (top level)
-
-## recursively:
-### size of conf:
-### prod of elements, with primitive count for 1, choose for size of list, and size of subdict
-
-### sample of conf
-def sample_config(base_config):
-    T = namedtuple('T', field_names=base_config.keys())
-
-    cfg = {}
-    for k,v in base_config.items():
-        if isinstance(v, dict) and 'choose' in v.keys():
-            assert isinstance(v['choose'], list)
-            assert len(v) == 1 
-            ret = random.choice(v['choose'])
-            cfg[k] = ret
-        elif isinstance(v, dict):
-            cfg[k] = sample_config(v)
-        else:
-            cfg[k] = v # simply copy over
-
-    return T(**cfg)
-
-
-def asdict(t):
-    base_dict = t._asdict().copy()
-    for k,v in base_dict.items():
-        if hasattr(v, '_asdict'):
-            base_dict[k] = asdict(v)
-
-    return base_dict
-
-def generate_method_configs(base_config, max_trials):
-    seen_configs = set()
-    total_configs = space_size(base_config)
-    limit = min(max_trials, total_configs)
-
-    while len(seen_configs) < limit:
-        cfg = sample_config(base_config)
-        seen_configs.add(cfg)
-
-    ans = []
-    for i,cfgelt in enumerate(seen_configs):
-        cfg = asdict(cfgelt)
-        if len(seen_configs) > 1:
-            cfg['sample_id'] = f"sample_{i:02d}"
-        ans.append(cfg)
-
-    return ans
-
-import copy
-
-def get_session_params(s_template, config, index_meta):
-    s_template = copy.deepcopy(s_template)
-    config = copy.deepcopy(config)
-    s_merged = {**s_template,   **config}
-
-    prev_index_meta = s_merged.get('index_spec', {})
-    final_index_meta = {
-        **prev_index_meta,  # eg has index info
-        **index_meta, # eg has category and dataset info
-    }
-    s_merged['index_spec'] = final_index_meta
-    s = SessionParams(
-        **{k:v for (k,v) in s_merged.items()
-                if k in SessionParams.__fields__.keys()
-        }
-    )
-
-    return s
+from .configs import get_session_params
 
 def get_bench_params(b_template, name, sample_id, dataset, category):
     copy.deepcopy(b_template)
@@ -618,14 +524,6 @@ def get_bench_params(b_template, name, sample_id, dataset, category):
     )
     return b
 
-
-def expand_configs(variants):
-    expanded_configs = []
-    for var in variants:
-        gconfigs = generate_method_configs(var, max_trials=var.get('max_samples', 1))
-        expanded_configs.extend(gconfigs)
-
-    return expanded_configs
 
 def generate_benchmark_configs(
     gdm: GlobalDataManager,

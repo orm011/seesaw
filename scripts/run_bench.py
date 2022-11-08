@@ -1,5 +1,6 @@
 import ray
 from seesaw.seesaw_bench import *
+from seesaw.configs import expand_configs
 import random
 import string
 import math
