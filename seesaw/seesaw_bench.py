@@ -578,74 +578,91 @@ def generate_method_configs(base_config, max_trials):
 
     return ans
 
-def gen_configs(
+import copy
+
+def get_session_params(s_template, config, index_meta):
+    s_template = copy.deepcopy(s_template)
+    config = copy.deepcopy(config)
+    s_merged = {**s_template,   **config}
+
+    prev_index_meta = s_merged.get('index_spec', {})
+    final_index_meta = {
+        **prev_index_meta,  # eg has index info
+        **index_meta, # eg has category and dataset info
+    }
+    s_merged['index_spec'] = final_index_meta
+    s = SessionParams(
+        **{k:v for (k,v) in s_merged.items()
+                if k in SessionParams.__fields__.keys()
+        }
+    )
+
+    return s
+
+def get_bench_params(b_template, name, sample_id, dataset, category):
+    copy.deepcopy(b_template)
+
+    update_b = {}
+    term = category2query(dataset, category)
+    qstr = b_template["query_template"].format(term)
+    update_b["qstr"] = qstr
+    update_b["ground_truth_category"] = category
+    
+    b = BenchParams(
+        **{
+            **b_template,
+            **update_b,
+            'name':name,
+            'sample_id':sample_id,
+        }
+    )
+    return b
+
+
+def expand_configs(variants):
+    expanded_configs = []
+    for var in variants:
+        gconfigs = generate_method_configs(var, max_trials=var.get('max_samples', 1))
+        expanded_configs.extend(gconfigs)
+
+    return expanded_configs
+
+def generate_benchmark_configs(
     gdm: GlobalDataManager,
     datasets,
-    variants,
+    base_configs,
     s_template: SessionParams,
     b_template: BenchParams,
     max_classes_per_dataset=math.inf,
 ):
-    configs = []
+    ans = []
     avail_datasets = gdm.list_datasets()
     for ddict in datasets:
         if isinstance(ddict , dict):
-            d = ddict['name']
+            dataset_name = ddict['name']
             cats = ddict.get('categories', [])
-
         else:
-            d = ddict
+            dataset_name = ddict
             cats = []
 
-        assert d in avail_datasets
-        ds = gdm.get_dataset(d)        
+        assert dataset_name in avail_datasets
+        ds = gdm.get_dataset(dataset_name)        
         classes = ds.load_eval_categories()
         if cats == []:
             cats = classes
 
-        for i, c in enumerate(cats):
-            assert c in classes
+        for i, category in enumerate(cats):
+            assert category in classes
             if i == max_classes_per_dataset:
                 break
-            for var in variants:
-                gconfigs = generate_method_configs(var, max_trials=var.get('max_samples', 1))
 
-                for i,config in enumerate(gconfigs):
-                    update_b = {}
-                    term = category2query(d, c)
-                    qstr = b_template["query_template"].format(term)
-                    update_b["qstr"] = qstr
-                    update_b["ground_truth_category"] = c
-                    b = BenchParams(
-                        **{
-                            **b_template,
-                            **update_b,
-                            **{
-                                k: v
-                                for (k, v) in config.items()
-                                if k in BenchParams.__fields__.keys()
-                            },
-                        }
-                    )
+            for i,config in enumerate(base_configs):
+                index_meta = dict(d_name=dataset_name, c_name=(category if dataset_name == 'lvis' else None))
+                s = get_session_params(s_template, config=config, index_meta=index_meta)
+                b = get_bench_params(b_template, name=config['name'], sample_id=config['sample_id'], dataset=dataset_name, category=category)
+                ans.append((b, s))
 
-                    s_merged = {
-                            **s_template,
-                            **config,
-                    }
-
-                    s_merged['index_spec'] = IndexSpec(
-                            d_name=d, i_name=s_merged["index_name"], c_name=(c if d == 'lvis' else None)
-                        )
-
-                    s = SessionParams(
-                        **{k:v for (k,v) in s_merged.items()
-                                if k in SessionParams.__fields__.keys()
-                            }
-                    )
-
-                    configs.append((b, s))
-    return configs
-
+    return ans
 
 def make_bench_actors(
     *, bench_constructor_args, actor_options, num_actors=None, timeout=20
