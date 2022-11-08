@@ -89,8 +89,10 @@ class GraphPlot:
                 #'Hot' | 'Blackbody' | 'Earth' | 'Electric' | 'Viridis' |
                 colorscale='YlGnBu',
                 reversescale=True,
-                color=[],
+#                color=[],
                 size=10,
+                cmin=0.,
+                cmax=1.,
                 colorbar=dict(
                     thickness=15,
                     title='Score',
@@ -144,6 +146,7 @@ class GraphPlot:
                 line_width=3))
     
         new_labels = self.X @ vector.reshape(-1)
+        self.node_trace.text = [f'{idx=} {score=:.03f}' for (idx,score) in zip(np.arange(self.X.shape[0]), new_labels) ]
         self.node_trace.marker.color = new_labels
         return self._show_plot([vec_node_trace])
         
@@ -151,5 +154,6 @@ class GraphPlot:
         if label_values is None:
             label_values = self.labels
             
+        self.node_trace.text = [f'{idx=} {score=:.03f}' for (idx,score) in zip(np.arange(self.X.shape[0]), label_values) ]
         self.node_trace.marker.color = label_values
         return self._show_plot()
