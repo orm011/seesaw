@@ -41,7 +41,7 @@ variants:
           choose: [1.]
         scale: centered
         reg_lambda: 
-          choose: [0.1, 1., 10.]
+          choose: [1.] #[0.1, 1., 10.]
         max_iter: 200.
         lr: 1.
         fit_intercept: false
@@ -130,4 +130,4 @@ variants:
         prior_weight: 
           choose: [1.] # good for unnormalized
         edist: 
-          choose: [.025, .05, .1, .2]
+          choose: [.05]

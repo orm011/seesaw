@@ -166,3 +166,29 @@ def expand_configs(variants):
         expanded_configs.extend(gconfigs)
 
     return expanded_configs
+
+
+import yaml
+## TODO: factor this out later.
+def get_session_params_from_yaml(config_name, dataset, index, 
+        config_path = '/home/gridsan/omoll/seesaw/scripts/configs/pseudo_label_lr.yaml'):
+    config = yaml.safe_load(open(config_path, 'r'))
+    s_template = config.get('shared_session_params', {})
+    ## find variant in config file
+    variants = config.get('variants',[])
+    variants = expand_configs(variants)
+
+
+    ans = None
+    for v in variants:
+        if v['name'] == config_name:
+            if ans is None:
+                ans = v
+            else: # keep checking for duplicates to avoid ambiguity
+                assert False, 'multiple configs with same name'
+
+    assert ans['name'] == config_name, 'did not find any variant with that name'
+    ## returns individual configs that can be used
+    index_meta = dict(d_name=dataset, i_name=index, c_name=None)
+    new_params = get_session_params(s_template, v, index_meta=index_meta)
+    return new_params

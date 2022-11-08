@@ -96,6 +96,7 @@ for key in g_queries.keys():
 app = FastAPI()
 app.router.route_class = ErrorLoggingRoute
 
+from seesaw.configs import get_session_params_from_yaml
 
 @app.post("/user_session", response_model=AppState)
 async def user_session(
@@ -120,7 +121,11 @@ async def user_session(
         new_session = True
     handle = await get_handle(session_id)
     if new_session:
-        new_params = session_params(mode, dataset, index)
+        if mode.startswith('yaml_'):
+            config_name = mode[len('yaml_'):]
+            new_params = get_session_params_from_yaml(config_name, dataset, index)
+        else:
+            new_params = session_params(mode, dataset, index)
         await handle._reset_dataset.remote(new_params)
 
     return await handle.getstate.remote()
