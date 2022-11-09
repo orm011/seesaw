@@ -1,15 +1,15 @@
 datasets:
-  - name: bdd
-  # - name: coco
-  # - name: lvis
-  # - name: objectnet
+  #- name: bdd
+  #- name: coco
+  - name: lvis
+  - name: objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
   index_options: 
     use_vec_index: False # for bdd and coco.
   index_spec : 
-      i_name: multiscalemed
+      i_name: multiscale
   agg_method: plain_score
   # agg_method: avg_score
   aug_larger: greater
@@ -21,8 +21,8 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    - name: baseline
-      interactive: plain
+    # - name: baseline
+    #   interactive: plain
     # - name: seesaw_all
     #   interactive: pytorch
     #   method_config: 
@@ -33,18 +33,18 @@ variants:
     #       num_epochs: 4
     #       model_type: cosine
     #       warm_start: warm
-    - name: log_reg2
-      max_samples: 10
-      interactive: log_reg2
-      interactive_options:
-        class_weights: 
-          choose: [1.]
-        scale: centered
-        reg_lambda: 
-          choose: [1.] #[0.1, 1., 10.]
-        max_iter: 200.
-        lr: 1.
-        fit_intercept: false
+    # - name: log_reg2
+    #   max_samples: 10
+    #   interactive: log_reg2
+    #   interactive_options:
+    #     class_weights: 
+    #       choose: [1.]
+    #     scale: centered
+    #     reg_lambda: 
+    #       choose: [1.] #[0.1, 1., 10.]
+    #     max_iter: 200.
+    #     lr: 1.
+    #     fit_intercept: false
     # - name: prop2logreg
     #   max_samples: 10
     #   interactive: switch_over
@@ -52,7 +52,7 @@ variants:
     #     method0:
     #       interactive: knn_prop2
     #       interactive_options:
-    #         self_edges : True
+    #         self_edges : 
     #         normalized_weights : False
     #         normalize_scores : False
     #         sigmoid_before_propagate: True
@@ -78,56 +78,56 @@ variants:
     #         max_iter: 200.
     #         lr: 1.
     #         fit_intercept: false
-    # - name: pseudo_lr_switch
-    #   max_samples: 10
-    #   interactive: pseudo_lr
-    #   interactive_options:
-    #     switch_over: True
-    #     real_sample_weight: 
-    #       choose: [1.]
-    #     sample_size: 
-    #       choose : [10000]
-    #     log_reg_params:
-    #       class_weights: 
-    #         choose: [1.]
-    #       scale: centered
-    #       reg_lambda: 
-    #         choose: [.3] 
-    #       max_iter: 200.
-    #       lr: 1
-    #       fit_intercept: false
-    #     label_prop_params:
-    #       self_edges : True
-    #       normalized_weights : False
-    #       normalize_scores : False
-    #       sigmoid_before_propagate: True
-    #       knn_k: 
-    #         choose: [20]
-    #       knn_path: nndescent60
-    #       calib_a: 
-    #         choose: [10.]
-    #       calib_b: 
-    #         choose: [-0.4]
-    #       prior_weight: 
-    #         choose: [1.] # good for unnormalized
-    #       edist: 
-    #         choose: [.05]
-    - name: knn_prop2
+    - name: pseudo_lr_switch
       max_samples: 10
-      interactive: knn_prop2
+      interactive: pseudo_lr
       interactive_options:
-        self_edges : True
-        normalized_weights : False
-        normalize_scores : False
-        sigmoid_before_propagate: True
-        knn_k: 
-          choose: [20]
-        knn_path: nndescent60
-        calib_a: 
-          choose: [10.]
-        calib_b: 
-          choose: [-0.4]
-        prior_weight: 
-          choose: [1.] # good for unnormalized
-        edist: 
-          choose: [.05]
+        switch_over: True
+        real_sample_weight: 
+          choose: [1.]
+        sample_size: 
+          choose : [10000]
+        log_reg_params:
+          class_weights: 
+            choose: [1.]
+          scale: centered
+          reg_lambda: 
+            choose: [.3] 
+          max_iter: 200.
+          lr: 1
+          fit_intercept: false
+        label_prop_params:
+          self_edges : False
+          normalized_weights : False
+          normalize_scores : False
+          sigmoid_before_propagate: True
+          knn_k: 
+            choose: [20]
+          knn_path: nndescent60
+          calib_a: 
+            choose: [10.]
+          calib_b: 
+            choose: [-0.4]
+          prior_weight: 
+            choose: [1.] # good for unnormalized
+          edist: 
+            choose: [.05]
+    # - name: knn_prop2
+    #   max_samples: 10
+    #   interactive: knn_prop2
+    #   interactive_options:
+    #     self_edges : False
+    #     normalized_weights : False
+    #     normalize_scores : False
+    #     sigmoid_before_propagate: True
+    #     knn_k: 
+    #       choose: [20]
+    #     knn_path: nndescent60
+    #     calib_a: 
+    #       choose: [10.]
+    #     calib_b: 
+    #       choose: [-0.4]
+    #     prior_weight: 
+    #       choose: [1.] # good for unnormalized
+    #     edist: 
+    #       choose: [.05]
