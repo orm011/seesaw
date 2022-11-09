@@ -670,7 +670,7 @@ class MultiscaleIndex(AccessMethod):
         topkidx = np.argsort(-dbscores)[:topk]
         return {
             "dbidxs": dbidxs[topkidx].astype("int"),
-            "activations": activations
+            "activations": [activations[idx] for idx in topkidx]
         }
 
     def new_query(self):
