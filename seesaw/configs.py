@@ -155,6 +155,8 @@ def generate_method_configs(base_config, max_trials):
         cfg = asdict(cfgelt)
         if len(seen_configs) > 1:
             cfg['sample_id'] = f"sample_{i:02d}"
+        else:
+            cfg['sample_id'] = None
         ans.append(cfg)
 
     return ans
