@@ -21,8 +21,8 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    # - name: baseline
-    #   interactive: plain
+    - name: baseline
+      interactive: plain
     # - name: seesaw_all
     #   interactive: pytorch
     #   method_config: 

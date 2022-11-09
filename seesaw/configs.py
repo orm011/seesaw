@@ -190,5 +190,5 @@ def get_session_params_from_yaml(config_name, dataset, index,
     assert ans['name'] == config_name, 'did not find any variant with that name'
     ## returns individual configs that can be used
     index_meta = dict(d_name=dataset, i_name=index, c_name=None)
-    new_params = get_session_params(s_template, v, index_meta=index_meta)
+    new_params = get_session_params(s_template, ans, index_meta=index_meta)
     return new_params

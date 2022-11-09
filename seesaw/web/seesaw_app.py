@@ -122,8 +122,10 @@ async def user_session(
     handle = await get_handle(session_id)
     if new_session:
         if mode.startswith('yaml_'):
+            print('reading session params from file')
             config_name = mode[len('yaml_'):]
             new_params = get_session_params_from_yaml(config_name, dataset, index)
+            print(new_params)
         else:
             new_params = session_params(mode, dataset, index)
         await handle._reset_dataset.remote(new_params)
