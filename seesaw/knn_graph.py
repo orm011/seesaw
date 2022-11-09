@@ -29,7 +29,7 @@ def knn_kernel(edist=2.1):
 
     return kernel
 
-def get_weight_matrix(df, kfun, self_edges=True, normalized=False) -> sp.coo_array:
+def get_weight_matrix(df, *, kfun, self_edges, normalized) -> sp.coo_array:
     n = df.src_vertex.unique().shape[0]
     
 
