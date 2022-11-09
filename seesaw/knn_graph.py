@@ -78,6 +78,9 @@ def get_weight_matrix(df, *, kfun, self_edges, normalized) -> sp.coo_array:
             
     assert np.isclose(out_w.sum(axis=0), out_w.sum(axis=1)).all(), 'expect symmetric in any scenario'
 
+    out_w  =  out_w.tocsr()
+    assert out_w.has_sorted_indices
+    
     return out_w
 
 def get_lookup_ranges(sorted_col, nvecs):

@@ -182,14 +182,9 @@ class LabelPropagation:
         self.reg_lambda = reg_lambda
         
         self.max_iter = max_iter
-        print('convert matrix to csr')
-        csr_format = weight_matrix.tocsr()
-        print('done converting to csr')
+
+        csr_format = weight_matrix
         assert csr_format.has_sorted_indices
-        # csr_format.sort_indices()
-        # print('done converting to csr. done sorting')
-        # csr_format.sum_duplicates()
-        # print('done summing duplicates')
         self.weight_matrix = csr_format
         
         self.reg_values = None
@@ -278,13 +273,13 @@ class LabelPropagationRanker2(BaseLabelPropagationRanker):
 
         kfun = rbf_kernel(self.edist)
         print('getting weight matrix')
-        self.weight_matrix = get_weight_matrix(knng.knn_df, kfun, self_edges=self_edges, normalized=normalized_weights)
+        self.weight_matrix = get_weight_matrix(knng.knn_df, kfun=kfun, self_edges=self_edges, normalized=normalized_weights)
         print('got weight matrix')
         common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=300, verbose=verbose)
         if knng_intra is None:
             self.lp = LabelPropagation(**common_params)
         else:
-            self.weight_matrix_intra = get_weight_matrix(knng_intra, kfun, self_edges=self_edges, normalized=normalized_weights)
+            self.weight_matrix_intra = get_weight_matrix(knng_intra, kfun=kfun, self_edges=self_edges, normalized=normalized_weights)
             self.lp = LabelPropagationComposite(weight_matrix_intra = self.weight_matrix_intra, **common_params)
     
     def _propagate(self,  scores):
