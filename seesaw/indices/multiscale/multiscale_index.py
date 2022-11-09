@@ -506,6 +506,8 @@ def _get_top_dbidxs(*, vec_idxs, scores, vector_meta, exclude, topk):
     df = pd.DataFrame({'dbidx':new_dbidx[pos], 'max_score':new_scores[pos]})    
     return df
 
+
+
 class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup"""
 
@@ -648,30 +650,8 @@ class MultiscaleIndex(AccessMethod):
         vectors = self.vectors[ilocs]
         scores = vectors @ qvec.reshape(-1)
         fullmeta = fullmeta.assign(score=scores, vectors=TensorArray(vectors))
+        return rescore_candidates(fullmeta, topk, **kwargs)
 
-        
-        nframes = len(candidate_id)
-        dbidxs = np.zeros(nframes) * -1
-        dbscores = np.zeros(nframes)
-        activations = []
-
-        ## for each frame, compute augmented scores for each tile and record max
-        for i, (dbidx, frame_meta) in enumerate(fullmeta.groupby("dbidx")):
-            dbidxs[i] = dbidx
-            tup = score_frame2(frame_meta, **kwargs)
-
-            frame_activations = tup[
-                ["x1", "y1", "x2", "y2", "dbidx", "score"]
-            ]
-
-            dbscores[i] = tup.score.iloc[0]
-            activations.append(frame_activations)
-
-        topkidx = np.argsort(-dbscores)[:topk]
-        return {
-            "dbidxs": dbidxs[topkidx].astype("int"),
-            "activations": [activations[idx] for idx in topkidx]
-        }
 
     def new_query(self):
         return BoxFeedbackQuery(self)
@@ -700,6 +680,32 @@ class MultiscaleIndex(AccessMethod):
             vector_meta=vector_meta,
             vec_index=None,
         )
+
+
+def rescore_candidates(fullmeta, topk, **kwargs):
+        nframes = fullmeta.dbidx.unique().shape[0]
+        dbidxs = np.zeros(nframes) * -1
+        dbscores = np.zeros(nframes)
+        activations = []
+
+        ## for each frame, compute augmented scores for each tile and record max
+        for i, (dbidx, frame_meta) in enumerate(fullmeta.groupby("dbidx")):
+            dbidxs[i] = dbidx
+            tup = score_frame2(frame_meta, **kwargs)
+
+            frame_activations = tup[
+                ["x1", "y1", "x2", "y2", "dbidx", "score"]
+            ]
+
+            dbscores[i] = tup.score.iloc[0]
+            activations.append(frame_activations)
+
+        topkidx = np.argsort(-dbscores)[:topk]
+        return {
+            "dbidxs": dbidxs[topkidx].astype("int"),
+            "activations": [activations[idx] for idx in topkidx]
+        }
+
 
 
 def add_iou_score(box_df: pd.DataFrame, roi_box_df: pd.DataFrame):

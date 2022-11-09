@@ -32,7 +32,7 @@ from .util import *
 from .pairwise_rank_loss import VecState
 from .query_interface import *
 from .research.knn_methods import KNNGraph, LabelPropagationRanker2, SimpleKNNRanker
-from .indices.multiscale.multiscale_index import _get_top_dbidxs, score_frame2
+from .indices.multiscale.multiscale_index import _get_top_dbidxs, rescore_candidates
 
 @dataclass
 class LoopState:
@@ -519,31 +519,15 @@ class KnnBased(LoopBase):
         candidates = _get_top_dbidxs(vec_idxs=sorted_idxs, scores=sorted_scores, 
                         vector_meta=q.index.vector_meta, exclude=q.returned, topk=p.shortlist_size)
 
-        raw_scores = s.knn_model.current_scores()
+        candidates = candidates.reset_index(drop=True)
+        vector_meta = q.index.vector_meta
 
-        frame_scores = np.zeros(candidates.shape[0])
-        activations = []
-        for (i,dbidx) in enumerate(candidates.dbidx.values):
-            meta_df = q.index.vector_meta.query(f'dbidx == {dbidx}')
-            meta_df = meta_df.assign(score=raw_scores[meta_df.index.values])
-            if meta_df.shape[0] == 1:
-                frame_scores[i] = meta_df.score.iloc[0]
-            else:
-                tup = score_frame2(meta_df, aug_larger=p.aug_larger, agg_method=p.agg_method)                
-                frame_scores[i] = tup.score.iloc[0]
-                activations.append(tup)
-
-        candidates = candidates.assign(frame_scores=frame_scores)
-        c = candidates.sort_values('frame_scores', ascending=False)
-
-        idxs = c.dbidx.iloc[:p.batch_size]
-        b  = {'dbidxs':idxs, 
-                'scores':c.frame_scores.iloc[:p.batch_size], 
-                'activations':None,
-            }
-
-        q.returned.update(idxs)        
-        return b
+        fullmeta = vector_meta[vector_meta.dbidx.isin(pr.BitMap(candidates.dbidx.values))]
+        vecs = TensorArray(q.index.vectors[fullmeta.index.values])
+        fullmeta = fullmeta.assign(vectors=vecs, score=s.knn_model.current_scores()[fullmeta.index.values])
+        ans =  rescore_candidates(fullmeta, topk=p.batch_size, **p.dict())
+        self.q.returned.update(ans['dbidxs'])
+        return ans
 
     def refine(self):
         # labels already added.
@@ -557,6 +541,7 @@ class KnnBased(LoopBase):
         s = self.state
         s.knn_model.update(idxs, labels)
 
+from ray.data.extensions import TensorArray
 
 class Session:
     current_dataset: str
