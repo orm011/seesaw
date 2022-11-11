@@ -105,8 +105,10 @@ class BaseDataset: # common interface for datasets and their subsets
     def load_ground_truth(self):
         raise NotImplementedError
 
+from .services import get_parquet
+
 class SeesawDataset(BaseDataset):
-    def __init__(self, dataset_path, cache=None):
+    def __init__(self, dataset_path):
         """Assumes layout created by create_dataset"""
         dataset_path = resolve_path(dataset_path)
         self.path = dataset_path
@@ -116,7 +118,6 @@ class SeesawDataset(BaseDataset):
         self.file_meta = file_meta
         self.paths = file_meta["file_path"].values
         self.image_root = os.path.realpath(f"{self.dataset_root}/images/")
-        self.cache = cache
 
     def size(self):
         return self.file_meta.shape[0]
@@ -208,13 +209,14 @@ class SeesawDataset(BaseDataset):
     def load_ground_truth(self):
         assert os.path.exists(f"{self.dataset_root}/ground_truth")
             
-        box_data = self.cache.read_parquet(
-            f"{self.dataset_root}/ground_truth/box_data.parquet"
+        box_data = get_parquet(
+            f"{self.dataset_root}/ground_truth/box_data.parquet",
+            parallelism=0, cache=True
         )
 
         qgt_path = f"{self.dataset_root}/ground_truth/qgt.parquet"
         if os.path.exists(qgt_path):
-            qgt = self.cache.read_parquet(qgt_path)
+            qgt = get_parquet(qgt_path, parallelism=0, cache=True)
             box_data, qgt = prep_ground_truth(self.paths, box_data, qgt)
             return box_data, qgt
         else: ## note: this will be wrong for subsets. TODO fix this.
