@@ -1,12 +1,9 @@
 import os
-from pydoc import resolve
 import subprocess
 import filelock
 
-
 def resolve_path(path):
     return os.path.normpath(os.path.realpath(os.path.expanduser(path)))
-
 
 PROJECT_ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.realpath(PROJECT_ROOT_DIR + "/../scripts/")
