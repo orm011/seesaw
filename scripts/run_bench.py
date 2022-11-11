@@ -1,20 +1,17 @@
-import ray
-from seesaw.seesaw_bench import *
-from seesaw.configs import expand_configs
 import random
 import string
 import math
 import yaml
 import argparse
-import ray.data
-from ray.data import ActorPoolStrategy
-
+import os
 parser = argparse.ArgumentParser("runs benchmark tests and stores metrics in folder")
 
 parser.add_argument(
     "--dryrun", action="store_true", help="run one benchmark locally per dataset"
 )
-parser.add_argument("--num_cpus", type=int, default=2, help="number of cpus per actor")
+parser.add_argument("--num_cpus", type=int, default=8, help="number of cpus per actor")
+
+parser.add_argument("--mem_gbs", type=int, default=12, help="amount of memory GB per actor")
 
 parser.add_argument(
     "--timeout", type=int, default=20, help="how long to wait for actor creation"
@@ -41,7 +38,14 @@ for path in args.configs:
     yl = yaml.safe_load(open(path, 'r'))
     yls.append(yl)
 
+
+from seesaw.configs import expand_configs
+import ray.data
+from ray.data import ActorPoolStrategy
+import ray
 ray.init("auto", namespace="seesaw", log_to_driver=False, ignore_reinit_error=True)
+
+from seesaw.seesaw_bench import *
 gdm = GlobalDataManager(args.root_dir)
 os.chdir(gdm.root)
 
@@ -115,7 +119,8 @@ else:
     def closure(): # put all actor stuff within scope so maybe it gets destroyed before getting summaries?
         random.shuffle(all_cfgs) # randomize task order to kind-of balance work
         ds = ray.data.from_items(all_cfgs, parallelism=1000)
-        actor_options = dict(num_cpus=args.num_cpus, memory=5 * (2**30))
+        memory = args.mem_gbs * (1024* 1024 * 1024)
+        actor_options = dict(num_cpus=args.num_cpus, memory=memory)
         ## use a small batch size so that maybe failures affect as few classes as possible?
         _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(10,300), **actor_options).take_all()
 
