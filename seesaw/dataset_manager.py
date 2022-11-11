@@ -1,12 +1,9 @@
-from .memory_cache import CacheStub
 from .query_interface import AccessMethod
 import os
 from .dataset import SeesawDataset
 from .basic_types import IndexSpec, SessionParams
 
 class GlobalDataManager:
-    global_cache: CacheStub
-
     def __init__(self, root):
         root = os.path.abspath(os.path.expanduser(root))
         if not os.path.exists(root):
@@ -18,7 +15,6 @@ class GlobalDataManager:
         self.root = root
         self.data_root = f"{root}/data/"
         self.model_root = f"{root}/models/"
-        self.global_cache = CacheStub("actor#cache")
 
         paths = [self.data_root, self.model_root]
         for p in paths:
@@ -29,7 +25,7 @@ class GlobalDataManager:
 
     def get_dataset(self, dataset_name) -> SeesawDataset:
         dataset_path = f"{self.root}/data/{dataset_name}"
-        return SeesawDataset(dataset_path, cache=self.global_cache)
+        return SeesawDataset(dataset_path)
         
     def __repr__(self):
         return f"{self.__class__.__name__}({self.root})"
