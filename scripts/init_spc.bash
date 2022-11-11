@@ -15,11 +15,11 @@ SIGFILE="$HOME/ray2.head"
 echo 'stopping previous ray if any'
 ray stop
 echo '' > $SIGFILE
-sleep 5
+sleep 1
 
 bash +x $DIR/start_worker.bash --head 
 
-sleep 5
+# sleep 5
 
 python -c 'import ray; ray.init("auto", namespace="seesaw"); print(ray.available_resources());'
 ray status
