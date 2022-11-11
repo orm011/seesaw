@@ -470,7 +470,7 @@ def _summarize(res, parallel):
 def get_all_session_summaries(base_dir, force_recompute=False, parallel=True):
     sumpath = base_dir + "/summary.parquet"
     if not os.path.exists(sumpath) or force_recompute:
-        res = load_session_data(base_dir)
+        res = load_session_data(base_dir, parallelism=10 if parallel else 1)
         df = _summarize(res, parallel=parallel)
         df.to_parquet(sumpath)
 

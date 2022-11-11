@@ -125,7 +125,8 @@ else:
         _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(10,300), **actor_options).take_all()
 
     closure()
-
+    print('waiting a few seconds before running summary process')
+    time.sleep(10)
 
 print("done with benchmark.")
 print(f"benchmark results are in:\n/{results_dir}")
