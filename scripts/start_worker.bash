@@ -43,7 +43,8 @@ else
             if [[ $USER == omoll && $HEAD_NODE != '' ]]; # im using virtual env rather than default evnv.
             then 
                 # copy environment first
-                rsync -rlugvR --exclude="pkgs/*" --delete $HEAD_NODE:/state/partition1/user/omoll/miniconda3/
+                rsync -rlugv --delete --exclude-from /home/gridsan/omoll/rsync_conda_exclude  $HEAD_NODE:/state/partition1/user/omoll/miniconda3/ /state/partition1/user/omoll/miniconda3/
+                # rsync -rlugvR --exclude="pkgs/*" --delete $HEAD_NODE:/state/partition1/user/omoll/miniconda3/
                 # set +x
                 # source /state/partition1/user/omoll/venvs/seesaw/bin/activate
                 # set -x
