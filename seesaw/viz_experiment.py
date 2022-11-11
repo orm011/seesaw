@@ -5,6 +5,7 @@ from .knn_graph import compute_exact_knn, get_weight_matrix, rbf_kernel
 from sklearn.decomposition import PCA
 import plotly.graph_objects as go
 import numpy as np
+from sklearn.preprocessing import quantile_transform
 
 class MixtureModelDistribution:
     def __init__(self,*, n_dim, n_classes, unit_length=True):
@@ -47,7 +48,7 @@ class GraphPlot:
         ## want to show what happens to pseudo labels after finding a negative result
         # only used for making plot. use a different one for your own parameters
         Xplot = self.Xplot
-        tmp_wmat = get_weight_matrix(self.knng, rbf_kernel(.2), self_edges=False)
+        tmp_wmat = get_weight_matrix(self.knng, kfun=rbf_kernel(.2), self_edges=False, normalized=False)
         edge_x = []
         edge_y = []
         iis, jjs = tmp_wmat.nonzero()
@@ -91,8 +92,8 @@ class GraphPlot:
                 reversescale=True,
 #                color=[],
                 size=10,
-                cmin=0.,
-                cmax=1.,
+                # cmin=0.,
+                # cmax=1.,
                 colorbar=dict(
                     thickness=15,
                     title='Score',
@@ -147,12 +148,18 @@ class GraphPlot:
     
         new_labels = self.X @ vector.reshape(-1)
         self.node_trace.text = [f'{idx=} {score=:.03f}' for (idx,score) in zip(np.arange(self.X.shape[0]), new_labels) ]
+
+        new_labels = quantile_transform(new_labels.reshape(-1,1)).reshape(-1)
         self.node_trace.marker.color = new_labels
+
         return self._show_plot([vec_node_trace])
         
-    def plot_labels(self, label_values=None):
+    def plot_labels(self, label_values=None, use_quantiles=True):
         if label_values is None:
             label_values = self.labels
+
+        if use_quantiles:
+            label_values = quantile_transform(label_values.reshape(-1,1)).reshape(-1)
             
         self.node_trace.text = [f'{idx=} {score=:.03f}' for (idx,score) in zip(np.arange(self.X.shape[0]), label_values) ]
         self.node_trace.marker.color = label_values
