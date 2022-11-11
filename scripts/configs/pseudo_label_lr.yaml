@@ -22,113 +22,114 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    - name: baseline
-      interactive: plain
-    # - name: seesaw_all
-    #   interactive: pytorch
-    #   method_config: 
-    #       minibatch_size: 1000
-    #       learning_rate: 0.01
-    #       max_examples: 1000
-    #       loss_margin: 0.02
-    #       num_epochs: 4
-    #       model_type: cosine
-    #       warm_start: warm
-    - name: log_reg2
-      max_samples: 10
-      interactive: log_reg2
-      interactive_options:
-        class_weights: 
-          choose: [1.]
-        scale: centered
-        reg_lambda: 
-          choose: [1.] #[0.1, 1., 10.]
-        max_iter: 200.
-        lr: 1.
-        fit_intercept: false
-    - name: prop2logreg
-      max_samples: 10
-      interactive: switch_over
-      interactive_options:
-        method0:
-          interactive: knn_prop2
-          interactive_options:
-            self_edges : False
-            normalized_weights : False
-            normalize_scores : False
-            sigmoid_before_propagate: True
-            knn_k: 
-              choose: [20]
-            knn_path: nndescent60
-            calib_a: 
-              choose: [10.]
-            calib_b: 
-              choose: [-0.4]
-            prior_weight: 
-              choose: [1.] # good for unnormalized
-            edist: 
-              choose: [.05]
-        method1:
-          interactive: log_reg2
-          interactive_options:
-            class_weights: 
-              choose: [1.]
-            scale: centered
-            reg_lambda: 
-              choose: [1.]
-            max_iter: 200.
-            lr: 1.
-            fit_intercept: false
-    - name: pseudo_lr_switch
-      max_samples: 10
-      interactive: pseudo_lr
-      interactive_options:
-        switch_over: True
-        real_sample_weight: 
-          choose: [1.]
-        sample_size: 
-          choose : [10000]
-        log_reg_params:
-          class_weights: 
-            choose: [1.]
-          scale: centered
-          reg_lambda: 
-            choose: [.3] 
-          max_iter: 200.
-          lr: 1
-          fit_intercept: false
-        label_prop_params:
-          self_edges : False
-          normalized_weights : False
-          normalize_scores : False
-          sigmoid_before_propagate: True
-          knn_k: 
-            choose: [20]
-          knn_path: nndescent60
-          calib_a: 
-            choose: [10.]
-          calib_b: 
-            choose: [-0.4]
-          prior_weight: 
-            choose: [1.] # good for unnormalized
-          edist: 
-            choose: [.05]
+    # - name: baseline
+    #   interactive: plain
+    # # - name: seesaw_all
+    # #   interactive: pytorch
+    # #   method_config: 
+    # #       minibatch_size: 1000
+    # #       learning_rate: 0.01
+    # #       max_examples: 1000
+    # #       loss_margin: 0.02
+    # #       num_epochs: 4
+    # #       model_type: cosine
+    # #       warm_start: warm
+    # - name: log_reg2
+    #   max_samples: 10
+    #   interactive: log_reg2
+    #   interactive_options:
+    #     class_weights: 
+    #       choose: [1.]
+    #     scale: centered
+    #     reg_lambda: 
+    #       choose: [1.] #[0.1, 1., 10.]
+    #     max_iter: 200.
+    #     lr: 1.
+    #     fit_intercept: false
+    # - name: prop2logreg
+    #   max_samples: 10
+    #   interactive: switch_over
+    #   interactive_options:
+    #     method0:
+    #       interactive: knn_prop2
+    #       interactive_options:
+    #         self_edges : False
+    #         normalized_weights : False
+    #         normalize_scores : False
+    #         sigmoid_before_propagate: True
+    #         knn_k: 
+    #           choose: [20]
+    #         knn_path: nndescent60
+    #         calib_a: 
+    #           choose: [10.]
+    #         calib_b: 
+    #           choose: [-0.4]
+    #         prior_weight: 
+    #           choose: [1.] # good for unnormalized
+    #         edist: 
+    #           choose: [.05]
+    #     method1:
+    #       interactive: log_reg2
+    #       interactive_options:
+    #         class_weights: 
+    #           choose: [1.]
+    #         scale: centered
+    #         reg_lambda: 
+    #           choose: [1.]
+    #         max_iter: 200.
+    #         lr: 1.
+    #         fit_intercept: false
+    # - name: pseudo_lr_switch
+    #   max_samples: 10
+    #   interactive: pseudo_lr
+    #   interactive_options:
+    #     switch_over: True
+    #     real_sample_weight: 
+    #       choose: [1.]
+    #     sample_size: 
+    #       choose : [10000]
+    #     log_reg_params:
+    #       class_weights: 
+    #         choose: [1.]
+    #       scale: centered
+    #       reg_lambda: 
+    #         choose: [.3] 
+    #       max_iter: 200.
+    #       lr: 1
+    #       fit_intercept: false
+    #     label_prop_params:
+    #       self_edges : False
+    #       normalized_weights : False
+    #       normalize_scores : False
+    #       sigmoid_before_propagate: True
+    #       knn_k: 
+    #         choose: [20]
+    #       knn_path: nndescent60
+    #       calib_a: 
+    #         choose: [10.]
+    #       calib_b: 
+    #         choose: [-0.4]
+    #       prior_weight: 
+    #         choose: [1.] # good for unnormalized
+    #       edist: 
+    #         choose: [.05]
     - name: knn_prop2
       max_samples: 10
       interactive: knn_prop2
       interactive_options:
-        self_edges : False
-        normalized_weights : False
+        matrix_options:
+          knn_path: nndescent60
+          self_edges : False
+          normalized_weights : False
+          knn_k: 
+            choose: [5, 10]
+          edist: 
+            choose: [.0125, .025, .05]
         normalize_scores : False
-        sigmoid_before_propagate: True
-        knn_k: 
-          choose: [20]
-        knn_path: nndescent60
+        sigmoid_before_propagate: True  
         calib_a: 
           choose: [10.]
         calib_b: 
           choose: [-0.4]
         prior_weight: 
           choose: [1.] # good for unnormalized
-        edist: 
-          choose: [.05]

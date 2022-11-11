@@ -101,10 +101,10 @@ def normalize_scores(scores, epsilon):
 
 
 class BaseLabelPropagationRanker:
-    def __init__(self, *, knng : KNNGraph, normalize_scores, sigmoid_before_propagate, calib_a, calib_b, prior_weight, edist, normalize_epsilon = None, **other):
+    def __init__(self, *, knng : KNNGraph, nvecs, normalize_scores, sigmoid_before_propagate, calib_a, calib_b, 
+                    prior_weight, normalize_epsilon = None, **other):
         self.knng = knng
-        self.nvecs = knng.nvecs
-        nvecs = self.nvecs
+        self.nvecs = nvecs
         self.normalize_scores = normalize_scores
 
         if self.normalize_scores:
@@ -114,7 +114,6 @@ class BaseLabelPropagationRanker:
         self.calib_a = calib_a
         self.calib_b = calib_b
         self.prior_weight = prior_weight
-        self.edist = edist
         self.sigmoid_before_propagate = sigmoid_before_propagate
 
         self.is_labeled = np.zeros(nvecs)
@@ -263,24 +262,24 @@ class LabelPropagationComposite(LabelPropagation):
         new_fvalues[label_ids] = label_values
         return new_fvalues
 
-
 class LabelPropagationRanker2(BaseLabelPropagationRanker):
     lp : LabelPropagation
 
-    def __init__(self, *, knng_intra : KNNGraph = None, knng : KNNGraph, self_edges : bool, normalized_weights : bool, verbose : int = 0, **other):
-        super().__init__(knng=knng, **other)
-        self.knng_intra = knng_intra
+    def __init__(self, *, weight_matrix : sp.csr_array, verbose : int = 0, **other):
+        nvecs = weight_matrix.shape[0]
+        super().__init__(knng=None, nvecs=nvecs, **other)
+        self.knng_intra = None #knng_intra
 
-        kfun = rbf_kernel(self.edist)
-        print('getting weight matrix')
-        self.weight_matrix = get_weight_matrix(knng.knn_df, kfun=kfun, self_edges=self_edges, normalized=normalized_weights)
-        print('got weight matrix')
+        self.weight_matrix = weight_matrix
+        
         common_params = dict(reg_lambda = self.prior_weight, weight_matrix=self.weight_matrix, max_iter=300, verbose=verbose)
-        if knng_intra is None:
-            self.lp = LabelPropagation(**common_params)
-        else:
-            self.weight_matrix_intra = get_weight_matrix(knng_intra, kfun=kfun, self_edges=self_edges, normalized=normalized_weights)
-            self.lp = LabelPropagationComposite(weight_matrix_intra = self.weight_matrix_intra, **common_params)
+        self.lp = LabelPropagation(**common_params)
+
+        # assert knng_intra is None
+        # if knng_intra is None:
+        # else:
+        #     self.weight_matrix_intra = get_weight_matrix(knng_intra, kfun=kfun, self_edges=self_edges, normalized=normalized_weights)
+        #     self.lp = LabelPropagationComposite(weight_matrix_intra = self.weight_matrix_intra, **common_params)
     
     def _propagate(self,  scores):
         ids = np.nonzero(self.is_labeled.reshape(-1))

@@ -1,4 +1,5 @@
 import json
+from seesaw.knn_graph import get_weight_matrix, rbf_kernel
 
 from torch import index_fill
 from seesaw.query_interface import AccessMethod
@@ -377,6 +378,52 @@ def makeXy(idx, lr, sample_size, pseudoLabel=True):
         
     return X,y,is_real
 
+
+
+from pydantic import BaseModel
+
+class WeightMatrixOptions(BaseModel):
+    knn_path : str
+    knn_k : int
+    edist : float
+    self_edges : bool
+    normalized_weights : bool
+
+def clean_path(path):
+    return os.path.normpath(os.path.abspath(os.path.realpath(path)))
+
+import scipy.sparse as sp
+from seesaw.services import _cache_closure
+
+def lookup_weight_matrix(opts : WeightMatrixOptions, use_cache : bool) -> sp.csr_array:
+    key = opts.json()
+    def init():
+        print(f'init weight matrix {opts=}')
+        knng = KNNGraph.from_file(opts.knn_path)
+        knng = knng.restrict_k(k=opts.knn_k)
+        wm = get_weight_matrix(knng.knn_df, 
+                            kfun=rbf_kernel(opts.edist),
+                            self_edges=opts.self_edges, 
+                            normalized=opts.normalized_weights)
+        return wm
+
+    return _cache_closure(init, key=key, use_cache=use_cache)
+
+def get_label_prop(q, label_prop_params):
+    opts = WeightMatrixOptions(**label_prop_params['matrix_options'])
+    knn_path = clean_path(q.index.get_knng_path(name=opts.knn_path))
+    opts.knn_path = knn_path # replace with full pat
+
+    use_cache = True
+    if knn_path.find('subset') > -1:
+        use_cache = False
+
+    weight_matrix = lookup_weight_matrix(opts, use_cache=use_cache)
+    label_prop = LabelPropagationRanker2(weight_matrix=weight_matrix, **label_prop_params)
+    return label_prop
+
+
+
 class PseudoLabelLR(PointBased):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
         super().__init__(gdm, q, params)
@@ -387,11 +434,7 @@ class PseudoLabelLR(PointBased):
         self.real_sample_weight = self.options['real_sample_weight']
         assert self.real_sample_weight >= 1.
 
-        knng_path = q.index.get_knng_path(self.label_prop_params['knn_path'])
-        knng = KNNGraph.from_file(knng_path)
-        self.knng_sym = knng.restrict_k(k=self.label_prop_params['knn_k'])
-        label_prop = LabelPropagationRanker2(knng=self.knng_sym, **self.label_prop_params)
-
+        label_prop = get_label_prop(q, label_prop_params=self.label_prop_params)
         self.knn_based = KnnBased(gdm, q, params, knn_model = label_prop)
 
     def set_text_vec(self, tvec):
@@ -467,6 +510,8 @@ class SwitchOver(LoopBase):
         else:
             return self.method0.next_batch()
 
+
+
 class KnnBased(LoopBase):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams, knn_model):
         super().__init__(gdm, q, params)
@@ -474,28 +519,15 @@ class KnnBased(LoopBase):
 
     @staticmethod
     def from_params(gdm, q, p: SessionParams):
-        knng_path = q.index.get_knng_path(name=p.interactive_options.get('knn_path', ''))
-        knng = KNNGraph.from_file(knng_path)
-        knng = knng.restrict_k(k=p.interactive_options['knn_k'])
-
-        assert q.index.vectors.shape[0] == knng.nvecs
-
-        if p.interactive == 'knn_greedy':
-            knn_model = SimpleKNNRanker(knng, init_scores=None)
-        elif p.interactive == 'knn_prop2':
+        if p.interactive == 'knn_prop2':
+            knn_model = get_label_prop(q, p.interactive_options)
+        elif p.interactive == 'knn_prop2stage':
             intra_knn_k = p.interactive_options.get('intra_knn_k', 0)
-            if  intra_knn_k > 0:
-                assert False
-                print('using composite prop')
-                knng_path_frame = knng_path + '/frame_sym.parquet'
-                knn_df_frame = parallel_read_parquet(knng_path_frame)
-                knng_frame = KNNGraph(knn_df = knn_df_frame, nvecs=knng.nvecs)
-                knng_frame = knng_frame.restrict_k(k=intra_knn_k)
-            else:
-                print('using simple prop')
-                knng_frame = None
-                # knng_frame= knng_frame.restrict_k(k=p.interactive_options['knn_k'])
-            knn_model = LabelPropagationRanker2(knng_intra=knng_frame, knng=knng, **p.interactive_options)
+            print('using composite prop')
+            knng_path_frame = knng_path + '/frame_sym.parquet'
+            knn_df_frame = parallel_read_parquet(knng_path_frame)
+            knng_frame = KNNGraph(knn_df = knn_df_frame, nvecs=knng.nvecs)
+            knng_frame = knng_frame.restrict_k(k=intra_knn_k)
         else:
             assert False
 
