@@ -1,34 +1,55 @@
 from seesaw.util import parallel_read_parquet
 from .definitions import resolve_path
-from .memory_cache import CacheStub
+from .memory_cache import LocalCache
 from .models.embeddings import ModelStub, HGWrapper
 import pandas as pd
-import ray
 
-def get_cache() -> CacheStub:
-    return CacheStub("actor#cache")
+_cache = None # initialize lazily so we can use the same functions 
+# with or without a cache. 
+def _get_cache() -> LocalCache:
+    # import ray
+    # ray.init('auto', namespace='seesaw', log_to_driver=False, ignore_reinit_error=True)
+    global _cache
+    if _cache is None:
+        _cache = LocalCache("actor#cache")
+    
+    return _cache
 
-def get_parquet(parquet_path: str, columns = None, parallelism=-1, cache=True) -> pd.DataFrame:
-    if cache:
-        cache = get_cache()
-        return cache.read_parquet(parquet_path, columns, parallelism=parallelism)
+def _cache_closure(closure, *, key: str, use_cache : bool):
+    if use_cache:
+        cache = _get_cache()
+        return cache.get_or_initialize(key, closure)
     else:
-        return parallel_read_parquet(parquet_path, columns, parallelism=parallelism)
+        return closure()
 
-def get_model_actor(model_path: str) -> ModelStub:
+def get_parquet(path: str, columns=None, parallelism=-1, cache=True) -> pd.DataFrame:
+    ## todo: columns are a buggy argument for cache
+    path = resolve_path(path)
+    def _init_fun():
+        return parallel_read_parquet(path, columns, parallelism = parallelism)
+    return _cache_closure(_init_fun, key=path, use_cache=cache)
+
+def read_state_dict(path: str, jit: bool, use_cache = True) -> dict:
+    import torch
+    path = resolve_path(path)
+    def _init_fun():
+        if jit:
+            return torch.jit.load(path, map_location="cpu").state_dict()
+        else:  # the result of a torch load could already be a state dict, right?
+            mod = torch.load(path, map_location="cpu")
+            if isinstance(mod, torch.nn.Module):
+                return mod.state_dict()
+            else:  # not sure what else to do here
+                return mod
+    
+    return _cache_closure(_init_fun, key=path, use_cache=use_cache)
+
+def get_model_actor(model_path : str) -> ModelStub:
     import ray
-
     model_path = resolve_path(model_path)
-    actor_name = f"/model_actor#{model_path}"  # the slash is important
-    try:
-        ref = ray.get_actor(actor_name)
-        return ModelStub(ref)
-    except ValueError as e:
-        pass  # will create instead
+    key = f"model_actor#{model_path}" 
 
-    def _init_model_actor():
-        full_path = model_path
-
+    def initializer():
         if ray.cluster_resources().get("GPU", 0) == 0:
             device = "cpu"
             num_gpus = 0
@@ -41,22 +62,17 @@ def get_model_actor(model_path: str) -> ModelStub:
         r = (
             ray.remote(HGWrapper)
             .options(
-                name=actor_name,
+                name=key,
                 num_gpus=num_gpus,
                 num_cpus=num_cpus,
                 lifetime="detached",
             )
-            .remote(path=full_path, device=device, num_cpus=num_cpus)
+            .remote(path=model_path, device=device, num_cpus=num_cpus)
         )
 
         # wait for it to be ready
         ray.get(r.ready.remote())
         return r
-
-    # we're using the cache just as a lock
-    global_cache = get_cache()
-    global_cache._with_lock(actor_name, _init_model_actor)
-
-    # must succeed now...
-    ref = ray.get_actor(actor_name)
-    return ModelStub(ref)
+    
+    model_ref = _cache_closure(initializer, key=key, use_cache=True)
+    return ModelStub(model_ref)

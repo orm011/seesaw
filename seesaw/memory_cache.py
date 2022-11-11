@@ -1,7 +1,8 @@
-import os
-import pandas as pd
 import ray
-
+import time
+import ray
+import ray.actor
+from typing import Union, Dict
 
 class WrappedRef:
     def __init__(self, ref):
@@ -10,10 +11,10 @@ class WrappedRef:
 
 
 class ReferenceCache:
-    mapping: dict
+    mapping: Dict[str, Union[int, WrappedRef]]
     """
     global store for reference to paths (outlives any single session)
-  """
+    """
 
     def __init__(self):
         self.mapping = {}
@@ -21,125 +22,73 @@ class ReferenceCache:
     def ready(self):
         return True
 
-    def savepath(self, path: str, wrapped_ref: WrappedRef):
-        assert path in self.mapping
-        assert self.mapping[path] is None
-        assert wrapped_ref is not None
-        assert wrapped_ref.ref is not None
-        assert isinstance(wrapped_ref.ref, ray.ObjectRef)
-        self.mapping[path] = wrapped_ref
+    def get_or_lock(self, key:str) -> Union[int, WrappedRef]:
+        ## returns value or locks key
+        ans = self.mapping.get(key, -1)
+        if ans == -1: # increment counter so the first caller gets a different value
+            self.mapping[key] = 0
+        return ans
 
-    def pathstate(self, path: str, lock=False) -> bool:
-        if path not in self.mapping:
-            if lock:
-                self.mapping[path] = None
-            return -1  # not loaded.
-        elif self.mapping[path] == None:
-            return 0  # loading
-        else:
-            return 1  # loaded
+    def put(self, key:str, value: WrappedRef):
+        if self.mapping.get(key, -1) != 0:
+            print(f'Warning: ignoring illegal put on {key=}')
+        
+        if value is None or value.ref is None or not isinstance(value.ref, ray.ObjectRef):
+            print(f'Warning: value {value=} is not valid')
 
-    def release(self, path: str):
-        if self.pathstate(path, lock=False) == 0:
-            print("releasing lock for uninitialized")
-            # if half-initialized, remove
-            del self.mapping[path]
-        else:
-            print("release for", path)
+        self.mapping[key] = value
+
+    def release_if_locked(self, key: str):
+        if self.mapping.get(key,-1) == 0:
+            print(f"deleting locked entry for {key=}")
+            del self.mapping[key]
 
     def print_map(self):
         print(self.mapping)
 
-    def getobject(self, path: str) -> WrappedRef:
-        assert path in self.mapping and self.mapping[path] is not None, path
-        return self.mapping[path]
 
-    def releaseref(self, path: str, ref: ray.ObjectRef):
-        pass
-
-
-import torch
-import time
-import copy
-import json
-import numpy as np
-from .util import parallel_read_parquet
-
-
-class CacheStub:
+class ReferenceCacheStub:
+    ## stub methods: identical semantics to remote
     handle: ray.actor.ActorHandle
 
-    def __init__(self, actor_name: str):
-        self.local = {}
-        self.handle = ray.get_actor(actor_name)
+    def __init__(self, handle):
+        self.handle = handle
 
-    def savepath(self, path: str, obj):
-        print(f"saving reference to {path}")
-        std_path = os.path.normpath(os.path.realpath(path))
-        assert std_path not in self.local
-        ref = ray.put(obj, _owner=self.handle)
-        return ray.get(self.handle.savepath.remote(std_path, WrappedRef(ref)))
+    def get_or_lock(self, key:str) -> Union[int, WrappedRef]:
+        return ray.get(self.handle.get_or_lock.remote(key))
 
-    def _release(self, path: str):
-        std_path = os.path.normpath(os.path.realpath(path))
-        return ray.get(self.handle.release.remote(std_path))
+    def put(self, key : str, value : WrappedRef):
+        ray.get(self.handle.put.remote(key, value))
 
-    def pathstate(self, path: str, lock=False) -> int:
-        std_path = os.path.normpath(os.path.realpath(path))
-        if std_path in self.local:
-            return 1
+    def release_if_locked(self, key : str):
+        ray.get(self.handle.release_if_locked.remote(key))
 
-        return ray.get(self.handle.pathstate.remote(std_path, lock))
 
-    def getobject(
-        self, path: str
-    ):  # for some reason this returns the actual object... and not a ref like i thought
-        std_path = os.path.normpath(os.path.realpath(path))
-        if std_path in self.local:
-            return self.local[std_path]
+class LocalCache:
+    def __init__(self, cache_actor_name):
+        handle = ray.get_actor(cache_actor_name)
+        self.remote_cache = ReferenceCacheStub(handle)
+        self.mapping = {}
 
-        wref = ray.get(self.handle.getobject.remote(std_path))
-        assert isinstance(wref, WrappedRef)
-        assert wref is not None
-        obj = ray.get(wref.ref)
-        self.local[std_path] = obj
-        return obj
-
-    def _with_lock(self, path: str, init_fun):
+    def get_or_initialize(self, key:str, initializer_function):
         while True:
-            state = self.pathstate(path, lock=True)
-            if state == -1:  # only one process will see this
-                try:
-                    obj = init_fun()
-                    self.savepath(path, obj)
-                finally:  # in case interrupted/killed etc.
-                    self._release(path)
-            elif state == 0:  # someone else is loading, cannot call yet
-                print(f"{path} is locked by someone else... waiting")
-                time.sleep(1)
-            elif state == 1:  # common case
-                obj = self.getobject(path)
-                break
-            else:
-                assert False, "unknown cache state"
-
-        return obj
-
-    def read_parquet(self, path: str, columns=None, parallelism=-1):
-        def _init_fun():
-            return parallel_read_parquet(path, columns, parallelism = parallelism)
-
-        return self._with_lock(path, _init_fun)
-
-    def read_state_dict(self, path: str, jit: bool):
-        def _init_fun():
-            if jit:
-                return torch.jit.load(path, map_location="cpu").state_dict()
-            else:  # the result of a torch load could already be a state dict, right?
-                mod = torch.load(path, map_location="cpu")
-                if isinstance(mod, torch.nn.Module):
-                    return mod.state_dict()
-                else:  # not sure what else to do here
-                    return mod
-
-        return self._with_lock(path, _init_fun)
+            if key in self.mapping:
+                return self.mapping.get(key)
+            
+            try:
+                ans = self.remote_cache.get_or_lock(key)
+                if isinstance(ans, WrappedRef): # got remote value
+                    obj = ray.get(ans.ref)
+                    self.mapping[key] = obj
+                elif ans == -1: # got lock
+                    print(f'initializing {key=}')
+                    obj = initializer_function()
+                    obj_ref = ray.put(obj, _owner=self.remote_cache.handle)
+                    self.remote_cache.put(key, WrappedRef(obj_ref))
+                elif ans == 0: # someone else is initializing
+                    print(f'waiting for other process to initialize {key=}')
+                    time.sleep(1)
+                else:
+                    assert False, 'unkown case'
+            finally: # in case something went wrong
+                self.remote_cache.release_if_locked(key)
