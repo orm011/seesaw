@@ -198,12 +198,11 @@ class LabelPropagation:
 
         # we have seen bugs where the values seem to diverge due to faulty normalization.
         ## each final score is a weighted average of all the neighbors and its prior. therefore it is always within the two extremes
+        low_bound = min(0, self.reg_values.min())
+        high_bound = max(1., self.reg_values.max())
 
-        lower_bounds = np.minimum(old_fvalues.min(), self.reg_values)
-        upper_bounds = np.maximum(old_fvalues.max(), self.reg_values)
-
-        assert (lower_bounds <= new_fvalues).all(), 'propgation should smoothen scores toward the middle. check weights'
-        assert (new_fvalues <= upper_bounds).all(), 'averaged scores should lie within previous scores. check weights '
+        assert (new_fvalues >= low_bound).all(), 'averaged scores should lie at or above 0'
+        assert (new_fvalues <= high_bound).all(), 'averaged scores should lie at or below 1'
 
         new_fvalues[label_ids] = label_values
         return new_fvalues
