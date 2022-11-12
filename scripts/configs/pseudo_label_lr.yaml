@@ -1,16 +1,16 @@
 datasets:
-  - name: bdd
-  - name: coco
-  # - name: lvis
-  # - name: objectnet
+  # - name: bdd
+  # - name: coco
+  - name: lvis
+  - name: objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
   index_options: 
     use_vec_index: False # for bdd and coco.
   index_spec : 
-      # i_name: multiscale
-      i_name: multiscalemed
+      i_name: multiscale
+      # i_name: multiscalemed
   agg_method: plain_score
   # agg_method: avg_score
   aug_larger: greater
@@ -122,9 +122,9 @@ variants:
           self_edges : False
           normalized_weights : False
           knn_k: 
-            choose: [5, 10]
+            choose: [10]
           edist: 
-            choose: [.0125, .025, .05]
+            choose: [.0062, .0125, .025, .05]
         normalize_scores : False
         sigmoid_before_propagate: True  
         calib_a: 
