@@ -156,8 +156,8 @@ def make_labeler(fmt_func):
     return fun
 
 def pivot_metric(stats, metric):
-    rest = stats[['dataset', 'category', 'variant', metric]]
-    return rest.pivot(index=['dataset', 'category'], columns='variant', values=metric,)
+    rest = stats[['dataset', 'category', 'variant', 'sample_id', metric]]
+    return rest.pivot(index=['dataset', 'category'], columns=['variant', 'sample_id'], values=metric,)
 
 # this case excludes case where there is nan or both are infinity
 def compare_method_pair(sbs, *, method_name, reference_name, epsilon = .01):
