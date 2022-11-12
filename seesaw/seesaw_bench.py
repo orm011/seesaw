@@ -386,19 +386,18 @@ class BenchRunner(object):
 import glob
 
 
-def get_metric_summary(res: BenchResult):
+def summarize_session(res: BenchResult):
     session = res.session
     curr_idx = 0
     hit_indices = []
-    for ent in session.gdata:
-        for imdata in ent:
+    for ent in session.gdata: #batch
+        for imdata in ent: #image in batch
             if is_image_accepted(imdata):
                 hit_indices.append(curr_idx)
             curr_idx += 1
-    index_set = pr.BitMap(hit_indices)
-    assert len(index_set) == len(hit_indices)
+            
     return dict(
-        hit_indices=np.array(index_set),
+        hit_indices=np.array(hit_indices).astype('int32'),
         nseen=curr_idx,
         nimages=res.nimages,
         ntotal=res.ntotal,
@@ -406,26 +405,21 @@ def get_metric_summary(res: BenchResult):
     )
 
 
-def parse_batch(batch):
-    acc = []
-    for (path, b) in batch:
-        try:
-            obj = json.loads(b)
-        except json.decoder.JSONDecodeError:
-            obj = {}
-
-        obj["session_path"] = path[: -len("summary.json")]
-        acc.append(obj)
-
-    return acc
-
+def parse_json2(args):
+    path, b = args
+    try:
+        obj = json.loads(b)
+    except json.decoder.JSONDecodeError:
+        obj = {}
+    obj["session_path"] = path[: -len("summary.json")]
+    return obj
 
 from ray.data.datasource import FastFileMetadataProvider
 def load_session_data(base_dir, parallelism=-1):
     summary_paths = glob.glob(base_dir + "/**/summary.json", recursive=True)
     r = ray.data.read_binary_files(summary_paths, include_paths=True, 
                 meta_provider=FastFileMetadataProvider(), parallelism=parallelism).lazy()
-    res = r.map_batches(parse_batch, batch_size=20)
+    res = r.map_batches(as_batch_function(parse_json2), batch_size=20)
     return res
 
 
@@ -435,25 +429,36 @@ def process_dict(obj, mode="benchmark"):
         bs = BenchSummary(**obj)
         b = bs.bench_params
         s = bs.session_params
-        if s.method_config == {}:
-            s.method_config = None
         
-        r = bs.result
-        res = {**b.dict(), **s.index_spec.dict(), **s.dict()}
-        res['session_params'] = s.dict()
-        res['bench_params'] = b.dict()
-
+        res = {}#**b.dict()}
+        res['dataset']  =  s.index_spec.d_name
+        res['index_name'] = s.index_spec.i_name
+        res['subset_name'] = s.index_spec.c_name
+        res['category'] = b.ground_truth_category
+        res['variant'] = b.name
+        res['sample_id'] = b.sample_id
+        res['n_batches'] = b.n_batches
+        res['batch_size'] = s.batch_size
+        res['max_results'] = b.max_results
+        res['session_params'] = s.json()
+        res['bench_params'] = b.json()
+        res['has_result'] = bs.result is not None
         if bs.result is not None:
-            summary = get_metric_summary(bs.result)
+            summary = summarize_session(bs.result)
             res.update(summary)
     else:
         res = obj
-
+        res['has_result'] = False
     res["session_path"] = obj["session_path"]
     return res
+ 
+def process_single_result(result_path): # single file version version 
+    jsonpath = result_path + '/summary.json'
+    b = open(jsonpath, 'rb').read()
+    dict = parse_json2((jsonpath, b))
+    return process_dict(dict)
 
 from .util import as_batch_function
-
 
 def _summarize(res, parallel):
     if parallel:
@@ -466,7 +471,6 @@ def _summarize(res, parallel):
 
     return pd.DataFrame.from_records(acc)
 
-
 def get_all_session_summaries(base_dir, force_recompute=False, parallel=True):
     sumpath = base_dir + "/summary.parquet"
     if not os.path.exists(sumpath) or force_recompute:
@@ -477,26 +481,31 @@ def get_all_session_summaries(base_dir, force_recompute=False, parallel=True):
     return pd.read_parquet(sumpath)
 
 
-def compute_stats(summ):
-    summ = summ[~summ.ntotal.isna()]
-    summ = summ.reset_index(drop=True)
+import math
+def compute_row_metrics(row):
+    if row.hit_indices is None:
+        assert row.nseen != row.nseen
+        return None
 
-    nums = summ[["batch_size", "nseen", "ntotal", "max_results"]]
-    all_mets = []
-    for tup in nums.itertuples():
-        mets = compute_metrics(
-            hit_indices=summ.hit_indices.iloc[tup.Index],
-            nseen=int(tup.nseen),
-            batch_size=int(tup.batch_size),
-            ntotal=int(tup.ntotal),
-            max_results=tup.max_results,
-        )
-        all_mets.append(mets)
+    return compute_metrics(
+            hit_indices=row.hit_indices.astype('int32'),
+            nseen=int(row.nseen),
+            batch_size=int(row.batch_size),
+            ntotal=int(row.ntotal),
+            max_results=int(row.max_results))
 
-    metrics = pd.DataFrame(all_mets)
-    stats = pd.concat([summ, metrics], axis=1)
-    return stats
 
+def add_stats(summs):
+    stats = summs.apply(compute_row_metrics, axis='columns',result_type='expand')
+    return summs.assign(**stats)
+
+def print_error_logs(stats):
+    for tup in stats.itertuples():
+        print('----')
+        print(tup.session_path)
+        with open(tup.session_path + '/output.log', 'r') as log:
+            print(log.read())
+        print('----')
 
 from .basic_types import IndexSpec
 from .dataset_search_terms import category2query
