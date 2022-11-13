@@ -3,7 +3,7 @@ import os
 import ray
 ray.init('auto', namespace='seesaw')
 from seesaw.dataset_manager import GlobalDataManager
-from seesaw.knn_graph import compute_knn_from_nndescent
+from seesaw.knn_graph import KNNGraph, compute_knn_from_nndescent, factor_neighbors
 from seesaw.util import reset_num_cpus
 
 
@@ -20,6 +20,15 @@ knng_name = f'nndescent{n_neighbors}'
 def build_and_save_knng(idx, *, knng_name, n_neighbors, num_cpus, low_memory):
     final_path = idx.get_knng_path(knng_name)
     df = compute_knn_from_nndescent(idx.vectors, n_neighbors=n_neighbors, n_jobs=num_cpus, low_memory=low_memory)
+    os.makedirs(final_path, exist_ok=True)
+    df.to_parquet(f'{final_path}/forward.parquet')
+    print('done saving to ', final_path)
+
+def build_div_knng(idx, *, knng_name, n_within_frame):
+    initial_path = idx.get_knng_path(knng_name)
+    final_path = initial_path.rstrip('/') + '_factored'
+    knng = KNNGraph.from_file(final_path)
+    df= factor_neighbors(knng, idx, k_intra=n_within_frame)
     os.makedirs(final_path, exist_ok=True)
     df.to_parquet(f'{final_path}/forward.parquet')
     print('done saving to ', final_path)
