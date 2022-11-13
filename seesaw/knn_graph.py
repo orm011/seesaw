@@ -78,9 +78,10 @@ def get_weight_matrix(df, *, kfun, self_edges, normalized) -> sp.csr_array:
             
     assert np.isclose(out_w.sum(axis=0), out_w.sum(axis=1)).all(), 'expect symmetric in any scenario'
 
+    out_w.sum_duplicates()
+    out_w.sort_indices()
     out_w  =  out_w.tocsr()
-    assert out_w.has_sorted_indices
-    
+    assert out_w.has_sorted_indices    
     return out_w
 
 def get_lookup_ranges(sorted_col, nvecs):
@@ -160,71 +161,36 @@ def compute_knn_from_nndescent(vectors, *, n_neighbors, n_jobs=-1, low_memory=Fa
     df = post_process_graph_df(df, nvec)
     return df
 
-def compute_inter_frame_knn_graph(knng, idx): 
+def factor_neighbors(knng, idx, k_intra):
+    ''' returns a new df with neighbors of different dbidxs having a separate rank
+        than neighbors from the same dbidx. choosing rank < 4 will pick the closest 4 other frames,
+        as well as vectors within the frame.
+    '''
     dbidxs = idx.vector_meta.dbidx.astype('int32').values
     df = knng.knn_df
     df = df.assign(src_dbidx=dbidxs[df.src_vertex.values], 
               dst_dbidx=dbidxs[df.dst_vertex.values])
-
-    df = df[df.src_dbidx != df.dst_dbidx]
-    per_dest = df.groupby(['src_vertex','dst_dbidx']).distance.idxmin()
-    pddf = df.loc[per_dest.values]
-
-    pddf = pddf.assign(dst_rank=pddf.groupby(['src_vertex']).distance.rank('first').astype('int32'))
-    pddf = pddf.reset_index(drop=True)
-    return pddf
-
-def compute_intra_frame_knn(meta_df, max_k=4, max_d=.2):
-    def _make_intra_frame_knn_single_frame(gp):
-        dbidx = gp.dbidx.values.astype('int32')[0]
-        df = compute_exact_knn(gp.vectors.to_numpy(), kmax=max_k)
-        df = df.query(f'distance < {max_d}')
-        df = reprocess_df(df)
-        df = df.assign(src_vertex=gp.index.values[df.src_vertex.values].astype('int32'),
-            dst_vertex=gp.index.values[df.dst_vertex.values].astype('int32'), 
-            src_dbidx=dbidx, dst_dbidx=dbidx)
+    
+    def _make_inter(df, k):
+        df = df.query('src_dbidx != dst_dbidx')
+        edge_ranks = df.groupby(['src_vertex', 'dst_dbidx']).distance.rank('first').astype('int')
+        df = df.assign(edge_rank=edge_ranks)
+        divdf = df[df.edge_rank <= k]
+        new_ranks = divdf.groupby(['src_vertex']).distance.rank('first').sub(1).astype('int')
+        divdf = divdf.assign(dst_rank=new_ranks).drop('edge_rank', axis=1)
+        return divdf
+    
+    def _make_intra(df, k):
+        df = df.query('src_dbidx == dst_dbidx')
+        rank_within_frame = df.groupby('src_vertex').distance.rank('first').astype('int')
+        df = df.assign(dst_rank=rank_within_frame)
+        df = df.query(f'dst_rank <= {k}')
         return df
 
-    final_df = meta_df.groupby('dbidx').apply(_make_intra_frame_knn_single_frame).reset_index(drop=True)
-    return final_df
-
-
-def adjust_intra_frame_knn(global_idx, final_df, idx):
-    sdf = global_idx.vector_meta.reset_index()
-    pairs = sdf.groupby('dbidx')['index'].min()
-    dbidx2minidx_old = dict(zip(pairs.index.values, pairs.values))
-
-    sdf = idx.vector_meta.reset_index(drop=False)    
-    pairs = sdf.groupby('dbidx')['index'].min()
-    dbidx2minidx_new = dict(zip(pairs.index.values, pairs.values))
-
-    def per_group(gp):
-        k = int(gp.dst_dbidx.iloc[0])
-        delta = dbidx2minidx_new[k] - dbidx2minidx_old[k]
-        gp = gp.eval(f'src_vertex = src_vertex + {delta}\n dst_vertex=dst_vertex + {delta}')
-        return gp
-
-    knn_df_frame = final_df[final_df.src_dbidx.isin(set(dbidx2minidx_new.keys()))]
-    remapped = knn_df_frame.groupby('src_dbidx', group_keys=False).apply(per_group)
-    return remapped
-
-
-def reprocess_df(df0):
-    df = df0.assign(src_vertex=df0.src_vertex.astype('int32'), 
-                    dst_vertex=df0.dst_vertex.astype('int32'),
-                    distance=df0.distance.astype('float32'),
-                    dst_rank=df0.dst_rank.astype('int32'))
-    
-    df_rev = df.assign(src_vertex=df.dst_vertex, dst_vertex=df.src_vertex)
-    df_all = pd.concat([df.assign(is_forward=True, is_reverse=False), 
-                        df_rev.assign(is_forward=False, is_reverse=True)], ignore_index=True)
-
-    df_all = df_all.sort_values(['src_vertex'])
-    dups = df_all.duplicated(['src_vertex', 'dst_vertex'], keep=False)
-    df_all = df_all.assign(is_forward=(df_all.is_forward | dups),
-                     is_reverse=(df_all.is_reverse | dups))
-    df_all = df_all.drop_duplicates(['src_vertex', 'dst_vertex']).reset_index(drop=True)
-    return df_all
+    inter = _make_inter(df, k=1) # 1 per dbidx
+    intra = _make_intra(df, k=k_intra) # more within single frame
+    both = pd.concat([inter, intra], ignore_index=True)
+    return both
 
 import pyroaring as pr
 
