@@ -10,7 +10,8 @@ from seesaw.util import reset_num_cpus
 root = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/'
 gdm = GlobalDataManager(root)
 lvisds = gdm.get_dataset('lvis')
-# index = lvisds.load_index('coarse', options=dict())
+idxname = 'multiscalemed'
+_ = lvisds.load_index(idxname, options=dict())
 _, qgt = lvisds.load_ground_truth()
 import pyroaring as pr
 
@@ -27,7 +28,8 @@ def build_and_save_knng(idx, *, knng_name, n_neighbors, num_cpus, low_memory):
 def build_div_knng(idx, *, knng_name, n_within_frame):
     initial_path = idx.get_knng_path(knng_name)
     final_path = initial_path.rstrip('/') + '_factored'
-    knng = KNNGraph.from_file(final_path)
+    print('building dvidx to ', final_path)
+    knng = KNNGraph.from_file(initial_path)
     df= factor_neighbors(knng, idx, k_intra=n_within_frame)
     os.makedirs(final_path, exist_ok=True)
     df.to_parquet(f'{final_path}/forward.parquet')
@@ -50,22 +52,23 @@ class KNNMaker:
                 ds = ds.load_subset(subset_name)
             index = ds.load_index(index_name, options=dict(use_vec_index=False))
             build_and_save_knng(index, knng_name=knng_name, n_neighbors=n_neighbors, 
-                    num_cpus=self.num_cpus, low_memory=True)
+                    num_cpus=self.num_cpus, low_memory=False)
+            
+            build_div_knng(index, knng_name=knng_name, n_within_frame=10)
         return batch
-
 
 combinations = []
 for dataset_name in ('lvis',):
-    for index_name in ('multiscale',):
+    for index_name in (idxname,):
         for category in qgt.columns.values:
             combinations.append((dataset_name, index_name, category))
 
 # all_subsets = qgt.columns.values
-ds = ray.data.from_items(combinations, parallelism=min(len(combinations), 300))
+ds = ray.data.from_items(combinations, parallelism=min(len(combinations), 100))
 
-num_cpus = 8
+num_cpus = 24
 fn_args = dict(num_cpus=num_cpus)
-ray_remote_args=dict(num_cpus=num_cpus, num_gpus=0, memory=5*((1024)**3))
+ray_remote_args=dict(num_cpus=num_cpus, num_gpus=0, memory=32*((1024)**3))
 from ray.data.dataset import ActorPoolStrategy
 
-x = ds.map_batches(KNNMaker, batch_size=1, compute=ActorPoolStrategy(1, 300), fn_constructor_kwargs=fn_args, **ray_remote_args).take_all()
+x = ds.map_batches(KNNMaker, batch_size=1, compute=ActorPoolStrategy(1, 50), fn_constructor_kwargs=fn_args, **ray_remote_args).take_all()
