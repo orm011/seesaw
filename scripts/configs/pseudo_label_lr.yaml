@@ -1,6 +1,6 @@
 datasets:
-  # - name: bdd
-  # - name: coco
+  - name: bdd
+  - name: coco
   - name: lvis
   - name: objectnet
 shared_session_params: # see SessionParams
@@ -9,8 +9,8 @@ shared_session_params: # see SessionParams
   index_options: 
     use_vec_index: False # for bdd and coco.
   index_spec : 
-      i_name: multiscale
-      # i_name: multiscalemed
+      i_name: multiscalecoarse
+      # i_name: coarse
   agg_method: plain_score
   # agg_method: avg_score
   aug_larger: greater
@@ -22,8 +22,8 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    # - name: baseline
-    #   interactive: plain
+    - name: baseline
+      interactive: plain
     # # - name: seesaw_all
     # #   interactive: pytorch
     # #   method_config: 
@@ -79,7 +79,7 @@ variants:
     #         max_iter: 200.
     #         lr: 1.
     #         fit_intercept: false
-    # - name: pseudo_lr_switch
+    # - name: pseudo_lr_switch # change to use new config
     #   max_samples: 10
     #   interactive: pseudo_lr
     #   interactive_options:
@@ -113,23 +113,23 @@ variants:
     #         choose: [1.] # good for unnormalized
     #       edist: 
     #         choose: [.05]
-    - name: knn_prop2
-      max_samples: 10
-      interactive: knn_prop2
-      interactive_options:
-        matrix_options:
-          knn_path: nndescent60
-          self_edges : False
-          normalized_weights : False
-          knn_k: 
-            choose: [10]
-          edist: 
-            choose: [.0062, .0125, .025, .05]
-        normalize_scores : False
-        sigmoid_before_propagate: True  
-        calib_a: 
-          choose: [10.]
-        calib_b: 
-          choose: [-0.4]
-        prior_weight: 
-          choose: [1.] # good for unnormalized
+    # - name: knn_prop2
+    #   max_samples: 10
+    #   interactive: knn_prop2
+    #   interactive_options:
+    #     matrix_options:
+    #       knn_path: nndescent60
+    #       self_edges : False
+    #       normalized_weights : False
+    #       knn_k: 
+    #         choose: [10]
+    #       edist: 
+    #         choose: [.001]
+    #     normalize_scores : False
+    #     sigmoid_before_propagate: True  
+    #     calib_a: 
+    #       choose: [10.]
+    #     calib_b: 
+    #       choose: [-0.4]
+    #     prior_weight: 
+    #       choose: [1.] # good for unnormalized
