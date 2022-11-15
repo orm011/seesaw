@@ -481,6 +481,19 @@ def get_all_session_summaries(base_dir, force_recompute=False, parallel=True):
     return pd.read_parquet(sumpath)
 
 
+import os
+import math
+import hashlib
+def get_param_hash(dstr):
+    d = json.loads(dstr)
+    del d['index_spec']
+    mstr = json.dumps(d, sort_keys=True)
+    return hashlib.sha256(mstr.encode()).hexdigest()[:8]
+
+def get_timestamp(folder):
+    mtime = os.stat(folder).st_mtime
+    return pd.Timestamp.fromtimestamp(mtime)
+
 import math
 def compute_row_metrics(row):
     if row.hit_indices is None:
@@ -494,6 +507,15 @@ def compute_row_metrics(row):
             ntotal=int(row.ntotal),
             max_results=int(row.max_results))
 
+## reciprocal rank: 1/first average is better
+def get_params(stats, param_hash, pretty_print=False):
+    msk = stats.param_hash == param_hash        
+    sub = stats[msk]
+    prms = json.loads(sub.session_params.iloc[0])
+    del prms['index_spec']
+    if pretty_print:
+        print(json.dumps(prms, indent=4, sort_keys=True))
+    return prms
 
 def add_stats(summs):
     stats = summs.apply(compute_row_metrics, axis='columns',result_type='expand')
