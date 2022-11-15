@@ -683,6 +683,8 @@ class MultiscaleIndex(AccessMethod):
 
 
 def rescore_candidates(fullmeta, topk, **kwargs):
+        fullmeta = fullmeta.reset_index(drop=True) # for some files (coarse) dbidx is also the index name
+        ## which causes groupby to fail.
         nframes = fullmeta.dbidx.unique().shape[0]
         dbidxs = np.zeros(nframes) * -1
         dbscores = np.zeros(nframes)
