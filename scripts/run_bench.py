@@ -119,7 +119,7 @@ else:
     def closure(): # put all actor stuff within scope so maybe it gets destroyed before getting summaries?
         random.shuffle(all_cfgs) # randomize task order to kind-of balance work
         ds = ray.data.from_items(all_cfgs, parallelism=1000)
-        memory = args.mem_gbs * (1024* 1024 * 1024)
+        memory = args.mem_gbs * (1024**3)
         actor_options = dict(num_cpus=args.num_cpus, memory=memory)
         ## use a small batch size so that maybe failures affect as few classes as possible?
         _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(10,300), **actor_options).take_all()
