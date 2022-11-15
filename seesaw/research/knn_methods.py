@@ -244,23 +244,6 @@ class LabelPropagation:
         return old_fvalues
 
     
-class LabelPropagationComposite(LabelPropagation):
-    def __init__(self, *, weight_matrix_intra, **other_kwargs):
-        super().__init__(**other_kwargs)
-        self.weight_matrix_intra = weight_matrix_intra
-
-    def fit_transform(self, *, reg_values, **kwargs):
-        self.normalized_prior_intra = reg_values
-        return super().fit_transform(reg_values=reg_values, **kwargs)
-
-    def _step(self, old_fvalues, label_ids, label_values):
-        new_fvalues = self.normalized_weights @ old_fvalues + self.normalized_prior
-        new_fvalues[label_ids] = label_values
-
-        new_fvalues = self.normalized_weights_intra @ new_fvalues + self.normalized_prior_intra
-        new_fvalues[label_ids] = label_values
-        return new_fvalues
-
 class LabelPropagationRanker2(BaseLabelPropagationRanker):
     lp : LabelPropagation
 
