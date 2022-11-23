@@ -10,12 +10,12 @@ from seesaw.util import reset_num_cpus
 root = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/'
 gdm = GlobalDataManager(root)
 lvisds = gdm.get_dataset('lvis')
-idxname = 'multiscalemed'
-_ = lvisds.load_index(idxname, options=dict())
+idxname = 'multiscalecoarse'
+_ = lvisds.load_index(idxname, options=dict(use_vec_index=False))
 _, qgt = lvisds.load_ground_truth()
 import pyroaring as pr
 
-n_neighbors = 120
+n_neighbors = 60
 knng_name = f'nndescent{n_neighbors}'
 
 def build_and_save_knng(idx, *, knng_name, n_neighbors, num_cpus, low_memory):
@@ -54,7 +54,7 @@ class KNNMaker:
             build_and_save_knng(index, knng_name=knng_name, n_neighbors=n_neighbors, 
                     num_cpus=self.num_cpus, low_memory=False)
             
-            build_div_knng(index, knng_name=knng_name, n_within_frame=10)
+           # build_div_knng(index, knng_name=knng_name, n_within_frame=10)
         return batch
 
 combinations = []
@@ -63,6 +63,8 @@ for dataset_name in ('lvis',):
         for category in qgt.columns.values:
             combinations.append((dataset_name, index_name, category))
 
+# idxname = 'multiscalecoarse'
+# combinations = [('bdd', idxname, None), ('lvis', idxname, None)]
 # all_subsets = qgt.columns.values
 ds = ray.data.from_items(combinations, parallelism=min(len(combinations), 100))
 
