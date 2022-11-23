@@ -160,20 +160,24 @@ def pivot_metric(stats, metric):
     return rest.pivot(index=['dataset', 'category'], columns=['variant', 'param_hash'], values=metric,)
 
 # this case excludes case where there is nan or both are infinity
-def compare_method_pair(sbs, *, method_name, reference_name, epsilon = .01):
+def compare_method_pair(sbs, *, method_name, method_hash, reference_name, reference_hash, epsilon = .01):
     method1 = method_name
     method2 = reference_name
-    assert (sbs[method1] != -np.inf).all(), 'not dealing with neg inf metrics right now'
-    assert (sbs[method2] != -np.inf).all()
 
-    inf1 = sbs[method1] == np.inf
-    inf2 = sbs[method2] == np.inf
+    sbs1 = sbs[method1][method_hash]
+    sbs2 = sbs[method2][reference_hash]
+
+    assert (sbs1 != -np.inf).all(), 'not dealing with neg inf metrics right now'
+    assert (sbs2 != -np.inf).all()
+
+    inf1 = sbs1 == np.inf
+    inf2 = sbs2 == np.inf
     inf_both = inf1 & inf2
     only_left_inf = inf1 & ~inf_both
     only_right_inf = inf2 & ~inf_both
 
-    nan1 = sbs[method1].isna()
-    nan2 = sbs[method2].isna()
+    nan1 = sbs1.isna()
+    nan2 = sbs2.isna()
     nan1_not2 = nan1 & ~nan2
     nan_both = nan1 & nan2
     nan_either = nan1 | nan2
@@ -181,9 +185,9 @@ def compare_method_pair(sbs, *, method_name, reference_name, epsilon = .01):
 
     comparable = ~nan_either & ~inf_both
 
-    close =  comparable & ((sbs[method1] - sbs[method2]).abs() < epsilon)
-    m1greater = comparable & ((sbs[method1] > sbs[method2]) & ~close)
-    m1smaller = comparable & ((sbs[method1] < sbs[method2]) & ~close)
+    close =  comparable & ((sbs1 - sbs2).abs() < epsilon)
+    m1greater = comparable & ((sbs1 > sbs2) & ~close)
+    m1smaller = comparable & ((sbs1 < sbs2) & ~close)
 
     df = pd.DataFrame(dict(greater=m1greater, close=close, smaller=m1smaller, 
                             bothINF=inf_both, 
@@ -508,9 +512,10 @@ def rel_plot(sbs, variant, jitter=0.01):
     return scatterplot
 
 
-def plot_compare2(stats, variant, baseline, metric, jitter=0.01, abstol=.01):
+def plot_compare2(stats, variant, variant_hash, baseline, baseline_hash, metric, jitter=0.01, abstol=.01):
     pvt = pivot_metric(stats, metric=metric)
-    all_results = compare_method_pair(pvt, method_name=variant, reference_name=baseline, epsilon=abstol)
+    all_results = compare_method_pair(pvt, method_name=variant, method_hash=variant_hash,
+                                            reference_name=baseline, reference_hash=baseline_hash, epsilon=abstol)
 
     bsw = all_results.groupby('dataset').sum()
     display(bsw)
