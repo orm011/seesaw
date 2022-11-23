@@ -6,6 +6,8 @@
 set -euxo pipefail
 which nginx; which python; which ray
 
+export RAY_DISABLE_PYARROW_VERSION_CHECK=1
+
 DIR=$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 nginx -s stop || echo 'starting nginx....'
 nginx -c conf/seesaw.spc.conf # refers to conf/ folder relative to nginx root
