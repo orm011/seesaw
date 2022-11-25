@@ -9,7 +9,7 @@ shared_session_params: # see SessionParams
   index_options: 
     use_vec_index: False # for bdd and coco.
   index_spec : 
-      i_name: multiscalecoarse
+      i_name: multiscalemed
       # i_name: coarse
   agg_method: plain_score
   # agg_method: avg_score
@@ -34,18 +34,18 @@ variants:
     # #       num_epochs: 4
     # #       model_type: cosine
     # #       warm_start: warm
-    - name: log_reg2
-      max_samples: 10
-      interactive: log_reg2
-      interactive_options:
-        class_weights: 
-          choose: [1.]
-        scale: centered
-        reg_lambda: 
-          choose: [1.] #[0.1, 1., 10.]
-        max_iter: 200.
-        lr: 1.
-        fit_intercept: false
+    # - name: log_reg2
+    #   max_samples: 10
+    #   interactive: log_reg2
+    #   interactive_options:
+    #     class_weights: 
+    #       choose: [1.]
+    #     scale: centered
+    #     reg_lambda: 
+    #       choose: [1.] #[0.1, 1., 10.]
+    #     max_iter: 200.
+    #     lr: 1.
+    #     fit_intercept: false
     # - name: prop2logreg
     #   max_samples: 10
     #   interactive: switch_over
@@ -125,8 +125,9 @@ variants:
           knn_k: 
             choose: [10]
           edist: 
-            choose: [.05]
-            #choose: [.001, .005, .01, .05, .1, .2, .4, .8] 
+            # choose: [.05]
+            # choose: [0.00038, .00075, .00156, .00312, .00625, .0125, .025]
+            choose : [.05, .1, .2, .4, .8, 1.6, 3.2]
         normalize_scores : False
         sigmoid_before_propagate: True  
         calib_a: 
