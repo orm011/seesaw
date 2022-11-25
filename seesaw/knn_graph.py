@@ -43,20 +43,21 @@ def get_weight_matrix(df, *, kfun, self_edges, normalized) -> sp.csr_array:
     
     ## use metric as weight
     edge_weight_array = kfun(df.distance.values)
-    assert (edge_weight_array > 0).all(), 'edge weights mut be positive'
-    # edge weights must be positive bc zero values break sparse matrix rep. assumptions
+    assert (edge_weight_array >= 0).all(), 'edge weights mut be non-negative'
 
-    weight_mat =  sp.coo_array( (edge_weight_array, (df.src_vertex.values, df.dst_vertex.values)), shape=(n,n))
+    # some distances become 0 after using kernel func.
+    mask = edge_weight_array > 0
+    # edge weights must be positive bc zero values break sparse matrix rep. assumptions
+    weight_mat =  sp.coo_array( (edge_weight_array[mask], 
+                        (df.src_vertex.values[mask], df.dst_vertex.values[mask])), shape=(n,n))
     symmetric_weight = weight_mat.T + weight_mat
     
-    weight_values = symmetric_weight[symmetric_weight.nonzero()]
-    edge_counts = symmetric_adj[symmetric_adj.nonzero()]
+    pos = symmetric_adj.nonzero()
+    weight_values = symmetric_weight[pos]
+    edge_counts = symmetric_adj[pos]
     adjusted_values = weight_values/edge_counts
-    
-    ## fix double counted values
-    symmetric_weight[symmetric_weight.nonzero()] = adjusted_values.copy()
+    symmetric_weight[pos] = adjusted_values
     out_w = symmetric_weight
-    
     diag_iis = np.arange(n)
     
     assert np.isclose(kfun(np.zeros(1)), np.ones(1)) # sanity check on kfun
