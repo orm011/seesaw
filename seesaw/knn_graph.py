@@ -29,7 +29,7 @@ def knn_kernel(edist=2.1):
 
     return kernel
 
-def get_weight_matrix(df, *, kfun, self_edges, normalized) -> sp.csr_array:
+def get_weight_matrix(df, *, kfun, self_edges, normalized, laplacian=False) -> sp.csr_array:
     n = df.src_vertex.unique().shape[0]
     
 
@@ -81,9 +81,46 @@ def get_weight_matrix(df, *, kfun, self_edges, normalized) -> sp.csr_array:
 
     out_w.sum_duplicates()
     out_w.sort_indices()
-    out_w  =  out_w.tocsr()
     assert out_w.has_sorted_indices    
+
+    if laplacian:
+        assert not self_edges, 'unknown meaning of this parameter combination'
+        D = out_w.sum(axis=1)
+        out_w.setdiag(-D)
+        out_w = -out_w
+
+    out_w  =  out_w.tocsr()
     return out_w
+    
+def edge_loss(laplacian_m, labels):
+    return labels @ (laplacian_m @ labels)
+
+def test_simple_edge_loss():
+    simple_edge = pd.DataFrame({'src_vertex':[0, 0, 1, 1,], 'dst_vertex':[0,1,1,0], 'distance':[0., 1., 0., 1.], 'dst_rank':[0,1,0,1]})    
+    test_knng = KNNGraph(simple_edge)
+    
+    laplacian_m = get_weight_matrix(test_knng.knn_df, kfun=rbf_kernel(10000.), normalized=False, self_edges=False, laplacian=True)
+    
+    l00 = edge_loss(laplacian_m, np.array([0,0]))
+    l11 = edge_loss(laplacian_m, np.array([1,1]))
+    l01 = edge_loss(laplacian_m, np.array([0,1]))
+    l10 = edge_loss(laplacian_m, np.array([1,0]))
+    
+    assert np.isclose(l00,0)
+    assert np.isclose(l11,0)
+    assert np.abs(l01 - 1.) < .001
+    assert np.isclose(l10,l01)
+    
+    laplacian_m2 = get_weight_matrix(test_knng.knn_df, kfun=rbf_kernel(.0001), normalized=False, self_edges=False, laplacian=True)
+    l00 = edge_loss(laplacian_m2, np.array([0,0]))
+    l11 = edge_loss(laplacian_m2, np.array([1,1]))
+    l01 = edge_loss(laplacian_m2, np.array([0,1]))
+    l10 = edge_loss(laplacian_m2, np.array([1,0]))
+    
+    assert np.isclose(l00,0)
+    assert np.isclose(l11,0)
+    assert np.abs(l01 - 0) < .001
+    assert np.isclose(l10,l01)
 
 def get_lookup_ranges(sorted_col, nvecs):
     cts = sorted_col.value_counts().sort_index()
