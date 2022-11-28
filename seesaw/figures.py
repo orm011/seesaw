@@ -22,6 +22,8 @@ from plotnine import (
     element_blank,
     xlab,
     ylab,
+    ggtitle,
+    labs,
     geom_text,
 )
 
@@ -157,15 +159,12 @@ def make_labeler(fmt_func):
 
 def pivot_metric(stats, metric):
     rest = stats[['dataset', 'category', 'variant', 'param_hash', metric]]
-    return rest.pivot(index=['dataset', 'category'], columns=['variant', 'param_hash'], values=metric,)
+    return rest.pivot(index=['dataset', 'category'], columns=['param_hash'], values=metric,)
 
 # this case excludes case where there is nan or both are infinity
-def compare_method_pair(sbs, *, method_name, method_hash, reference_name, reference_hash, epsilon = .01):
-    method1 = method_name
-    method2 = reference_name
-
-    sbs1 = sbs[method1][method_hash]
-    sbs2 = sbs[method2][reference_hash]
+def compare_method_pair(sbs, *, method_hash, reference_hash, epsilon = .01):
+    sbs1 = sbs[method_hash]
+    sbs2 = sbs[reference_hash]
 
     assert (sbs1 != -np.inf).all(), 'not dealing with neg inf metrics right now'
     assert (sbs2 != -np.inf).all()
@@ -511,22 +510,87 @@ def rel_plot(sbs, variant, jitter=0.01):
 
     return scatterplot
 
+from plotnine import geom_histogram, facet_wrap, xlim, annotate, after_stat
+def show_deltas(df):
+    df = df.assign(delta=df.variant - df.baseline)
+    df = df.assign(greater=df.delta > 0, smaller=df.delta < 0)
+    aggs = df.groupby('dataset').agg({'delta':'mean', 'greater':'sum', 'smaller':'sum'}).reset_index()
+    
+    
+    plot = (ggplot(data=df) 
+         + geom_histogram(aes(x='delta', y=after_stat('ncount'), fill='dataset',), binwidth=.05)
+         + facet_wrap(facets='dataset', scales='free_y')
+         + geom_vline(aes(xintercept='delta'), data=aggs)
+         + geom_text(aes(x='delta+.05', y=.5, label='delta'), format_string='{:0.03f}', ha='left', data=aggs)
+         + geom_text(aes(x=.3, y=.8, label='greater'), size=6.5, format_string='(# > 0)={}', ha='left', data=aggs)
+         + geom_text(aes(x=-.7, y=.8, label='smaller'),  size=6.5, format_string='(# < 0)={}', ha='left', data=aggs)
+         + xlim(-1,1)
+         + annotate('vline', xintercept=0)
+        )
 
-def plot_compare2(stats, variant, variant_hash, baseline, baseline_hash, metric, jitter=0.01, abstol=.01):
+    return plot
+
+
+def plot_length_scale(stats, index_name, metric):
+    stats = stats[(stats.index_name == index_name)]
+    totals = stats.groupby(['dataset', 'variant', 'param_hash'])[metric].mean().reset_index()
+    res = []
+    for row in totals[totals.variant == 'knn_prop2'].itertuples():
+        edist = get_params(stats, row.param_hash)['interactive_options']['matrix_options']['edist']
+        r = {}
+        r['edist'] = edist
+        r['param_hash'] = row.param_hash
+        res.append(r)
+
+    df2 = totals.reset_index().merge(pd.DataFrame(res), left_on='param_hash', right_on='param_hash', how='left')
+
+    return (ggplot(df2[~df2.edist.isna()]) 
+     + geom_line(aes(x='edist', y=metric, color='dataset'))
+     + geom_hline(aes(yintercept=metric, color='dataset'),  data=df2.query('variant=="baseline"'))
+     + scale_x_log10()
+    )
+
+
+def show_deltas(df):
+    df = df.assign(delta=df.variant - df.baseline)
+    df = df.assign(greater=df.delta > 0, smaller=df.delta < 0)
+    aggs = df.groupby('dataset').agg({'delta':'mean', 'greater':'sum', 'smaller':'sum'}).reset_index()
+    
+    
+    plot = (ggplot(data=df) 
+         + geom_histogram(aes(x='delta', y=after_stat('ncount'), fill='dataset',), binwidth=.05)
+         + facet_wrap(facets='dataset', scales='free_y')
+         + geom_vline(aes(xintercept='delta'), data=aggs)
+         + geom_text(aes(x='delta+.05', y=.5, label='delta'), format_string='{:0.03f}', ha='left', data=aggs)
+         + geom_text(aes(x=.3, y=.8, label='greater'), size=6.5, format_string='(# > 0)={}', ha='left', data=aggs)
+         + geom_text(aes(x=-.7, y=.8, label='smaller'),  size=6.5, format_string='(# < 0)={}', ha='left', data=aggs)
+         + xlim(-1,1)
+         + annotate('vline', xintercept=0)
+        )
+
+    return plot
+
+
+
+def plot_compare2(stats, variant_hash, baseline_hash, metric, jitter=0.01, abstol=.01):
     pvt = pivot_metric(stats, metric=metric)
-    all_results = compare_method_pair(pvt, method_name=variant, method_hash=variant_hash,
-                                            reference_name=baseline, reference_hash=baseline_hash, epsilon=abstol)
+    all_results = compare_method_pair(pvt, method_hash=variant_hash,
+                                        reference_hash=baseline_hash, epsilon=abstol)
+
+    variant = stats[stats.param_hash == variant_hash].variant.iloc[0]
+    baseline = stats[stats.param_hash == baseline_hash].variant.iloc[0]
 
     bsw = all_results.groupby('dataset').sum()
+
     display(bsw)
 
-    baseline_name = f"{metric}_{baseline}"
-    variant_name = f"{metric}_{variant}"
+    baseline_name = 'baseline'
+    variant_name = 'variant'
 
-    plotdata = pvt[[variant, baseline]].reset_index()
-    plotdata = plotdata.rename(mapper={variant:variant_name, baseline:baseline_name}, axis=1)
+    plotdata = pvt[[variant_hash, baseline_hash]].reset_index()
+    plotdata = plotdata.rename(mapper={variant_hash:variant_name, baseline_hash:baseline_name}, axis=1)
 
-    return (
+    plot1 = (
         ggplot(data=plotdata)
         + geom_jitter(
             aes(x=baseline_name, y=variant_name, fill="dataset", color='dataset'),
@@ -534,12 +598,19 @@ def plot_compare2(stats, variant, variant_hash, baseline, baseline_hash, metric,
             width=jitter,
             height=jitter,
         )
+        + labs(x=f'method: {baseline} ({baseline_hash})', 
+                y=f'method: {variant} ({variant_hash})')
+
+        + ggtitle(f'scatterplot of {metric}')
         # + scale_x_log10()
         # + scale_y_log10()
         + geom_abline(aes(slope=1, intercept=0))
     )
 
-
+    plot2 = show_deltas(plot1.data)
+    display(plot1)
+    display(plot2)
+    return plot1, plot2
 
 
 def plot_compare(
