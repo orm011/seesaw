@@ -159,6 +159,12 @@ class SeesawDataset(BaseDataset):
         ## remove any extra slashes etc
         return os.path.normpath(path)
 
+    def show_image(self, dbidx, host='/'):
+        from IPython.display import Image
+        url = self.get_url(dbidx)
+        return Image(url=f'{host}/{url}')
+
+
     def as_ray_dataset(ds, limit=None, parallelism=-1) -> ray.data.Dataset:
         """ with schema {dbidx: int64, binary: object}
         """
