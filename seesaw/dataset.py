@@ -27,6 +27,13 @@ def infer_qgt_from_boxes(box_data, num_files):
     return qgt.clip(0, 1)
 
 
+def fix_dbidx(box_data, paths):
+    path2idx = dict(zip(paths, range(len(paths))))
+    mapfun = lambda x: path2idx.get(x, -1)
+    box_data = box_data.assign(dbidx=box_data.file_path.map(mapfun).astype("int"))
+    box_data = box_data[box_data.dbidx >= 0].reset_index(drop=True)
+    return box_data
+
 def prep_ground_truth(paths, box_data, qgt):
     """adds dbidx column to box data, sets dbidx in qgt and sorts qgt by dbidx"""
     path2idx = dict(zip(paths, range(len(paths))))
@@ -106,6 +113,37 @@ class BaseDataset: # common interface for datasets and their subsets
         raise NotImplementedError
 
 from .services import get_parquet
+
+def process_annotation_session(annotation_session_path, image_root):
+    image_root = os.path.normpath(image_root) + '/'
+    resd = json.load(open(annotation_session_path + '/summary.json', 'r'))
+    category = resd['session']['params']['annotation_category']
+    records = []
+    seen_paths = set()
+    for row in resd['session']['gdata']:
+        for imdata in row:
+            path = imdata['url'][len(image_root):]
+            assert path not in seen_paths
+            seen_paths.add(path)
+            if imdata['boxes'] is None:
+                continue
+            for rec in imdata['boxes']:
+                if rec['marked_accepted']:
+                    rec['file_path'] = path
+                    rec['category'] = category
+                    del rec['description']
+                    del rec['marked_accepted']
+                    records.append(rec)
+                    
+    return category, seen_paths, pd.DataFrame.from_records(records)
+
+def ammend_annotations(image_root, box_data, annotation_session_path):
+    bd = box_data
+    category, seen_paths, amended_boxes = process_annotation_session(annotation_session_path, image_root)
+    ammend_mask = (bd.category == category) & (bd.file_path.isin(seen_paths))
+    bd = bd[~ammend_mask]
+    amended_boxes = amended_boxes.assign(origin=annotation_session_path)
+    return pd.concat([bd, amended_boxes], ignore_index=True)
 
 class SeesawDataset(BaseDataset):
     def __init__(self, dataset_path):
@@ -219,6 +257,24 @@ class SeesawDataset(BaseDataset):
             f"{self.dataset_root}/ground_truth/box_data.parquet",
             parallelism=0, cache=True
         )
+
+        box_data = box_data.assign(origin=f"{self.dataset_root}/ground_truth/box_data.parquet")
+
+        ammended = False
+        annfolder = f"{self.dataset_root}/ground_truth/annotations"
+        if os.path.exists(annfolder):
+            print('found annotation folder, ammending annotations...')
+            for sess in os.listdir(annfolder):
+                ammended = True
+                box_data = ammend_annotations(image_root=self.image_root, box_data=box_data, annotation_session_path=f'{annfolder}/{sess}')
+        else:
+            print(f'no ammended annotations found in {annfolder}, ignoring')
+        
+        ## fix categorical after breaking it before
+        box_data = box_data.assign(category=pd.Categorical(box_data.category))
+        if ammended:
+            box_data = fix_dbidx(box_data, self.paths)
+            return box_data, get_default_qgt(self, box_data)
 
         qgt_path = f"{self.dataset_root}/ground_truth/qgt.parquet"
         if os.path.exists(qgt_path):
