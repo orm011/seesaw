@@ -12,6 +12,13 @@ class LabelDB:
     def put(self, dbidx: int, boxes: List[Box]):
         self.ldata[dbidx] = boxes
 
+    def fill(self, df):
+        for dbidx, gp in df.groupby('dbidx'):
+            gp = gp.assign(description=gp.category, marked_accepted=True)
+            df = gp[['x1', 'y1', 'x2', 'y2', 'description', 'marked_accepted']]
+            boxes = [Box(**b) for b in df.to_dict(orient="records")]
+            self.put(int(dbidx), boxes=boxes)
+
     def get_box_df(self):
         empty_df = pd.DataFrame([], columns=["dbidx", "x1", "x2", "y1", "y2"]).astype("float32")
         empty_df = empty_df.assign(dbidx=empty_df.dbidx.astype('int32'))

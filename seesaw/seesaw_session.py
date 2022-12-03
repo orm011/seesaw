@@ -663,10 +663,11 @@ class Session:
 
     def get_state(self) -> SessionState:
         gdata = []
-        for indices, accs in zip(self.acc_indices, self.acc_activations):
-            imdata = self.get_panel_data(idxbatch=indices, activation_batch=accs)
+        for i, (indices, accs) in enumerate(zip(self.acc_indices, self.acc_activations)):
+            prefill = (self.params.annotation_category is not None) and (i == len(self.acc_indices) - 1)
+             # prefill last batch if annotation category is on (assumes last batch has no user annotations yet..)
+            imdata = self.get_panel_data(idxbatch=indices, activation_batch=accs, prefill=prefill)
             gdata.append(imdata)
-
         dat = {}
         dat["action_log"] = self.action_log
         dat["gdata"] = gdata
@@ -676,16 +677,22 @@ class Session:
         dat["query_string"] = self.loop.state.curr_str
         return SessionState(**dat)
 
-    def get_panel_data(self, *, idxbatch, activation_batch=None):
+    def get_panel_data(self, *, idxbatch, activation_batch=None, prefill=False):
         reslabs = []
         #urls = get_image_paths(self.dataset.image_root, self.dataset.paths, idxbatch)
         urls = self.dataset.get_urls(idxbatch)
 
         for i, (url, dbidx) in enumerate(zip(urls, idxbatch)):
             dbidx = int(dbidx)
-            boxes = self.q.label_db.get(
-                dbidx, format="box"
-            )  # None means no annotations yet (undef), empty means no boxes.
+
+            if prefill:
+                boxes = self.label_db.get(dbidx, format="box")
+                # None means no boxes.
+            else:
+                boxes = self.q.label_db.get(
+                    dbidx, format="box"
+                )  # None means no annotations yet (undef), empty means no boxes.
+
             if activation_batch is None:
                 activations = None
             else:
