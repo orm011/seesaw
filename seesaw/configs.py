@@ -172,7 +172,7 @@ def expand_configs(variants):
 
 import yaml
 ## TODO: factor this out later.
-def get_session_params_from_yaml(config_name, dataset, index, 
+def get_session_params_from_yaml(config_name, dataset, index, annotation_category, 
         config_path = '/home/gridsan/omoll/seesaw/scripts/configs/pseudo_label_lr.yaml'):
     config = yaml.safe_load(open(config_path, 'r'))
     s_template = config.get('shared_session_params', {})
@@ -193,4 +193,5 @@ def get_session_params_from_yaml(config_name, dataset, index,
     ## returns individual configs that can be used
     index_meta = dict(d_name=dataset, i_name=index, c_name=None)
     new_params = get_session_params(s_template, ans, index_meta=index_meta)
+    new_params.annotation_category = annotation_category
     return new_params

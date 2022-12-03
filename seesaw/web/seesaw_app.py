@@ -100,11 +100,12 @@ from seesaw.configs import get_session_params_from_yaml
 
 @app.post("/user_session", response_model=AppState)
 async def user_session(
-    mode,
-    dataset,
-    index, 
+    mode : str,
+    dataset : str,
+    index : str, 
     #qkey,
     #user,
+    annotation_category : str,
     response: Response,
     session_id=Cookie(default=None),
     manager=Depends(get_manager),
@@ -124,7 +125,7 @@ async def user_session(
         if mode.startswith('yaml_'):
             print('reading session params from file')
             config_name = mode[len('yaml_'):]
-            new_params = get_session_params_from_yaml(config_name, dataset, index)
+            new_params = get_session_params_from_yaml(config_name, dataset, index, annotation_category)
             print(new_params)
         else:
             new_params = session_params(mode, dataset, index)

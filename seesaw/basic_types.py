@@ -61,6 +61,7 @@ class MultiscaleParams: #TODO switch session params
 class SessionParams(BaseModel):
     index_spec: IndexSpec
     interactive: str
+    annotation_category: str = None
     interactive_options: Optional[dict] = None
     batch_size: int
     index_options : Optional[dict] = {'use_vec_index':True}
