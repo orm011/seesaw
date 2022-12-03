@@ -79,8 +79,10 @@ class WebSession:
                 self.session.update_state(body.client_data.session)
 
             self.session._log("save")
-            qkey = self.session.params.other_params.get("qkey", None)
+            if self.session.params.other_params is None:
+                self.session.params.other_params = {}
 
+            qkey = self.session.params.other_params.get("qkey", None)
             # ensure session id is set correctly in json for easier access at read time
             self.session.params.other_params["session_id"] = self.session_id
             save_time = time.strftime("%Y%m%d-%H%M%S")
