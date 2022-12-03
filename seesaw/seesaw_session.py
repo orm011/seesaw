@@ -608,6 +608,15 @@ class Session:
         self.image_timing = {}
         self.index = hdb
         self.q = hdb.new_query()
+        self.label_db = LabelDB() #prefilled one. not the main one used in q.
+        if self.params.annotation_category != None:
+            box_data, _ = self.dataset.load_ground_truth()
+            mask = box_data.category == self.params.annotation_category
+            if mask.sum() == 0:
+                print(f'warning, no entries found for category {self.params.annotation_category}. if you expect some check for typos')
+            df = box_data[box_data.category == self.params.annotation_category]
+            self.label_db.fill(df)
+
         self.loop = LoopBase.from_params(self.gdm, self.q, params=self.params)
         self.action_log = []
         self._log("init")
