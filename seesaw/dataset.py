@@ -145,6 +145,20 @@ def ammend_annotations(image_root, box_data, annotation_session_path):
     amended_boxes = amended_boxes.assign(origin=annotation_session_path)
     return pd.concat([bd, amended_boxes], ignore_index=True)
 
+def get_subdirs_chronological(annpath):
+    paths = os.listdir(annpath)
+    subdirs = []
+    mtimes = []
+    for s in paths:
+        fpath = f'{annpath}/{s}'
+        if os.path.isdir(fpath):
+            mtimes.append(os.stat(fpath).st_mtime)
+            subdirs.append(fpath)
+
+    pairs = zip(subdirs, mtimes)
+    ordered_subdirs = [a for (a,b) in sorted(pairs, key=lambda p : p[1])]
+    return ordered_subdirs
+
 class SeesawDataset(BaseDataset):
     def __init__(self, dataset_path):
         """Assumes layout created by create_dataset"""
@@ -264,9 +278,10 @@ class SeesawDataset(BaseDataset):
         annfolder = f"{self.dataset_root}/ground_truth/annotations"
         if os.path.exists(annfolder):
             print('found annotation folder, ammending annotations...')
-            for sess in os.listdir(annfolder):
+            annotation_files = get_subdirs_chronological(annfolder)
+            for sess_path in annotation_files:
                 ammended = True
-                box_data = ammend_annotations(image_root=self.image_root, box_data=box_data, annotation_session_path=f'{annfolder}/{sess}')
+                box_data = ammend_annotations(image_root=self.image_root, box_data=box_data, annotation_session_path=sess_path)
         else:
             print(f'no ammended annotations found in {annfolder}, ignoring')
         

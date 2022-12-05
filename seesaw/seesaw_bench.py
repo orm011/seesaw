@@ -487,6 +487,8 @@ import hashlib
 def get_param_hash(dstr):
     d = json.loads(dstr)
     del d['index_spec']
+    if 'annotation_category' in d and d['annotation_category'] is None:
+        del d['annotation_category']
     mstr = json.dumps(d, sort_keys=True)
     return hashlib.sha256(mstr.encode()).hexdigest()[:8]
 
