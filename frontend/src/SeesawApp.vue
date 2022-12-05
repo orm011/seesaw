@@ -72,14 +72,14 @@
           <div class="row" v-if="client_data.session != null">
             <span>Total accepted: {{ total_accepted() }}</span>
           </div>
-          <!-- <div class="row" v-if="client_data.session != null">
+          <div class="row" v-if="client_data.session != null">
             <button 
               class="btn btn-dark btn-block" 
               @click="save()"
             > 
               Save 
             </button>
-          </div> -->
+          </div>
           <!-- <div class="row" v-if="client_data.session != null">
             <button
               class="btn btn-dark btn-block"
@@ -407,10 +407,11 @@ export default defineComponent({
         this.front_end_type = params.get('frontend')
 
         if (window.location.pathname === '/session_info'){
-            let session_path = params.get('path')
-            this.load_session(session_path)
+          fetch('/api/session_info?' + params, {method: 'POST'})
+            .then(response => response.json())
+            .then(this._update_client_data)
             this.path_mode = true; 
-        } else if (window.location.pathname === '/compare'){
+        } else if (window.location.pathname === '/compare'){ // TODO update to be compatible with above
             let session_path = params.get('path')
             this.other_url = `${window.location.origin}/session_info?path=${params.get('other')}`
             this.load_session(session_path)
@@ -425,9 +426,7 @@ export default defineComponent({
             .then(response => response.json())
             .then(this._update_client_data)
         } else if (window.location.pathname === '/session_end'){
-            fetch('/api/session_end', {method:'POST'})
-              .then(response => response.json())
-              .then(data => console.log('session ended', data))
+            this.finish_session()
         } else {
             this.path_error = true;
             console.log('unknown path', window.location.pathname)
@@ -505,19 +504,7 @@ export default defineComponent({
           }
        }
       },
-      set_frontend_type(mode){
-        // set it directly from url
-        // switch (mode) {
-        //         case 'default':
-        //           this.front_end_type = 'plain';
-        //           break;
-        //         case 'pytorch':
-        //         case 'fine':
-        //         default:
-        //           this.front_end_type = 'pytorch';
-        //           break
-        //     }
-      } ,
+
       changeInput(input){
         console.log("change Input" + input); 
         this.annotator_text = input; 
@@ -576,19 +563,20 @@ export default defineComponent({
               .then(response => response.json())
               .then(this._update_notify_module)
           }
-        }, 
+        },
+        save(){
+          this.finish_session();
+        },
         finish_session(){
           let body = { client_data : this.$data.client_data };
-          if (!this.path_mode){
-            fetch(`/api/session_end`,   
-                    {method: 'POST', 
-                    headers: {'Content-Type': 'application/json'}, 
-                    body: JSON.stringify(body)}
-                )
-                .then(response => response.json())
-                .then(this._finish_session_data)
-          }
-        }, 
+          fetch(`/api/session_end`,   
+                  {method: 'POST', 
+                  headers: {'Content-Type': 'application/json'}, 
+                  body: JSON.stringify(body)}
+              )
+              .then(response => response.json())
+              .then(this._finish_session_data)
+        },
         next_task(){
           let index = this.client_data.worker_state.current_task_index; 
           this.next_task_ready = false; 
@@ -881,7 +869,7 @@ export default defineComponent({
             this.selected_index = this.client_data.session.params.index_spec;
 
             this.text_query = this.client_data.session.query_string
-            this.set_frontend_type(this.client_data.session.params.other_params.mode);
+            // this.set_frontend_type(this.client_data.session.params.other_params.mode);
             if ('qstr' in this.client_data.session.params.other_params &&
                   this.client_data.session.gdata.length == 0)
             {

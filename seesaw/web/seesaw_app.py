@@ -162,19 +162,37 @@ async def session(
 
     return st
 
+import random
+import string
+
+## 3 things:
+# a save path that is related is available
+# data is saved on session end and can be read again 
 
 @app.post("/session_info", response_model=AppState)
-def session_info(body: SessionInfoReq):
-    """Used for visualizing (read-only) old session logs stored in files"""
-    assert os.path.isdir(body.path)
-    sum_path = f"{body.path}/summary.json"
+def session_info(path : str,
+                annotation_category: str = None):
+    """Used for visualizing of session logs stored in files"""
+    assert os.path.isdir(path)
+    path = path.rstrip('/')
+    sum_path = f"{path}/summary.json"
     all_info = json.load(open(sum_path, "r"))
+    random_id = ''.join([random.choice(string.ascii_lowercase) for i in range(10)])
+    if annotation_category is not None:
+        save_path = f'{path}_annot_{random_id}'
+        assert not os.path.exists(save_path)
+        print(f'using {save_path=}')
+    else:
+        save_path = None
+
+    ### how do I save?
     if "bench_params" in all_info:  # saved benchmark
         return AppState(
             indices=None,
             worker_state=None,
             session=all_info["result"]["session"],
             default_params=all_info["result"]["session"]["params"],
+            save_path=save_path
         )
 
     else:  # saved web session
@@ -183,6 +201,7 @@ def session_info(body: SessionInfoReq):
             worker_state=None,
             session=all_info["session"],
             default_params=all_info["session"]["params"],
+            save_path = save_path
         )
 
 
@@ -208,19 +227,28 @@ async def session_end(
     body: SessionReq = None,
 ):
     # no matter what, expire cookie from requester
-    response.set_cookie("session_id", max_age=0)
+    if session_id is not None:
+        response.set_cookie("session_id", max_age=0)
+        sess_exists = await manager.session_exists.remote(session_id)
+        if (
+            not sess_exists
+        ):  # after restarting server there are old ids out there that don't exist
+            return EndSession(token=session_id)
 
-    sess_exists = await manager.session_exists.remote(session_id)
-    if (
-        not sess_exists
-    ):  # after restarting server there are old ids out there that don't exist
+        handle = await get_handle(session_id)
+        await handle.save.remote(body)
+        await manager.end_session.remote(session_id)
         return EndSession(token=session_id)
-
-    handle = await get_handle(session_id)
-    await handle.save.remote(body)
-    await manager.end_session.remote(session_id)
-    return EndSession(token=session_id)
-
+    else:
+        app_state = body.client_data
+        save_path = app_state.save_path
+        if save_path is None:
+            print('session has no path, doing nothing')
+        else:
+            os.makedirs(save_path, exist_ok=True)
+            json.dump(app_state.dict(), open(f"{save_path}/summary.json", "w"))
+            print(f"saved session {save_path}")
+            return EndSession(token=None)
 
 """
     Single-session forwarding functions (forward calls)
