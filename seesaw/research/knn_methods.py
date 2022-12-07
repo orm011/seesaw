@@ -137,7 +137,12 @@ class BaseLabelPropagationRanker:
         else:
             self.prior_scores = init_scores 
 
-        self._current_scores = self._propagate(self.prior_scores)
+        ## when there are no labels at all, do not propagate, just replace.
+        ## when there are labels. what do we do?
+        if self.is_labeled.sum() == 0:
+            self._current_scores = self.prior_scores
+        else:
+            self._current_scores = self._propagate(self.prior_scores)
 
     def _propagate(self, scores):
         raise NotImplementedError('implement me')
@@ -266,5 +271,5 @@ class LabelPropagationRanker2(BaseLabelPropagationRanker):
     def _propagate(self,  scores):
         ids = np.nonzero(self.is_labeled.reshape(-1))
         labels = self.labels.reshape(-1)[ids]
-        scores = self.lp.fit_transform(label_ids=ids, label_values=labels, reg_values= self.prior_scores, start_value=scores)
+        scores = self.lp.fit_transform(label_ids=ids, label_values=labels, reg_values=self.prior_scores, start_value=scores)
         return scores
