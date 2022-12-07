@@ -376,13 +376,12 @@ class LogisticRegressionPT:
                             verbose=self.verbose,
                             **self.kwargs)
 
-            # self.trainer_ = BasicTrainer(mod=self.model_, max_epochs=1)
-            self.trainer_ = BasicTrainer(mod=self.model_, max_epochs=1)
-
         else: # warm start
             assert self.class_weights != 'balanced', 'implement this case'
             self.model_.reg_weight = reg_weight
 
+        # start from fresh trainer sinced not clear what the lbfgs opt does.
+        self.trainer_ = BasicTrainer(mod=self.model_, max_epochs=1)
         
         if self.regularizer_vector is None: 
             self.regularizer_vector = torch.zeros_like(self.model_.linear.weight)
