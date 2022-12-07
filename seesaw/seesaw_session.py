@@ -229,8 +229,8 @@ class LogReg2(PointBased):
 
     def set_text_vec(self, vec):
         super().set_text_vec(vec)
-        if self.model is not None:
-            raise NotImplementedError('need to change regularizer vec in model once initialized')
+        self.curr_vec = vec
+        self.model = None
 
     # def set_text_vec(self) # let super do this
     def refine(self):
@@ -521,13 +521,6 @@ class KnnBased(LoopBase):
     def from_params(gdm, q, p: SessionParams):
         if p.interactive == 'knn_prop2':
             knn_model = get_label_prop(q, p.interactive_options)
-        elif p.interactive == 'knn_prop2stage':
-            intra_knn_k = p.interactive_options.get('intra_knn_k', 0)
-            print('using composite prop')
-            knng_path_frame = knng_path + '/frame_sym.parquet'
-            knn_df_frame = parallel_read_parquet(knng_path_frame)
-            knng_frame = KNNGraph(knn_df = knn_df_frame, nvecs=knng.nvecs)
-            knng_frame = knng_frame.restrict_k(k=intra_knn_k)
         else:
             assert False
 
