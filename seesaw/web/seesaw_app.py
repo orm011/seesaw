@@ -1,4 +1,5 @@
 import json
+from seesaw.dataset_manager import GlobalDataManager
 import time
 from typing import Optional, List, Dict, Callable
 from fastapi.applications import FastAPI
@@ -169,8 +170,83 @@ import string
 # a save path that is related is available
 # data is saved on session end and can be read again 
 
+from seesaw.labeldb import LabelDB
+from seesaw.basic_types import Imdata
+
+def get_image_reference_data(dataset, *, annotation_category, idxbatch):
+    reslabs = []
+    bd, _ = dataset.load_ground_truth()
+    bd = bd[bd.category == annotation_category]
+
+    if idxbatch is None or idxbatch == []:
+        idxbatch = bd.dbidx.unique()
+
+    label_db = LabelDB()
+    label_db.fill(bd)
+    urls = dataset.get_urls(idxbatch)
+
+    for i, (url, dbidx) in enumerate(zip(urls, idxbatch)):
+        dbidx = int(dbidx)
+        boxes = label_db.get(dbidx, format="box")
+
+        elt = Imdata(
+            url=url,
+            dbidx=dbidx,
+            boxes=boxes,
+            activations=None,
+            timing=[]
+        )
+        reslabs.append(elt)
+    return reslabs
+
+from seesaw.basic_types import SessionState, SessionParams, IndexSpec
+import yaml
+
+@app.post("/annotate", response_model=AppState)
+async def annotate(dataset : str, category : str, pathfile : str):
+    """show current annotations for paths and allow saving edited"""
+
+    save_path = f"{pathfile}/summary.json"
+    yamlfile = f"{pathfile}/paths.yaml" # explicit list
+    assert not os.path.exists(save_path) # don't allow overwriting
+    pathfile = pathfile.rstrip('/')
+
+    gdm = GlobalDataManager('/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/')
+    ds = gdm.get_dataset(dataset)
+
+    if os.path.exists(yamlfile):
+        paths = yaml.safe_load(open(yamlfile, 'r'))
+        idxs = []
+        path2dbidx = {path:i for (i,path) in enumerate(ds.paths)}
+        for p in paths:
+            dbidx = path2dbidx.get(p, -1)
+            assert dbidx != -1
+            idxs.append(dbidx)
+    else: # figure out idxbatch based on category
+        idxs = []
+
+    ## make a dummy session object compatible with the frontend
+    params = SessionParams(annotation_category=category, 
+                    interactive='dummy',
+                    batch_size=len(idxs), # dummy
+                    index_spec=IndexSpec(d_name=dataset, 
+                            i_name='multiscalecoarse',  # dummy
+                            c_name=None))           
+    ## now pre-fill it with current annotations
+    gdata = get_image_reference_data(ds, annotation_category=category, idxbatch=idxs)
+    session = SessionState(params=params, gdata=[gdata], timing=[], reference_categories=[])
+
+    return AppState(
+            indices=None,
+            worker_state=None,
+            session=session,
+            default_params=session.params,
+            save_path=save_path
+        )
+
+
 @app.post("/session_info", response_model=AppState)
-def session_info(path : str,
+async def session_info(path : str,
                 annotation_category: str = None):
     """Used for visualizing of session logs stored in files"""
     assert os.path.isdir(path)
@@ -185,23 +261,31 @@ def session_info(path : str,
     else:
         save_path = None
 
-    ### how do I save?
     if "bench_params" in all_info:  # saved benchmark
-        return AppState(
-            indices=None,
-            worker_state=None,
-            session=all_info["result"]["session"],
-            default_params=all_info["result"]["session"]["params"],
-            save_path=save_path
-        )
+        session = all_info["result"]["session"]
+    else: # web session
+        session = all_info["session"]
 
-    else:  # saved web session
-        return AppState(
+    if annotation_category is not None: # set this 
+        session['params']['annotation_category'] = annotation_category
+        ## now pre-fill it with current annotations
+        gdm = GlobalDataManager('/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/')
+        dataset_name = session['params']['index_spec']['d_name']
+        ds = gdm.get_dataset(dataset_name)
+        idxs = []
+        for r in session['gdata']:
+            for elt in r:
+                idxs.append(int(elt['dbidx']))
+
+        new_gdata = get_image_reference_data(ds, annotation_category=annotation_category, idxbatch=idxs)
+        session['gdata'] = [new_gdata]
+
+    return AppState(
             indices=None,
             worker_state=None,
-            session=all_info["session"],
-            default_params=all_info["session"]["params"],
-            save_path = save_path
+            session=session,
+            default_params=session["params"],
+            save_path=path
         )
 
 
@@ -217,7 +301,6 @@ def task_description(code: str):
         urls=urls[code],
         neg_urls=neg_urls[code],
     )
-
 
 @app.post("/session_end", response_model=EndSession)
 async def session_end(
@@ -239,16 +322,20 @@ async def session_end(
         await handle.save.remote(body)
         await manager.end_session.remote(session_id)
         return EndSession(token=session_id)
+    elif body is None:
+        print(' empty body and no session id. doing nothing')
+        return EndSession(token=None)
     else:
         app_state = body.client_data
         save_path = app_state.save_path
         if save_path is None:
-            print('session has no path, doing nothing')
-        else:
-            os.makedirs(save_path, exist_ok=True)
-            json.dump(app_state.dict(), open(f"{save_path}/summary.json", "w"))
-            print(f"saved session {save_path}")
+            print('session has no savepath, doing nothing')
             return EndSession(token=None)
+
+        os.makedirs(save_path, exist_ok=True)
+        json.dump(app_state.dict(), open(f"{save_path}/summary.json", "w"))
+        print(f"saved session {save_path}")
+        return EndSession(token=None)
 
 """
     Single-session forwarding functions (forward calls)

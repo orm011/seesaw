@@ -404,9 +404,15 @@ export default defineComponent({
     mounted (){
         window.VueApp = this;
         let params = new URLSearchParams(window.location.search)
-        this.front_end_type = params.get('frontend')
+        let frontend = params.get('frontend')
+        this.front_end_type = frontend !== null? frontend : 'pytorch'
 
-        if (window.location.pathname === '/session_info'){
+        if (window.location.pathname === '/annotate'){
+          fetch('/api/annotate?' + params, {method: 'POST'})
+            .then(response => response.json())
+            .then(this._update_client_data)
+            this.path_mode = true; 
+        } else if (window.location.pathname === '/session_info'){
           fetch('/api/session_info?' + params, {method: 'POST'})
             .then(response => response.json())
             .then(this._update_client_data)
@@ -568,11 +574,15 @@ export default defineComponent({
           this.finish_session();
         },
         finish_session(){
-          let body = { client_data : this.$data.client_data };
+          let body = null;
+          if (this.$data.client_data.session !== null){
+            body = JSON.stringify({ client_data : this.$data.client_data });
+          }
+
           fetch(`/api/session_end`,   
                   {method: 'POST', 
                   headers: {'Content-Type': 'application/json'}, 
-                  body: JSON.stringify(body)}
+                  body: body}
               )
               .then(response => response.json())
               .then(this._finish_session_data)
