@@ -155,8 +155,13 @@ class BaseLabelPropagationRanker:
             self.labels[idx] = label  # make 0 or 1
             self.is_labeled[idx] = 1
                 
-        pscores = self._propagate(self.prior_scores)
-        self._current_scores = pscores
+        num_negatives = sum(self.labels[self.is_labeled] == 0)
+        if num_negatives > 0:
+            print(' propagating')
+            pscores = self._propagate(self.prior_scores)
+            self._current_scores = pscores
+        else:
+            print(' no negatives yet, skipping propagation')
 
     def current_scores(self):
         return self._current_scores
