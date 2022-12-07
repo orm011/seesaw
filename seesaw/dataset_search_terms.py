@@ -38,6 +38,7 @@ _special_cases = {
         "motor": "motorcycle",
         "rider": "bike rider",
         "gas stations scene": "gas station",
+        "trailer": "trailer hitched to a car",
         "highway scene": "highway",
         "parking lot scene": "parking lot",
         "city street scene": "city street",
@@ -47,6 +48,7 @@ _special_cases = {
         "partly cloudy weather": "partly cloudy sky",
         "clear weather": "clear skies",
         "foggy weather": "foggy weather",
+        "wheelchair" : "wheelchair",
     },
     "coco": {"mouse": "computer mouse"},
 }
