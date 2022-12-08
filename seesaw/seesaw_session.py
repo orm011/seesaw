@@ -239,8 +239,14 @@ class LogReg2(PointBased):
         if self.model is None:
             self.model = LogisticRegressionPT(regularizer_vector=self.state.tvec, **self.params.interactive_options)
 
-        self.model.fit(Xt, yt.reshape(-1,1))
-        self.curr_vec = self.model.get_coeff()
+        ## if there are only positives, fitting should already do nothing due to regularization... except loss is not the same.
+        if (yt == 1).all():
+            print('doing nothing, only positives')
+        elif (yt == 0).all():
+            print('doing nothing, only negatives')
+        else:
+            self.model.fit(Xt, yt.reshape(-1,1))
+            self.curr_vec = self.model.get_coeff()
 
 class SeesawLoop(PointBased):
     def __init__(
