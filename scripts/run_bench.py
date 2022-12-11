@@ -122,7 +122,7 @@ else:
         memory = args.mem_gbs * (1024**3)
         actor_options = dict(num_cpus=args.num_cpus, memory=memory)
         ## use a small batch size so that maybe failures affect as few classes as possible?
-        _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(10,300), **actor_options).take_all()
+        _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(1, min(100, len(all_cfgs))), **actor_options).take_all()
 
     closure()
     print('waiting a few seconds before running summary process')

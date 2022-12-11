@@ -22,6 +22,8 @@ from plotnine import (
     element_blank,
     xlab,
     ylab,
+    xlim,
+    ylim,
     ggtitle,
     labs,
     geom_text,
@@ -157,9 +159,9 @@ def make_labeler(fmt_func):
 
     return fun
 
-def pivot_metric(stats, metric):
-    rest = stats[['dataset', 'category', 'variant', 'param_hash', metric]]
-    return rest.pivot(index=['dataset', 'category'], columns=['param_hash'], values=metric,)
+# def pivot_metric(stats, columns=['param_hash'], metric):
+#     rest = stats[['dataset', 'category', 'variant', 'param_hash', metric]]
+#     return rest.pivot(index=['dataset', 'category'], columns=['param_hash'], values=metric,)
 
 # this case excludes case where there is nan or both are infinity
 def compare_method_pair(sbs, *, method_hash, reference_hash, epsilon = .01):
@@ -184,7 +186,7 @@ def compare_method_pair(sbs, *, method_hash, reference_hash, epsilon = .01):
 
     comparable = ~nan_either & ~inf_both
 
-    close =  comparable & ((sbs1 - sbs2).abs() < epsilon)
+    close =  comparable & ((sbs1 - sbs2).abs() <= epsilon)
     m1greater = comparable & ((sbs1 > sbs2) & ~close)
     m1smaller = comparable & ((sbs1 < sbs2) & ~close)
 
@@ -511,24 +513,24 @@ def rel_plot(sbs, variant, jitter=0.01):
     return scatterplot
 
 from plotnine import geom_histogram, facet_wrap, xlim, annotate, after_stat
-def show_deltas(df):
-    df = df.assign(delta=df.variant - df.baseline)
-    df = df.assign(greater=df.delta > 0, smaller=df.delta < 0)
-    aggs = df.groupby('dataset').agg({'delta':'mean', 'greater':'sum', 'smaller':'sum'}).reset_index()
+# def show_deltas(df):
+#     df = df.assign(delta=df.variant - df.baseline)
+#     df = df.assign(greater=df.delta > 0, smaller=df.delta < 0)
+#     aggs = df.groupby('dataset').agg({'delta':'mean', 'greater':'sum', 'smaller':'sum'}).reset_index()
     
     
-    plot = (ggplot(data=df) 
-         + geom_histogram(aes(x='delta', y=after_stat('ncount'), fill='dataset',), binwidth=.05)
-         + facet_wrap(facets='dataset', scales='free_y')
-         + geom_vline(aes(xintercept='delta'), data=aggs)
-         + geom_text(aes(x='delta+.05', y=.5, label='delta'), format_string='{:0.03f}', ha='left', data=aggs)
-         + geom_text(aes(x=.3, y=.8, label='greater'), size=6.5, format_string='(# > 0)={}', ha='left', data=aggs)
-         + geom_text(aes(x=-.7, y=.8, label='smaller'),  size=6.5, format_string='(# < 0)={}', ha='left', data=aggs)
-         + xlim(-1,1)
-         + annotate('vline', xintercept=0)
-        )
+#     plot = (ggplot(data=df) 
+#          + geom_histogram(aes(x='delta', y=after_stat('ncount'), fill='dataset',), binwidth=.05)
+#          + facet_wrap(facets='dataset', scales='free_y')
+#          + geom_vline(aes(xintercept='delta'), data=aggs)
+#          + geom_text(aes(x='delta+.05', y=.5, label='delta'), format_string='{:0.03f}', ha='left', data=aggs)
+#          + geom_text(aes(x=.3, y=.8, label='greater'), size=6.5, format_string='(# > 0)={}', ha='left', data=aggs)
+#          + geom_text(aes(x=-.7, y=.8, label='smaller'),  size=6.5, format_string='(# < 0)={}', ha='left', data=aggs)
+#          + xlim(-1,1)
+#          + annotate('vline', xintercept=0)
+#         )
 
-    return plot
+#     return plot
 
 
 def plot_length_scale(stats, index_name, metric):
@@ -562,24 +564,24 @@ def show_deltas(df):
          + facet_wrap(facets='dataset', scales='free_y')
          + geom_vline(aes(xintercept='delta'), data=aggs)
          + geom_text(aes(x='delta+.05', y=.5, label='delta'), format_string='{:0.03f}', ha='left', data=aggs)
-         + geom_text(aes(x=.3, y=.8, label='greater'), size=6.5, format_string='(# > 0)={}', ha='left', data=aggs)
-         + geom_text(aes(x=-.7, y=.8, label='smaller'),  size=6.5, format_string='(# < 0)={}', ha='left', data=aggs)
+         + geom_text(aes(x=.3, y=.8, label='greater'), size=6.5, format_string='|\Delta > 0|={}', ha='left', data=aggs, parse=True)
+         + geom_text(aes(x=-.7, y=.8, label='smaller'),  size=6.5, format_string='|\Delta < 0|={}', ha='left', data=aggs, parse=True)
          + xlim(-1,1)
          + annotate('vline', xintercept=0)
         )
 
     return plot
 
+def plot_compare2(pvt, variant_col, baseline_col, jitter=0.0, abstol=.0):
+    # pvt = pivot_metric(stats, metric=metric)
+    variant_hash = variant_col
+    baseline_hash =baseline_col
+    all_results = compare_method_pair(pvt, method_hash=variant_col,
+                                        reference_hash=baseline_col, epsilon=abstol)
 
-
-def plot_compare2(stats, variant_hash, baseline_hash, metric, jitter=0.01, abstol=.01):
-    pvt = pivot_metric(stats, metric=metric)
-    all_results = compare_method_pair(pvt, method_hash=variant_hash,
-                                        reference_hash=baseline_hash, epsilon=abstol)
-
-    variant = stats[stats.param_hash == variant_hash].variant.iloc[0]
-    baseline = stats[stats.param_hash == baseline_hash].variant.iloc[0]
-
+    # variant = stats[stats.param_hash == variant_col].variant.iloc[0]
+    # baseline = stats[stats.param_hash == baseline_col].variant.iloc[0]
+    all_results = all_results.assign(dataset=pvt.dataset)
     bsw = all_results.groupby('dataset').sum()
 
     display(bsw)
@@ -587,7 +589,7 @@ def plot_compare2(stats, variant_hash, baseline_hash, metric, jitter=0.01, absto
     baseline_name = 'baseline'
     variant_name = 'variant'
 
-    plotdata = pvt[[variant_hash, baseline_hash]].reset_index()
+    plotdata = pvt[['dataset', variant_hash, baseline_hash]]
     plotdata = plotdata.rename(mapper={variant_hash:variant_name, baseline_hash:baseline_name}, axis=1)
 
     plot1 = (
@@ -598,10 +600,12 @@ def plot_compare2(stats, variant_hash, baseline_hash, metric, jitter=0.01, absto
             width=jitter,
             height=jitter,
         )
-        + labs(x=f'method: {baseline} ({baseline_hash})', 
-                y=f'method: {variant} ({variant_hash})')
+        + labs(x=f'baseline: ({baseline_hash})', 
+                y=f'variant: ({variant_hash})')
 
-        + ggtitle(f'scatterplot of {metric}')
+        + ggtitle(f'Scatterplot ')
+        + xlim(0,1)
+        + ylim(0,1)
         # + scale_x_log10()
         # + scale_y_log10()
         + geom_abline(aes(slope=1, intercept=0))

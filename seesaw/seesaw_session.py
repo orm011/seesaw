@@ -448,7 +448,9 @@ class PseudoLabelLR(PointBased):
         self.knn_based.set_text_vec(tvec)
 
     def refine(self):
-        self.knn_based.refine() # label prop
+        self.knn_based.refine() # label prop,. # if only positives wont do anything.
+        # if negatives it will try to help (not clear it works that way)
+        
         X, y, is_real = makeXy(self.index, self.knn_based.state.knn_model, sample_size=self.options['sample_size'])
         model = LogisticRegressionPT(regularizer_vector=self.state.tvec,  **self.log_reg_params)
 
