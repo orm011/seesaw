@@ -3,6 +3,7 @@ datasets:
     # categories:
     #   - trailer
     #   - train
+    # - wheelchair
   - name: coco
   - name: lvis
   - name: objectnet
@@ -12,8 +13,8 @@ shared_session_params: # see SessionParams
   index_options: 
     use_vec_index: False # for bdd and coco.
   index_spec : 
-      i_name: multiscalemed
-      #i_name: multiscalecoarse
+      # i_name: multiscalemed
+      i_name: multiscalecoarse
       # i_name: coarse
   agg_method: plain_score
   # agg_method: avg_score
@@ -26,8 +27,8 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    # - name: baseline
-    #   interactive: plain
+    - name: baseline
+      interactive: plain
     # - name: seesaw_all
     #   interactive: pytorch
     #   method_config: 
@@ -38,18 +39,19 @@ variants:
     #       num_epochs: 4
     #       model_type: cosine
     #       warm_start: warm
-    # - name: log_reg2
-    #   max_samples: 10
-    #   interactive: log_reg2
-    #   interactive_options:
-    #     class_weights: 
-    #       choose: [1.]
-    #     scale: centered
-    #     reg_lambda: 
-    #       choose: [1.] #[0.1, 1., 10.]
-    #     max_iter: 200.
-    #     lr: 1.
-    #     fit_intercept: false
+    - name: log_reg2
+      max_samples: 10
+      interactive: log_reg2
+      interactive_options:
+        class_weights: 
+          choose: [1.]
+        scale: centered
+        reg_lambda: 
+          choose: [.25, .5, 1., 2., 4., 8., 16., 32.]
+          # choose: [4.]
+        max_iter: 200.
+        lr: 1.
+        fit_intercept: false
     # # - name: prop2logreg
     # #   max_samples: 10
     # #   interactive: switch_over
@@ -83,41 +85,41 @@ variants:
     # #         max_iter: 200.
     # #         lr: 1.
     # #         fit_intercept: false
-    # - name: pseudo_lr_switch # change to use new config
-    #   max_samples: 10
-    #   interactive: pseudo_lr
-    #   interactive_options:
-    #     switch_over: True
-    #     real_sample_weight: 
-    #       choose: [1.]
-    #     sample_size: 
-    #       choose : [10000]
-    #     log_reg_params:
-    #       class_weights: 
-    #         choose: [1.]
-    #       scale: centered
-    #       reg_lambda: 
-    #         choose: [1.] 
-    #       max_iter: 200.
-    #       lr: 1
-    #       fit_intercept: false
-    #     label_prop_params:
-    #       matrix_options:
-    #         knn_path: nndescent60
-    #         self_edges : False
-    #         normalized_weights : False
-    #         knn_k: 
-    #           choose: [10]
-    #         edist: 
-    #           choose: [.05]
-    #       normalize_scores : False
-    #       sigmoid_before_propagate: True  
-    #       calib_a: 
-    #         choose: [10.]
-    #       calib_b: 
-    #         choose: [-0.4]
-    #       prior_weight: 
-    #         choose: [1.] # good for unnormalized
+    - name: pseudo_lr_switch # change to use new config
+      max_samples: 20
+      interactive: pseudo_lr
+      interactive_options:
+        switch_over: True
+        real_sample_weight: 
+          choose: [1.]
+        sample_size: 
+          choose : [10000]
+        log_reg_params:
+          class_weights: 
+            choose: [1.]
+          scale: centered
+          reg_lambda: 
+            choose: [.25, .5, 1., 2.]
+          max_iter: 200.
+          lr: 1
+          fit_intercept: False
+        label_prop_params:
+          matrix_options:
+            knn_path: nndescent60
+            self_edges : False
+            normalized_weights : False
+            knn_k: 
+              choose: [10]
+            edist: 
+              choose: [.2, .1, .05] # should you use a lower prop for negatives and a larger for positives?
+          normalize_scores : False
+          sigmoid_before_propagate: True  
+          calib_a: 
+            choose: [10.]
+          calib_b: 
+            choose: [-0.4]
+          prior_weight: 
+            choose: [1.] # good for unnormalized
     - name: knn_prop2
       max_samples: 20
       interactive: knn_prop2
