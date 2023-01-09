@@ -22,3 +22,4 @@ plot <- (ggplot(df, aes(x=ndcg_score_baseline, y=ndcg_score))
 )
 
 ggsave(plot = plot, filename='./query_scatter.pdf', width=10, height=6, units = 'in')
+plot
