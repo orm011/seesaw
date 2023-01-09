@@ -589,7 +589,7 @@ def plot_compare2(pvt, variant_col, baseline_col, jitter=0.0, abstol=.0):
     baseline_name = 'baseline'
     variant_name = 'variant'
 
-    plotdata = pvt[['dataset', variant_hash, baseline_hash]]
+    plotdata = pvt[['dataset', 'category', variant_hash, baseline_hash]]
     plotdata = plotdata.rename(mapper={variant_hash:variant_name, baseline_hash:baseline_name}, axis=1)
 
     plot1 = (
