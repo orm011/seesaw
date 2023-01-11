@@ -13,6 +13,7 @@ df <- tibble(df)
 
 df <- (df %>% mutate(delta = variant - baseline))
 
+df <- (df %>% mutate(dataset=factor(dataset, c('objectnet', 'lvis', 'bdd', 'coco'))))
 
 example <- (df %>% filter(dataset == 'lvis' & category %in% c('dishrag', 'pudding') ) 
                            %>% mutate(change= c('better', 'worse'))
@@ -41,13 +42,14 @@ plot <- (ggplot(df,  aes(x=baseline, y=delta))
          #+ geom_annotate('segment', x=0, y=.5, )
          + geom_segment(aes(y=0, yend=(delta - sign(delta)*.01), x=baseline, xend=baseline), arrow = arrow(ends = "last", length =unit(.02, 'native')), data=example)
          + labs(x='initial query AP', y='change in AP', 
-                title='Change in AP using SeeSaw wrt. initial query AP'
+                title='Change in AP using SeeSaw wrt. initial query AP',
+                color='Dataset:'
                 )
          + theme(
                  axis.text=element_text(size=15),
                  aspect.ratio=1.,
-                 legend.title=element_text(size=12),
-                 legend.text=element_text(size=10),
+                 legend.title=element_text(size=15),
+                 legend.text=element_text(size=15),
                  axis.title=element_text(size=15),
                  plot.background=element_blank(),
                  legend.position = 'bottom',
