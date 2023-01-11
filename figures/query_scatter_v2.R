@@ -25,7 +25,7 @@ update_geom_defaults("label", list(size = sz))
 
 
 plot <- (ggplot(df,  aes(x=baseline, y=delta))
-         + geom_point(aes(color=dataset),  alpha=.7)
+         + geom_point(alpha=.7)
          + scale_x_continuous(breaks=seq(0,1,.5), limits = c(0, 1), expand = c(.01, .01))
          + scale_y_continuous(breaks=seq(-.2, 1.,.2), limits = c(NA, 1.0), expand=c(.025, .01))
          + annotate('rect', xmin=-Inf, ymin=-Inf, xmax=.5, ymax=Inf, fill='palegreen', alpha=.2)

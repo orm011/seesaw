@@ -36,15 +36,16 @@ dfagg <- (dfall %>%  group_by(gp, dataset) %>% summarise(delta_median=median(del
 
 plot <- (ggplot(dfall,  aes(x=gp, y=delta))
          + geom_boxplot(aes(color=dataset), position=position_dodge(.9),  coef=100)
-         + geom_text(aes(x=gp, y=delta_median -.01, color=dataset, label=sprintf("%0.2f", round(delta_median, digits = 2))),
-                    position = position_dodge(.9),  data=dfagg, vjust='top')
+         #+ geom_text(aes(x=gp, y=delta_median -.01, color=dataset, label=sprintf("%0.2f", round(delta_median, digits = 2))),
+          #          position = position_dodge(.9),  data=dfagg, vjust='top')
          + geom_text(aes(x=gp, y=.9, color=dataset, label=paste("n =\n", n, '')), size=4,
-                     position = position_dodge(.9),  data=dfagg, vjust='top')
+                     position = position_dodge(.9),  data=dfagg, vjust='top', show.legend = FALSE)
         + geom_errorbar(aes(x=gp, ymin=delta_mean,  y = delta_mean, ymax=delta_mean, color=dataset),
                       position = position_dodge(.9),  data=dfagg, linetype='dashed', width=.75)
         + geom_text(aes(x=gp, y=delta_mean +.01, group=dataset,  label=sprintf("%0.2f", round(delta_mean, digits = 2))),
-                     position = position_dodge(.9),  data=dfagg, vjust='bottom')
+                     position = position_dodge(.9),  data=dfagg, vjust='bottom', show.legend = FALSE)
         + scale_y_continuous(breaks=seq(-.2, 1.,.2), limits = c(NA, 1.0), expand=c(.025, .01))
+        + scale_linetype_discrete()
         + labs(y='change in AP (bigger is better)', 
                 title='Change in AP by type of query and dataset',
                 color='Dataset:',
