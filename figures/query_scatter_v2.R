@@ -13,7 +13,7 @@ df <- tibble(df)
 
 df <- (df %>% mutate(delta = variant - baseline))
 
-df <- (df %>% mutate(dataset=factor(dataset, c('objectnet', 'lvis', 'bdd', 'coco'))))
+df <- (df %>% mutate(dataset=factor(dataset, c('objectnet', 'lvis', 'bdd', 'coco', 'all datasets'))))
 
 example <- (df %>% filter(dataset == 'lvis' & category %in% c('dishrag', 'pudding') ) 
                            %>% mutate(change= c('better', 'worse'))
@@ -29,20 +29,21 @@ plot <- (ggplot(df,  aes(x=baseline, y=delta))
          + scale_x_continuous(breaks=seq(0,1,.5), limits = c(0, 1), expand = c(.01, .01))
          + scale_y_continuous(breaks=seq(-.2, 1.,.2), limits = c(NA, 1.0), expand=c(.025, .01))
          + annotate('rect', xmin=-Inf, ymin=-Inf, xmax=.5, ymax=Inf, fill='palegreen', alpha=.2)
-         + annotate('label', x=.25, y=.99, label='low initial AP', hjust='center', vjust='top')
          + annotate('segment', x=0, xend=.5, y=1., yend=1., arrow=arrow(ends='both', length =unit(.02, 'native')))
          + annotate('segment', x=.75, xend=.75, y=0, yend=.25,  arrow = arrow(ends = "last", length =unit(.02, 'native')))
          + annotate('label', x=.75, y=.25, vjust='bottom', hjust='left', label='upper bound\n(AP=1)', size=4.5)
          + annotate('segment', x=0, xend=1, y=1, yend=0, linetype='dashed')
          + annotate('segment', x=0, xend=1, y=0, yend=0, linetype='dashed')
+         + annotate('label', x=.25, y=.99, label='Hard queries\n(low baseline AP)', hjust='center', vjust='top')
+         
 #         + geom_abline(aes(slope=-1, intercept=1),linetype ='dashed')
 #         + geom_abline(aes(slope=0, intercept=0), linetype='dashed')
           + geom_text(aes(label= paste('"',category,'"', sep=""), y=(delta + sign(delta)*.05)), hjust='center', vjust='center', data = example)
           + geom_label(aes(label=change, y=delta/2, x=baseline+.01), hjust='left', vjust='center', data = example)
          #+ geom_annotate('segment', x=0, y=.5, )
          + geom_segment(aes(y=0, yend=(delta - sign(delta)*.01), x=baseline, xend=baseline), arrow = arrow(ends = "last", length =unit(.02, 'native')), data=example)
-         + labs(x='initial query AP', y='change in AP', 
-                title='Change in AP using SeeSaw wrt. initial query AP',
+         + labs(x='baseline AP', y='change in AP', 
+                title='Change in AP using SeeSaw vs. baseline AP',
                 color='Dataset:'
                 )
          + theme(
