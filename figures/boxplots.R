@@ -3,6 +3,8 @@ library(arrow)
 
 #library(ggplot2)
 library(ggExtra)
+library(grid)
+library(gridExtra)
 
 
 df <- read_parquet('./query_scatter_multiscale.parquet', as_data_frame = TRUE)
@@ -20,7 +22,7 @@ update_geom_defaults("label", list(size = sz))
 ### show means, label quantiles.
 ## how about initial AP...
 
-dftotal <- (df %>% mutate(dataset='all datasets'))
+dftotal <- (df %>% mutate(dataset='all'))
 
 df = bind_rows(df, dftotal)
 dfhard <- (df %>% filter(baseline < .5))
@@ -28,31 +30,36 @@ dfhard <- (df %>% filter(baseline < .5))
 dfall <- (bind_rows(df %>% mutate(gp='all queries'), dfhard %>% mutate(gp='hard queries') ))
 
 dfall <- (dfall %>%mutate(gp=factor(gp, c('hard queries', 'all queries')), 
-                          dataset=factor(dataset, c('objectnet', 'lvis', 'bdd', 'coco', 'all datasets'))
+                          dataset=factor(dataset, c('objectnet', 'lvis', 'bdd', 'coco', 'all'))
           )
         )
 
 dfagg <- (dfall %>%  group_by(gp, dataset) %>% summarise(delta_median=median(delta), delta_mean=mean(delta), n=n()))
 
-plot <- (ggplot(dfall,  aes(x=gp, y=delta))
-         + geom_boxplot(aes(color=dataset), position=position_dodge(.9),  coef=100)
+plot <- (ggplot(dfall,  aes(x=dataset, y=delta))
+         + facet_grid(cols = vars(gp))
+         + geom_boxplot(position=position_dodge(.9),  coef=100)
          #+ geom_text(aes(x=gp, y=delta_median -.01, color=dataset, label=sprintf("%0.2f", round(delta_median, digits = 2))),
           #          position = position_dodge(.9),  data=dfagg, vjust='top')
-         + geom_text(aes(x=gp, y=.9, color=dataset, label=paste("n =\n", n, '')), size=4,
-                     position = position_dodge(.9),  data=dfagg, vjust='top', show.legend = FALSE)
-        + geom_errorbar(aes(x=gp, ymin=delta_mean,  y = delta_mean, ymax=delta_mean, color=dataset),
+        + geom_text(aes(x=dataset, y=.9, label=paste('', n,sep='')), size=4,
+                       data=dfagg, vjust='bottom', hjust='center', show.legend = FALSE)
+        + annotate(geom='text', x=.6, y=.9, vjust='bottom', label='N=', size=4)
+        + annotate(geom='text', x=.6, y=.8, vjust='bottom', label=expression(mu*'='), size=4)
+        + geom_errorbar(aes(x=dataset, ymin=delta_mean,  y = delta_mean, ymax=delta_mean),
                       position = position_dodge(.9),  data=dfagg, linetype='dashed', width=.75)
-        + geom_text(aes(x=gp, y=delta_mean +.01, group=dataset,  label=sprintf("%0.2f", round(delta_mean, digits = 2))),
-                     position = position_dodge(.9),  data=dfagg, vjust='bottom', show.legend = FALSE)
+        #+ geom_text(aes(x=dataset, y=delta_mean +.01, group=dataset,  label=sprintf("%0.2f", round(delta_mean, digits = 2))),
+        #             position = position_dodge(.9),  data=dfagg, vjust='bottom', show.legend = FALSE)
+        + geom_text(aes(x=dataset, y=.8, label=sprintf("%0.2f", round(delta_mean, digits = 2))),
+                      size=4, data=dfagg, vjust='bottom', show.legend = FALSE)
         + scale_y_continuous(breaks=seq(-.2, 1.,.2), limits = c(NA, 1.0), expand=c(.025, .01))
         + scale_linetype_discrete()
-        + labs(y='change in AP (bigger is better)', 
-                title='Change in AP by type of query and dataset',
-                color='Dataset:',
+        + labs(y='change in AP  (bigger is better)', 
+                title='Change in AP when using SeeSae aggregated by type of query and by dataset',
          )
          + theme(
            axis.text=element_text(size=15),
            aspect.ratio=1.,
+           strip.text = element_text(size=15),
            axis.title.x=element_blank(),
            legend.title=element_text(size=15),
            legend.text=element_text(size=15),
@@ -65,7 +72,12 @@ plot <- (ggplot(dfall,  aes(x=gp, y=delta))
          )
 )
 
+## look into gridextra.
 
+#grid.arrange(plot, plot2, nrow=2, 
+#             heights=unit(c(10,2), c("cm", "cm")))
 
-ggsave(plot = plot, filename='./boxplot_results.pdf', bg = NULL, width=6, height=6, units = 'in')
+#grid.draw(rbind(ggplotGrob(plot), ggplotGrob(plot2), size = "last"))
+## todo: instead of color, use position on x axis. do a faceted plot if needed.
 plot
+ggsave(plot = plot, filename='./boxplot_results.pdf', bg = NULL, width=6, height=6, units = 'in')
