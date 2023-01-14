@@ -47,8 +47,8 @@ def load_session_data(base_dir, use_ray=True):
     return acc
 
 
-def load_mturk_batches():
-    mturk_batches = glob.glob("./Batch*csv")
+def load_mturk_batches(mturk_dir):
+    mturk_batches = glob.glob(f"{mturk_dir}/Batch*csv")
     dfs = []
     for b in mturk_batches:
         dfs.append(pd.read_csv(b))
