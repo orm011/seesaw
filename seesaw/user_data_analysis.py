@@ -239,11 +239,12 @@ def get_session_summaries(sessions, latest_only=True):
         )
     return all_df
 
+import os
 
 def process_session(sess, filter_paths=None):
     summary = get_session_summary(sess)
     if filter_paths:
-        if summary["session_path"] not in filter_paths:
+        if os.path.normpath(summary["session_path"]) not in filter_paths:
             return []
 
     log_results = process_action_log(sess["session"]["action_log"])
