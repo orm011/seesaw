@@ -1,8 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
 
 import pandas as pd
 import seesaw.user_data_analysis
@@ -10,51 +5,21 @@ import importlib
 importlib.reload(seesaw.user_data_analysis)
 from seesaw.user_data_analysis import *
 
-
-# In[2]:
-
-
-accept_df = pd.concat([pd.read_parquet('./time_view_v3.parquet'), pd.read_parquet('./time_view_v4.parquet')], ignore_index=True)
-
-
-# In[11]:
-
+mturk_path = './data_mturk.parquet'
+mit_path = './time_view_v3.parquet'
+accept_df = pd.concat([pd.read_parquet(mit_path), pd.read_parquet(mturk_path)], ignore_index=True)
 
 accept_df = accept_df[accept_df.accepted <= 10] 
 
-
-# In[116]:
-
-
 accept_df[['session_id', 'uname']].apply(lambda x : x.session_id if not x.uname else x.uname, axis=1)
 
-
-# In[110]:
-
-
 accept_df.groupby(['session_id']).size()
-
-
-# In[12]:
-
 
 qaccept_df = accept_df.groupby(['qkey','mode','accepted']).elapsed_time.apply(bootstrap_stat).reset_index()
 qaccept_df = qaccept_df.assign(grp=qaccept_df[['mode', 'accepted']].apply(tuple,axis=1))
 
 
-# In[9]:
-
-
 from plotnine import *
-
-
-# In[16]:
-
-
-
-
-
-# In[78]:
 
 
 codes = {
@@ -84,43 +49,24 @@ codes = {
 }
 
 
-# In[79]:
-
-
 qaccept_df = qaccept_df.assign(qstr=qaccept_df.qkey.map(lambda x : codes[x]['qstr']))
-
-
-# In[80]:
 
 
 qaccept_df = qaccept_df[~qaccept_df.qkey.isin(['pc'])]
 
 
-# In[81]:
-
-
 qaccept_df = qaccept_df.assign(method=qaccept_df['mode'].map(lambda m : {'pytorch': 'this work', 'default':'baseline'}[m]))
-
-
-# In[82]:
 
 
 show_minutes = lambda x : f'{int(x/60):d}'
 
 
-# In[108]:
-
 
 qaccept_df
 
 
-# In[107]:
-
 
 qaccept_df.groupby(['session_id', 'user', 'qkey']).size()
-
-
-# In[101]:
 
 
 plot = ( ggplot(qaccept_df) + 
@@ -140,46 +86,4 @@ plot = ( ggplot(qaccept_df) +
           legend_margin=0, plot_margin=0, panel_grid_minor=element_blank(), figure_size=(3,5), )
 )
 plot
-
-
-# In[84]:
-
-
-import matplotlib.pyplot as plt
-
-
-# In[102]:
-
-
-f2 = plot.draw()
-
-
-# In[96]:
-
-
-#type(f2)
-
-
-# In[106]:
-
-
-f2.savefig('./user_study.pdf', bbox_inches='tight', dpi=200)
-
-
-# In[104]:
-
-
-import PIL.Image
-
-
-# In[105]:
-
-
-PIL.Image.open('./user_study.png')
-
-
-# In[ ]:
-
-
-
 
