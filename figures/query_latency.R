@@ -33,7 +33,7 @@ plot <- (ggplot(data=table)
          + xlab(label='time (seconds)')
          + geom_vline(xintercept = 360, linetype='dashed', color='black')
          #+ annotate('vline', xintercept=c(360), linetype='dashed', color='black')
-         + scale_x_continuous(breaks=seq(0, 360, 60), limits = c(0,360), expand=c(.0, .01))
+         + scale_x_continuous(breaks=seq(0, 360, 60), limits = c(0,361), expand=c(.0, .05))
          
          + theme(legend.position = 'top', 
                  axis.title.y = element_blank(),
@@ -45,6 +45,9 @@ plot <- (ggplot(data=table)
                  legend.title = element_blank(),
                  legend.spacing = unit(.5, unit='mm'),
                  legend.margin = margin(c(0,0,0,0), unit='mm'),
+                 #panel.background = element_blank(),
+                 plot.margin=grid::unit(c(0,0,0,0), "mm"),
+                 
             )
         )
   
