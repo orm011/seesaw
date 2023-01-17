@@ -329,3 +329,21 @@ def bootstrap_stat(ser, confidence_level=0.95, n_resamples=10000):
             }
         ]
     )
+
+import scipy.stats
+def bootstrap_stat2(ser, confidence_level):
+    ans = scipy.stats.bootstrap(ser.values.reshape(1,-1), statistic=np.mean, confidence_level=confidence_level)
+    ci = ans.confidence_interval
+    
+    return pd.DataFrame(
+        [
+            {
+                "lower": ci.low,
+                "med": ser.median(),
+                "mean": ser.mean(),
+                "high": ci.high,
+                "confidence_level": confidence_level,
+                "n": ser.shape[0],
+            }
+        ]
+    )
