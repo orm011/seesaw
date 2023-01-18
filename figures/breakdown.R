@@ -62,8 +62,8 @@ plot <- (ggplot(data=table)  +
                   axis.text.y = element_text(size=8),
                   axis.ticks.y = element_blank(),
                   axis.title.y = element_blank(),
-                  panel.background = element_blank(),
                   panel.spacing.x = unit(0, units = 'mm'),
+                  panel.background = element_blank(),
                   plot.margin=grid::unit(c(0,0,0,0), "mm"),
                   panel.spacing.y = unit(0, units='mm'),
                   strip.background = element_rect(color='white')

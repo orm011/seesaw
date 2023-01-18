@@ -5,7 +5,7 @@ library(arrow)
 target = c(3.8, 2.4)
 units = 'in'
 
-if (all(near(dev.size(units=units), target))){
+if (all(near(dev.size(units=units), target))) {
   print('no need to change device')
   
 } else{
@@ -14,26 +14,30 @@ if (all(near(dev.size(units=units), target))){
   dev.new(width=target[1], height=target[2],  unit=unit, noRStudioGD = TRUE)
 }
 
-
-
-
 table <- read_parquet('../notebooks/find10_interval.parquet', as_data_frame=TRUE)
 table <- tibble(table)
 
 table <- replace_na(table, replace=list(lower=360, high=360))
-table <- (table %>% mutate(method=recode_factor(method, baseline='CLIP only')))
+table <- (table %>% mutate(method=recode_factor(method, baseline='CLIP only'),
+                           difficulty=recode_factor(qstr, wheelchair='hard',  dog='hard',
+                                                    'spoon'='medium', 'melon'='medium',
+                                                    'egg carton'='easy', 'dustpan'='easy',
+                                                  )
+                           ))
 
 
 table <- table %>% filter(correction_n == 6)
 
 plot <- (ggplot(data=table)
           + geom_errorbarh(aes(xmin=lower, xmax=high, y=qstr, color=method),  height=.6)
-         + geom_point(aes(x=med, y=qstr, color=method))
-          + facet_grid(rows=vars(dataset), scales='free_y')
+         + geom_point(aes(x=med, y=qstr, color=method, fill=method))
+         #+ geom_point(aes(x=mean, y=qstr, color=method, fill=method))
+         #+ geom_errorbarh(aes(xmin=med, xmax=med, y=qstr, color=method), height=.6)
+          + facet_grid(rows=vars(difficulty), scales='free_y')
          + xlab(label='time (seconds)')
          + geom_vline(xintercept = 360, linetype='dashed', color='black')
          #+ annotate('vline', xintercept=c(360), linetype='dashed', color='black')
-         + scale_x_continuous(breaks=seq(0, 360, 60), limits = c(0,361), expand=c(.0, .05))
+         + scale_x_continuous(breaks=seq(0, 360, 60), limits = c(0,364), expand=c(.0, .0))
          
          + theme(legend.position = 'top', 
                  axis.title.y = element_blank(),
