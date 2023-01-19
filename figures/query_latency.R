@@ -20,11 +20,25 @@ table0 <- tibble(table)
 table <- replace_na(table0, replace=list(lower=360, high=360))
 table <- (table %>% mutate(method=recode_factor(method, baseline='CLIP only'),
                            difficulty=recode_factor(qstr, wheelchair='hard',  dog='hard',
-                                                    'spoon'='medium', 'melon'='medium',
+                                                    'spoon'='easy', 'melon'='hard',
                                                     'egg carton'='easy', 'dustpan'='easy',
-                                                    'car with open door'='hard'
-                                                  )
-                           ))
+                                                    'car with open door'='hard',
+                                                  ),
+                           qstr=recode_factor(qstr, 
+                                              'egg carton'='egg carton',
+                                              'dustpan'='dustpan',
+                                              'spoon'='spoon',
+                                              
+
+                                              dog='dog',
+                                              wheelchair='wheelchair', 
+                                              
+                                              melon='melon',
+                                              'car with open door'='car with open door', 
+                                              
+                                              
+                                              .ordered=TRUE))
+          )
 
 
 table <- table %>% filter(correction_n == 6)
@@ -42,7 +56,7 @@ plot <- (ggplot(data=table)
          + xlab(label='time (seconds) - less is better')
          #+ annotate('vline', xintercept=c(360), linetype='dashed', color='black')
          + scale_x_continuous(breaks=seq(0, 360, 60), limits = c(0,364), expand=c(.0, .0))
-         + geom_hline(yintercept =c(1.5, 2.5), color='white', size=.5)
+         + geom_hline(yintercept =c(1.5, 3.5), color='white', size=.5)
          
          + theme(legend.position = 'top', 
                  axis.title.y = element_blank(),
@@ -58,6 +72,7 @@ plot <- (ggplot(data=table)
                  #panel.background = element_blank(),
                  plot.margin=grid::unit(c(0,0,0,0), "mm"),
                 strip.background = element_blank(),
+                #legend.
             )
         )
   
