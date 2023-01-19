@@ -56,12 +56,14 @@ plot <- (ggplot(data=table)
          + xlab(label='time (seconds) - less is better')
          #+ annotate('vline', xintercept=c(360), linetype='dashed', color='black')
          + scale_x_continuous(breaks=seq(0, 360, 60), limits = c(0,364), expand=c(.0, .0))
-         + geom_hline(yintercept =c(1.5, 3.5), color='white', size=.5)
+       #  + scale_y_discrete(labels=label_wrap_gen(12))
+         + geom_hline(yintercept =c(1.5, 2.5, 3.5), color='white', size=.5)
          
          + theme(legend.position = 'top', 
                  axis.title.y = element_blank(),
                  axis.ticks.y = element_blank(),
-                 axis.text.y = element_text(size=10),
+                 axis.text.y = element_text(size=9),
+                 strip.text.y = element_text(size=9),
                  panel.grid.major.y =  element_blank(),
                  panel.spacing.y =  unit(1, unit='mm'),
                  panel.border = element_rect(colour="black", fill = NA),
