@@ -4,7 +4,8 @@ library(arrow)
 #library(ggplot2)
 library(ggExtra)
 
-target = c(3.8,2.6)
+target = c(3.3,3.5) # the marginal plot seems to cause issue with 
+# truncating whichever the shortest side is. prefer to truncate the right side.
 units = 'in'
 if (all(near(dev.size(units=units), target))){
   print('no need to change device')
@@ -73,25 +74,37 @@ plot <- (ggplot(df,  aes(x=baseline, y=delta))
            legend.text=element_text(size=theme_szs),
            axis.title=element_text(size=theme_szs),
            plot.background=element_blank(),
-           legend.position = 'bottom',
-           legend.box.margin = unit(c(0,0,0,0), 'mm'), # = unit(,'native'),
-           plot.margin=grid::unit(c(0,0,0,0), "mm"),
+#           legend.position = 'bottom',
+#           legend.box.margin = unit(c(0,0,0,0), 'mm'), # = unit(,'native'),
+           plot.margin=margin(t=0, r = 0, b = 0, l = 0, unit='mm') 
+
+           #grid::unit(c(0,0,0,
            #                axis.line=element_line(color="black", size = 2)
          )
 )
 
 
-plot <- ggMarginal(plot, type="boxplot", margin="both", size=20, )#, groupColour=TRUE)
+plot <- ggMarginal(plot, type="boxplot", margin="both", size=21)#, groupColour=TRUE)
 # xparams = list(stat='identity')
-plot
-
-
-
-ggsave(plot = plot, filename='./main_results_scatter.pdf', bg = NULL, width=6, height=6, units = 'in')
+#plot
+ggsave(plot = plot, filename='./main_results_scatter.pdf', bg = NULL)
 #plot
 
 
 ### boxplots below
+
+target = c(3.8,2.6)
+units = 'in'
+if (all(near(dev.size(units=units), target))){
+  print('no need to change device')
+  
+} else{
+  graphics.off()
+  print('changing device')
+  dev.new(width=target[1], height=target[2],  unit=unit, noRStudioGD = TRUE)
+}
+
+
 
 dftotal <- (df %>% mutate(dataset='all'))
 df = bind_rows(df, dftotal)
@@ -118,7 +131,7 @@ theme_szs <- 10
 
 #  str_remove(my_values, "^0+") 
 boxplot <- (ggplot(dfall,  aes(x=dataset, y=delta))
-         + facet_grid(rows = vars(gp), scales = 'free_y')
+         + facet_grid(rows = vars(gp), scales = 'free_y', space = 'free_y')
          + geom_boxplot(position=position_dodge(.9),  coef=100, width=.6)
          #+ geom_text(aes(x=gp, y=delta_median -.01, color=dataset, label=sprintf("%0.2f", round(delta_median, digits = 2))),
          #          position = position_dodge(.9),  data=dfagg, vjust='top')
