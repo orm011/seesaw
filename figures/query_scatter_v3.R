@@ -4,7 +4,7 @@ library(arrow)
 #library(ggplot2)
 library(ggExtra)
 
-target = c(3.8,3.8)
+target = c(3.8,2.6)
 units = 'in'
 if (all(near(dev.size(units=units), target))){
   print('no need to change device')
@@ -28,11 +28,11 @@ df <- (df %>% mutate(variant =  pseudo_lr) %>% mutate(delta = pseudo_lr - baseli
 #             %>% mutate(change= c('better', 'worse'))
 # )
 
-sz <- 2.5
+sz <- 3
 update_geom_defaults("text", list(size = sz))
 update_geom_defaults("label", list(size = sz))
 
-theme_szs <- 10
+theme_szs <- 9
 
 plot <- (ggplot(df,  aes(x=baseline, y=delta))
          + geom_point(alpha=.7, size=.5)
@@ -49,7 +49,7 @@ plot <- (ggplot(df,  aes(x=baseline, y=delta))
          
          + annotate('segment', x=0, xend=1, y=1, yend=0, linetype='dashed', color='white')
          + annotate('segment', x=0, xend=1, y=0, yend=0, linetype='dashed')
-         + annotate('label', x=.25, y=-.45 - .05, label='Hard queries\n(low baseline AP)', hjust='center', 
+         + annotate('label', x=.25, y=-.45 - .05, label='Hard queries', hjust='center', 
                         vjust='top', )
          + annotate('segment', x=0, xend=.5, y=-.45, yend=-.45, 
                       arrow=arrow(ends='both', length =unit(.02, 'native')))
@@ -101,47 +101,61 @@ dfall <- (bind_rows(df %>% mutate(gp='all queries'),
                       dfhard %>% mutate(gp='hard queries') ))
 
 dfall <- (dfall %>%mutate(gp=factor(gp, c('hard queries', 'all queries')), 
-                          dataset=recode_factor(dataset, objectnet='ObjNet', lvis='LVIS', 
-                                                bdd='BDD', coco='COCO', 'all datasets'='all'))
+                          dataset=recode_factor(dataset, 'all'='ALL', objectnet='ObjNet', lvis='LVIS', 
+                                                bdd='BDD', coco='COCO', ))
 )
 
 dfagg <- (dfall %>%  group_by(gp, dataset) %>% summarise(delta_median=median(delta), delta_mean=mean(delta), n=n()))
 
 
+make_label <- function(delta_mean, n){
+  strm <- str_remove(sprintf("%0.2f", round(delta_mean, digits = 2)), "^0+")
+  paste(strm, ' (', n, ')', sep='')
+}
+
+
+theme_szs <- 10
+
 #  str_remove(my_values, "^0+") 
 boxplot <- (ggplot(dfall,  aes(x=dataset, y=delta))
-         + facet_grid(cols = vars(gp))
-         + geom_boxplot(position=position_dodge(.9),  coef=100, width=.9)
+         + facet_grid(rows = vars(gp), scales = 'free_y')
+         + geom_boxplot(position=position_dodge(.9),  coef=100, width=.6)
          #+ geom_text(aes(x=gp, y=delta_median -.01, color=dataset, label=sprintf("%0.2f", round(delta_median, digits = 2))),
          #          position = position_dodge(.9),  data=dfagg, vjust='top')
-         + geom_text(aes(x=dataset, y=.85, label=paste('(', n, ')', sep='')), 
-                     data=dfagg, size=2.5, vjust='center', hjust='center', show.legend = FALSE)
+         # + geom_text(aes(x=dataset, y=.85, label=paste('(', n, ')', sep='')),
+         #             data=dfagg, size=2.5, vjust='center', hjust='center', show.legend = FALSE)
          # + annotate(geom='text', x=.6, y=.9, vjust='bottom', label='N=', )
          # + annotate(geom='text', x=.6, y=.8, vjust='bottom', label=expression(mu*'='), )
          + geom_errorbar(aes(x=dataset, ymin=delta_mean,  y = delta_mean, ymax=delta_mean),
-                         position = position_dodge(.9),  data=dfagg, linetype='dashed', width=.9)
+                         position = position_dodge(.9),  data=dfagg, linetype='21', width=.6)
          #+ geom_text(aes(x=dataset, y=delta_mean +.01, group=dataset,  label=sprintf("%0.2f", round(delta_mean, digits = 2))),
          #             position = position_dodge(.9),  data=dfagg, vjust='bottom', show.legend = FALSE)
-         + geom_text(aes(x=dataset, y=.9, label=str_remove(sprintf("%0.2f", round(delta_mean, digits = 2)), "^0+")),
-                     data=dfagg, vjust='center', hjust='center', show.legend = FALSE)
-         + scale_y_continuous(breaks=seq(-.2, .9,.2), limits = c(NA, .95), expand=c(.025, .01))
-         + scale_linetype_discrete()
+         + geom_text(aes(x=dataset, y=1., label=make_label(delta_mean, n)),
+                     data=dfagg, vjust='center', hjust='left', show.legend = FALSE)
+         + scale_y_continuous(breaks=seq(-.4, 1., .2), limits = c(NA, 1.35), expand=c(.025, .01))
+         + annotate('rect', xmin=-Inf, ymin=0, xmax=Inf, ymax=Inf, fill='palegreen', alpha=.1)
+#         + scale_linetype_discrete()
+         + coord_flip()
+        # + geom_text(aes(x=dataset, y=1.1, label=paste('(', n, ')', sep='')), 
+        #     data=dfagg, size=2.5, vjust='center', hjust='center', show.legend = FALSE)
+
          + labs(y='change in AP  (bigger is better)', 
                 title='Change in AP when using SeeSaw,\naggregated by type of query and dataset',
          )
          + theme(
-           axis.title.y = element_text(size=9),
-           axis.text=element_text(size=8),
-           axis.text.x =element_text(size=8),
+           axis.title.x = element_text(size=theme_szs),
+           axis.text.y=element_text(size=theme_szs),
+           axis.text.x =element_text(size=theme_szs),
            #aspect.ratio=1.,
-           plot.title = element_text(size=8),
-           strip.text = element_text(size=8),
+           plot.title = element_text(size=theme_szs),
+           strip.text = element_text(size=theme_szs),
            panel.spacing.x = unit(1, units = 'mm'),
            # panel.border = element_rect(color='black', fill=NULL),
-           axis.title.x=element_blank(),
-           legend.title=element_text(size=8),
-           legend.text=element_text(size=8),
-           axis.title=element_text(size=8),
+           axis.title.y=element_blank(),
+           
+           legend.title=element_text(size=theme_szs),
+           legend.text=element_text(size=theme_szs),
+           axis.title=element_text(size=theme_szs),
            plot.background=element_blank(),
            legend.position = 'bottom',
            legend.box.margin = unit(c(0,0,0,0), 'mm'), # = unit(,'native'),
