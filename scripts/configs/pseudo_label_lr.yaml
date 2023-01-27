@@ -1,11 +1,11 @@
 datasets:
-  - name: bdd
-    # categories:
-    #   - trailer
-    #   - train
-    # - wheelchair
-  - name: coco
-  - name: lvis
+  # - name: bdd
+  #   # categories:
+  #   #   - trailer
+  #   #   - train
+  #   # - wheelchair
+  # - name: coco
+  # - name: lvis
   - name: objectnet
 shared_session_params: # see SessionParams
   batch_size: 1
@@ -27,6 +27,32 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
+    - name: active_search
+      max_samples: 20
+      interactive: active_search
+      interactive_options:
+        matrix_options:
+          knn_path: nndescent60
+          self_edges : False
+          normalized_weights : False
+          knn_k: 
+            choose: [10]
+          edist: 
+            choose: [.05]
+            # choose: [1.6]
+            # choose: [.05]
+            # choose: [.00075,  .00625, .2, .4, 3.2]
+            # choose: [.05]
+            # choose: [0.00038, .00075, 3.2]
+            # choose: [.05]
+        normalize_scores : False
+        sigmoid_before_propagate: True  
+        calib_a: 
+          choose: [10.]
+        calib_b: 
+          choose: [-0.4]
+        prior_weight: 
+          choose: [0.] # good for unnormalized
     - name: baseline
       interactive: plain
     # - name: seesaw_all
@@ -47,7 +73,7 @@ variants:
           choose: [1.]
         scale: centered
         reg_lambda: 
-          choose: [.25, .5, 1., 2., 4., 8., 16., 32.]
+          choose: [.25] #, .5, 1., 2., 4., 8., 16., 32.]
           # choose: [4.]
         max_iter: 200.
         lr: 1.
@@ -99,7 +125,8 @@ variants:
             choose: [1.]
           scale: centered
           reg_lambda: 
-            choose: [.25, .5, 1., 2.]
+            # choose: [.25, .5, 1., 2.]
+            choose : [1.]
           max_iter: 200.
           lr: 1
           fit_intercept: False
@@ -111,7 +138,8 @@ variants:
             knn_k: 
               choose: [10]
             edist: 
-              choose: [.2, .1, .05] # should you use a lower prop for negatives and a larger for positives?
+#              choose: [.2, .1, .05] # should you use a lower prop for negatives and a larger for positives?
+              choose: [.2]
           normalize_scores : False
           sigmoid_before_propagate: True  
           calib_a: 
@@ -131,9 +159,9 @@ variants:
           knn_k: 
             choose: [10]
           edist: 
-            choose: [.00625, .0125, .025, .05, .1, .2, .4, .8, 1.6]
+            #choose: [.00625, .0125, .025, .05, .1, .2, .4, .8, 1.6]
             # choose: [1.6]
-            # choose: [.05]
+            choose: [.05]
             # choose: [.00075,  .00625, .2, .4, 3.2]
             # choose: [.05]
             # choose: [0.00038, .00075, 3.2]
