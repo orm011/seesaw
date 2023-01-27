@@ -1,9 +1,8 @@
-from seesaw.services import parallel_read_parquet, get_parquet
+from seesaw.services import get_parquet
 import pandas as pd
 import numpy as np
 import pynndescent
 import scipy.sparse as sp
-import os
 
 
 def rbf_kernel(edist):
