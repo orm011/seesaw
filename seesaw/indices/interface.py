@@ -4,12 +4,7 @@ import importlib
 import json
 from ..definitions import resolve_path
 
-def get_constructor(cons_name: str):
-    pieces = cons_name.split(".", maxsplit=-1)
-    index_mod = importlib.import_module(".".join(pieces[:-1]))
-    constructor = getattr(index_mod, pieces[-1])
-    return constructor
-
+from ..basic_types  import get_constructor
 
 class AccessMethod:
     path : str

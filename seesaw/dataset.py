@@ -203,7 +203,7 @@ class SeesawDataset(BaseDataset):
         subset_path = f'{self.path}/subsets/{subset_name}'
         return self._create_subset(subset_path, dbidxs)
 
-    def load_subset(self, subset_name):
+    def load_subset(self, subset_name) -> BaseDataset:
         return SeesawDatasetSubset.load_from_path(self, f'{self.path}/subsets/{subset_name}')
 
     def get_url(self, dbidx, host='/') -> str:

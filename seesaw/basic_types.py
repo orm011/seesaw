@@ -117,3 +117,10 @@ class BenchSummary(BaseModel):
     timestamp: str
     output_dir : Optional[str]
     result: Optional[BenchResult]
+
+import importlib
+def get_constructor(cons_name: str):
+    pieces = cons_name.split(".", maxsplit=-1)
+    index_mod = importlib.import_module(".".join(pieces[:-1]))
+    constructor = getattr(index_mod, pieces[-1])
+    return constructor
