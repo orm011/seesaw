@@ -3,10 +3,6 @@ import numpy as np
 from  seesaw.research.npb_distribution import NPBDistribution
 import math
 
-#import pandas as pd
-import copy
-
-
 class Dataset:
     idx2label : dict
     vectors : np.ndarray
@@ -24,6 +20,13 @@ class Dataset:
     def from_vectors(vectors):
         all_indices = pr.FrozenBitMap(range(len(vectors)))
         return Dataset({}, pr.BitMap(), all_indices, vectors)
+
+    @staticmethod
+    def from_labels(idxs, labels, vectors):
+        idx2label = dict(zip(idxs, labels))
+        all_indices = pr.FrozenBitMap(range(len(vectors)))
+        return Dataset(idx2label, pr.BitMap(idxs), all_indices, vectors)
+
     
     def with_label(self, i, y):
         new_idx2label = self.idx2label.copy()
@@ -34,8 +37,14 @@ class Dataset:
         assert i in self.all_indices        
         return Dataset(new_idx2label, new_indices, self.all_indices, self.vectors)
     
+    def get_labels(self):
+        idxs = np.array(self.seen_indices)
+        labs = np.array([self.idx2label[idx] for idx in idxs])
+        return idxs, labs
+
+
     def remaining_indices(self):
-        return self.all_indices - self.seen_indices
+        return np.array(self.all_indices - self.seen_indices)
 
 
 def test_dataset():
@@ -78,19 +87,20 @@ class Result:
         self.expected_cost = expected_cost
         self.index = index
 
+
+## how do we structure this so it returns a new object of the 
 class IncrementalModel:
     dataset : Dataset
-    def __init__(self, dataset, model):
+    def __init__(self, dataset):
         self.dataset = dataset
-        self.model = model
 
-    def with_label(self, i, y):
-        new_dataset = self.dataset.with_label(i,y)
-        new_model = self.model.update(i,y)
-        return IncrementalModel(new_dataset, new_model)
-        
+    def with_label(self, idx, y) -> 'IncrementalModel':
+        ''' returns new model
+        '''
+        raise NotImplementedError()
+
     def predict_proba(self, idx : np.ndarray ) -> np.ndarray:
-        self.model.predict_proba(idx)
+        raise NotImplementedError()
 
 def expected_cost(idx, *, r : int,  t : int,  model : IncrementalModel) -> float:
     p = model.predict_proba(np.array([idx])).item()
