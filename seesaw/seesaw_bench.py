@@ -13,12 +13,13 @@ import numpy as np
 import math
 from .util import *
 import pyroaring as pr
-from .seesaw_session import SessionParams, Session, Imdata, Box, make_session
-from .basic_types import *
+from .seesaw_session import make_session, Session
+from .basic_types import Imdata, SessionParams, BenchParams, BenchResult, BenchSummary, Box, is_image_accepted
 from .metrics import compute_metrics
 from .dataset_manager import GlobalDataManager
 import numpy as np
 
+import torch
 
 def readjust_interval(x1, x2, max_x):
     left_excess = -np.clip(x1, -np.inf, 0)
