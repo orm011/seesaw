@@ -112,7 +112,7 @@ def expected_cost(idx, *, r : int,  t : int,  model : IncrementalModel) -> float
     
     return p*res1.expected_cost + (1-p)*res0.expected_cost
 
-def min_expected_cost_approx(r : int, *,  t : int, model : IncrementalModel) -> Result:
+def min_expected_cost_approx(r : int, *,  top_k : int = None, t : int, model : IncrementalModel) -> Result:
     if t == 0:
         indices = model.dataset.remaining_indices()
         probs = model.predict_proba(indices)
@@ -125,7 +125,13 @@ def min_expected_cost_approx(r : int, *,  t : int, model : IncrementalModel) -> 
 
     min_idx = None
     min_cost = math.inf
-    for idx in model.dataset.remaining_indices():
+
+    idxs = model.dataset.remaining_indices()
+    curr_pred = model.predict_proba(idxs)
+    desc_order = np.argsort(-curr_pred)
+    top_k_idxs = idxs[desc_order[:top_k]]
+
+    for idx in top_k_idxs:
         c = expected_cost(idx, r=r, t=t, model=model)
         if c < min_cost:
             min_idx = idx

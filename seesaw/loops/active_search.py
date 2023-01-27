@@ -44,9 +44,9 @@ class ActiveSearch(LoopBase):
         #TODO: r should depend on configuration target  - current state?
         ## what does it mean for vectors in the same image?
 
-        res = min_expected_cost_approx(new_r, t=1, model=prop_model)
+        res = min_expected_cost_approx(new_r, t=1, top_k=3, model=prop_model)
         top_idx = res.index
-        ans = {'dbidxs': np.array([top_idx]), 'activations': [] }
+        ans = {'dbidxs': np.array([top_idx]), 'activations': None }
         self.q.returned.update(ans['dbidxs'])
         return ans
 
