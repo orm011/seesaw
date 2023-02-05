@@ -113,7 +113,7 @@ def expected_cost(idx, *, r : int,  t : int,  model : IncrementalModel) -> float
     return p*res1.expected_cost + (1-p)*res0.expected_cost
 
 def min_expected_cost_approx(r : int, *,  top_k : int = None, t : int, model : IncrementalModel) -> Result:
-    if t == 0:
+    if t == 1:
         indices = model.dataset.remaining_indices()
         probs = model.predict_proba(indices)
         probs = torch.from_numpy(probs)

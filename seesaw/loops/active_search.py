@@ -36,16 +36,22 @@ class ActiveSearch(LoopBase):
         """
         ### run planning stuff here. what do we do about rest of things in the frame?
         ### for now, nothing. just return one thing.
-
+        ## 1. current scores are already propagating, no?
         knnm= self.state.knn_model
-        prop_model = PropModel(self.dataset, knnm.lp, predicted=knnm.current_scores())
+        initial_scores = knnm.current_scores()
 
-        new_r = 3
-        #TODO: r should depend on configuration target  - current state?
-        ## what does it mean for vectors in the same image?
-
-        res = min_expected_cost_approx(new_r, t=1, top_k=3, model=prop_model)
-        top_idx = res.index
+        if len(self.dataset.seen_indices) == 0: # return same result as clip first try.
+            top_idx = np.argmax(initial_scores)
+        else:
+            new_r = 10
+            max_t = 2
+            top_k = 100
+            prop_model = PropModel(self.dataset, knnm.lp, predicted=initial_scores)
+            #TODO: r should depend on configuration target  - current state?
+            ## what does it mean for vectors in the same image?
+            res = min_expected_cost_approx(new_r, t=max_t, top_k=None, model=prop_model)
+            top_idx = res.index
+        
         ans = {'dbidxs': np.array([top_idx]), 'activations': None }
         self.q.returned.update(ans['dbidxs'])
         return ans
