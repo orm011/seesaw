@@ -7,14 +7,17 @@ datasets:
   # - name: coco
   # - name: lvis
   - name: objectnet
+    categories:
+      - air freshener
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
   index_options: 
     use_vec_index: False # for bdd and coco.
   index_spec : 
-      # i_name: multiscalemed
-      i_name: multiscalecoarse
+      i_name: multiscalemed
+      s_name: small_sample
+#      i_name: multiscalecoarse
       # i_name: coarse
   agg_method: plain_score
   # agg_method: avg_score
@@ -32,7 +35,7 @@ variants:
       interactive: active_search
       interactive_options:
         matrix_options:
-          knn_path: nndescent60
+          knn_path: nndescent10
           self_edges : False
           normalized_weights : False
           knn_k: 
@@ -65,19 +68,19 @@ variants:
     #       num_epochs: 4
     #       model_type: cosine
     #       warm_start: warm
-    - name: log_reg2
-      max_samples: 10
-      interactive: log_reg2
-      interactive_options:
-        class_weights: 
-          choose: [1.]
-        scale: centered
-        reg_lambda: 
-          choose: [.25] #, .5, 1., 2., 4., 8., 16., 32.]
-          # choose: [4.]
-        max_iter: 200.
-        lr: 1.
-        fit_intercept: false
+    # - name: log_reg2
+    #   max_samples: 10
+    #   interactive: log_reg2
+    #   interactive_options:
+    #     class_weights: 
+    #       choose: [1.]
+    #     scale: centered
+    #     reg_lambda: 
+    #       choose: [.25] #, .5, 1., 2., 4., 8., 16., 32.]
+    #       # choose: [4.]
+    #     max_iter: 200.
+    #     lr: 1.
+    #     fit_intercept: false
     # # - name: prop2logreg
     # #   max_samples: 10
     # #   interactive: switch_over
@@ -111,66 +114,66 @@ variants:
     # #         max_iter: 200.
     # #         lr: 1.
     # #         fit_intercept: false
-    - name: pseudo_lr_switch # change to use new config
-      max_samples: 20
-      interactive: pseudo_lr
-      interactive_options:
-        switch_over: True
-        real_sample_weight: 
-          choose: [1.]
-        sample_size: 
-          choose : [10000]
-        log_reg_params:
-          class_weights: 
-            choose: [1.]
-          scale: centered
-          reg_lambda: 
-            # choose: [.25, .5, 1., 2.]
-            choose : [1.]
-          max_iter: 200.
-          lr: 1
-          fit_intercept: False
-        label_prop_params:
-          matrix_options:
-            knn_path: nndescent60
-            self_edges : False
-            normalized_weights : False
-            knn_k: 
-              choose: [10]
-            edist: 
-#              choose: [.2, .1, .05] # should you use a lower prop for negatives and a larger for positives?
-              choose: [.2]
-          normalize_scores : False
-          sigmoid_before_propagate: True  
-          calib_a: 
-            choose: [10.]
-          calib_b: 
-            choose: [-0.4]
-          prior_weight: 
-            choose: [1.] # good for unnormalized
-    - name: knn_prop2
-      max_samples: 20
-      interactive: knn_prop2
-      interactive_options:
-        matrix_options:
-          knn_path: nndescent60
-          self_edges : False
-          normalized_weights : False
-          knn_k: 
-            choose: [10]
-          edist: 
-            #choose: [.00625, .0125, .025, .05, .1, .2, .4, .8, 1.6]
-            # choose: [1.6]
-            choose: [.05]
-            # choose: [.00075,  .00625, .2, .4, 3.2]
-            # choose: [.05]
-            # choose: [0.00038, .00075, 3.2]
-            # choose: [.05]
-        normalize_scores : False
-        sigmoid_before_propagate: True  
-        calib_a: 
-          choose: [10.]
-        calib_b: 
-          choose: [-0.4]
-        prior_weight: 
-          choose: [1.] # good for unnormalized
+#     - name: pseudo_lr_switch # change to use new config
+#       max_samples: 20
+#       interactive: pseudo_lr
+#       interactive_options:
+#         switch_over: True
+#         real_sample_weight: 
+#           choose: [1.]
+#         sample_size: 
+#           choose : [10000]
+#         log_reg_params:
+#           class_weights: 
+#             choose: [1.]
+#           scale: centered
+#           reg_lambda: 
+#             # choose: [.25, .5, 1., 2.]
+#             choose : [1.]
+#           max_iter: 200.
+#           lr: 1
+#           fit_intercept: False
+#         label_prop_params:
+#           matrix_options:
+#             knn_path: nndescent60
+#             self_edges : False
+#             normalized_weights : False
+#             knn_k: 
+#               choose: [10]
+#             edist: 
+# #              choose: [.2, .1, .05] # should you use a lower prop for negatives and a larger for positives?
+#               choose: [.2]
+#           normalize_scores : False
+#           sigmoid_before_propagate: True  
+#           calib_a: 
+#             choose: [10.]
+#           calib_b: 
+#             choose: [-0.4]
+#           prior_weight: 
+#             choose: [1.] # good for unnormalized
+#     - name: knn_prop2
+#       max_samples: 20
+#       interactive: knn_prop2
+#       interactive_options:
+#         matrix_options:
+#           knn_path: nndescent60
+#           self_edges : False
+#           normalized_weights : False
+#           knn_k: 
+#             choose: [10]
+#           edist: 
+#             #choose: [.00625, .0125, .025, .05, .1, .2, .4, .8, 1.6]
+#             # choose: [1.6]
+#             choose: [.05]
+#             # choose: [.00075,  .00625, .2, .4, 3.2]
+#             # choose: [.05]
+#             # choose: [0.00038, .00075, 3.2]
+#             # choose: [.05]
+#         normalize_scores : False
+#         sigmoid_before_propagate: True  
+#         calib_a: 
+#           choose: [10.]
+#         calib_b: 
+#           choose: [-0.4]
+#         prior_weight: 
+#           choose: [1.] # good for unnormalized
