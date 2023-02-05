@@ -9,13 +9,15 @@ from seesaw.util import reset_num_cpus
 
 root = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/'
 gdm = GlobalDataManager(root)
-lvisds = gdm.get_dataset('lvis')
+dataset_name = 'objectnet'
+ds = gdm.get_dataset(dataset_name)
+subset_name = 'small_sample'
 idxname = 'multiscalecoarse'
-_ = lvisds.load_index(idxname, options=dict(use_vec_index=False))
-_, qgt = lvisds.load_ground_truth()
+_ = ds.load_index(idxname, options=dict(use_vec_index=False))
+_, qgt = ds.load_ground_truth()
 import pyroaring as pr
 
-n_neighbors = 60
+n_neighbors = 10
 knng_name = f'nndescent{n_neighbors}'
 
 def build_and_save_knng(idx, *, knng_name, n_neighbors, num_cpus, low_memory):
@@ -57,14 +59,16 @@ class KNNMaker:
            # build_div_knng(index, knng_name=knng_name, n_within_frame=10)
         return batch
 
-combinations = []
-for dataset_name in ('lvis',):
-    for index_name in (idxname,):
-        for category in qgt.columns.values:
-            combinations.append((dataset_name, index_name, category))
+# combinations = []
+# for dataset_name in (dataset_name,):
+#     for index_name in (idxname,):
+#         for category in qgt.columns.values:
+#             combinations.append((dataset_name, index_name, category))
 
-# idxname = 'multiscalecoarse'
-# combinations = [('bdd', idxname, None), ('lvis', idxname, None)]
+idxname = 'multiscalemed'
+combinations = [ #('bdd', idxname, None), ('lvis', idxname, None), 
+                ('objectnet', idxname, None)]
+
 # all_subsets = qgt.columns.values
 ds = ray.data.from_items(combinations, parallelism=min(len(combinations), 100))
 
@@ -73,4 +77,4 @@ fn_args = dict(num_cpus=num_cpus)
 ray_remote_args=dict(num_cpus=num_cpus, num_gpus=0, memory=32*((1024)**3))
 from ray.data.dataset import ActorPoolStrategy
 
-x = ds.map_batches(KNNMaker, batch_size=1, compute=ActorPoolStrategy(1, 50), fn_constructor_kwargs=fn_args, **ray_remote_args).take_all()
+x = ds.map_batches(KNNMaker, batch_size=1, compute=ActorPoolStrategy(1, min(50, len(combinations))), fn_constructor_kwargs=fn_args, **ray_remote_args).take_all()
