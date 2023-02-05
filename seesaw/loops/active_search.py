@@ -14,6 +14,12 @@ from .graph_based import get_label_prop
 #     insert ceas code for this.
 ## update stage: run as a reaction to outcomes, ok for it to mutate things. re-use existing code.
 
+### note the 3 planning parameters
+### currently we seem to not be distinguishing first and last
+### maximum number of rounds into the future (would be about 100)
+### number of results wanted (eg 10)
+### number of exact planning rounds (can only really be 1 or 2). 
+
 class ActiveSearch(LoopBase):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams, knn_model):
         super().__init__(gdm, q, params)
