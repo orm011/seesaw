@@ -1,7 +1,6 @@
 import pyroaring as pr
 import numpy as np
-from  seesaw.research.npb_distribution import NPBDistribution
-import math
+from typing import Tuple
 
 class Dataset:
     idx2label : dict
@@ -80,11 +79,11 @@ def test_dataset():
 import torch
 
 class Result:
-    expected_cost : float
+    value : float
     index : int
     
-    def __init__(self, expected_cost, index):
-        self.expected_cost = expected_cost
+    def __init__(self, value, index):
+        self.value = value
         self.index = index
 
 
@@ -102,39 +101,10 @@ class IncrementalModel:
     def predict_proba(self, idx : np.ndarray ) -> np.ndarray:
         raise NotImplementedError()
 
-def expected_cost(idx, *, r : int,  t : int,  model : IncrementalModel) -> float:
-    p = model.predict_proba(np.array([idx])).item()
-    # case y = 1
-    res1 = min_expected_cost_approx(r-1,  t=t-1, model = model.with_label(idx,1))
-
-    # case y = 0
-    res0 = min_expected_cost_approx(r,  t=t-1, model = model.with_label(idx,0))
-    
-    return p*res1.expected_cost + (1-p)*res0.expected_cost
-
-def min_expected_cost_approx(r : int, *,  top_k : int = None, t : int, model : IncrementalModel) -> Result:
-    if t == 1:
-        indices = model.dataset.remaining_indices()
-        probs = model.predict_proba(indices)
-        probs = torch.from_numpy(probs)
-        desc_order = torch.argsort(-probs)
-        desc_probs = probs[desc_order]        
-        cost =  NPBDistribution(r, desc_probs).expectation(method='accu_prime')
-        index = indices[desc_order[0]]
-        return Result(expected_cost=cost, index=index)
-
-    min_idx = None
-    min_cost = math.inf
-
-    idxs = model.dataset.remaining_indices()
-    curr_pred = model.predict_proba(idxs)
-    desc_order = np.argsort(-curr_pred)
-    top_k_idxs = idxs[desc_order[:top_k]]
-
-    for idx in top_k_idxs:
-        c = expected_cost(idx, r=r, t=t, model=model)
-        if c < min_cost:
-            min_idx = idx
-            min_cost = c
-            
-    return Result(expected_cost=min_cost, index=min_idx)
+    def top_k_remaining(self, top_k) -> Tuple[np.ndarray, np.ndarray]:
+        # TODO: if scores are identical (can be in some cases), break ties randomly.
+        idxs = self.dataset.remaining_indices()
+        curr_pred = self.predict_proba(idxs)
+        desc_order = np.argsort(-curr_pred)
+        ret_idxs = desc_order[:top_k]
+        return idxs[:ret_idxs], curr_pred[:ret_idxs]
