@@ -1,8 +1,11 @@
+from seesaw.knn_graph import KNNGraph
 from .loop_base import *
 from ..dataset_manager import GlobalDataManager
 import numpy as np
 from ..research.knn_methods import LabelPropagation
-from ..research.cost_effective_active_search import IncrementalModel, Dataset, min_expected_cost_approx
+from ..research.active_search.cost_effective_active_search import  min_expected_cost_approx
+from ..research.active_search.efficient_nonmyopic_search import efficient_nonmyopic_search
+from ..research.active_search.common import IncrementalModel, Dataset
 from .graph_based import get_label_prop
 
 ## 1. need a loop base impl. to plug into system.
@@ -55,7 +58,8 @@ class ActiveSearch(LoopBase):
             prop_model = PropModel(self.dataset, knnm.lp, predicted=initial_scores)
             #TODO: r should depend on configuration target  - current state?
             ## what does it mean for vectors in the same image?
-            res = min_expected_cost_approx(new_r, t=max_t, top_k=None, model=prop_model)
+            #res = min_expected_cost_approx(new_r, t=max_t, top_k=None, model=prop_model)
+            res = efficient_nonmyopic_search(prop_model, time_horizon=top_k, lookahead_limit=0, pruning_on=False)
             top_idx = res.index
         
         ans = {'dbidxs': np.array([top_idx]), 'activations': None }
@@ -78,7 +82,6 @@ class ActiveSearch(LoopBase):
 
 ### how does the first lp get made? copy what you would normally use.
 
-
 class PropModel(IncrementalModel):
     def __init__(self, dataset : Dataset, lp : LabelPropagation, predicted : np.ndarray):
         super().__init__(dataset)
@@ -94,6 +97,34 @@ class PropModel(IncrementalModel):
         idxs, labs = new_dataset.get_labels()
         new_predicted = self.lp.fit_transform(label_ids=idxs, label_values=labs, start_value=self.predicted)
         return PropModel(new_dataset, self.lp, new_predicted)
+
+    def predict_proba(self, idxs : np.ndarray ) -> np.ndarray:
+        return self.predicted[idxs]
+    
+import scipy.sparse as sp
+
+class KNNModel(IncrementalModel):
+    def __init__(self, dataset : Dataset, matrix : sp.csr_array, numerator : np.ndarray, denominator : np.ndarray):
+        super().__init__(dataset)
+        self.mat = matrix
+        self.numerator = numerator
+        self.denominator = denominator
+
+    @staticmethod
+    def from_dataset( dataset : Dataset, lp : LabelPropagation):
+        pass
+        #matrix = lp.weight_matrix
+        #return KNNModel(dataset, )
+
+
+    def with_label(self, idx, y) -> 'PropModel':
+        ''' returns new model
+        '''
+        pass
+        # new_dataset = self.dataset.with_label(idx, y)
+        # idxs, labs = new_dataset.get_labels()
+        # new_predicted = self.lp.fit_transform(label_ids=idxs, label_values=labs, start_value=self.predicted)
+        # return KNNModel(new_dataset, self.lp, new_predicted)
 
     def predict_proba(self, idxs : np.ndarray ) -> np.ndarray:
         return self.predicted[idxs]

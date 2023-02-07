@@ -101,13 +101,13 @@ class IncrementalModel:
     def predict_proba(self, idx : np.ndarray ) -> np.ndarray:
         raise NotImplementedError()
 
-    def top_k_remaining(self, top_k) -> Tuple[np.ndarray, np.ndarray]:
+    def top_k_remaining(self, top_k : int) -> Tuple[np.ndarray, np.ndarray]:
         # TODO: if scores are identical (can be in some cases), break ties randomly.
         idxs = self.dataset.remaining_indices()
         curr_pred = self.predict_proba(idxs)
         desc_order = np.argsort(-curr_pred)
         ret_idxs = desc_order[:top_k]
-        return idxs[:ret_idxs], curr_pred[:ret_idxs]
+        return idxs[ret_idxs], curr_pred[ret_idxs]
 
     def pbound(self, n) -> float:
         ''' upper bound on max p_i if we added n more positive results '''
