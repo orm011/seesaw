@@ -8,7 +8,7 @@ def _expected_utility_approx(t: int, model : IncrementalModel):
     expected_u = scores.sum()
     return Result(value=expected_u, index=next_idx)
 
-def _opt_expected_utility_helper(i : int,  lookahead_limit : int, t : int, model : IncrementalModel, pruning_on : bool):
+def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, model : IncrementalModel, pruning_on : bool):
     '''l: lookahead exact horizon
        t: lookahead total horizon
        
@@ -59,11 +59,11 @@ def _opt_expected_utility_helper(i : int,  lookahead_limit : int, t : int, model
     pos = np.argmax(expected_utils)
     return Result(value=expected_utils[pos], index=idxs[pos])
 
-def opt_choice(time_horizon : int,  lookahead_limit : int,  model : IncrementalModel, pruning_on : bool) -> Result:
+def efficient_nonmyopic_search(model : IncrementalModel, *, time_horizon : int,  lookahead_limit : int, pruning_on : bool) -> Result:
     ''' lookahead_limit: 0 means no tree search, 1 
         time_horizon: how many moves into the future
     '''
-    assert lookahead_limit <= 1
+    assert lookahead_limit <= 1, 'implementation assumes at most 1 lookahead (pruning)'
     assert lookahead_limit <= time_horizon
     assert time_horizon > 0
     return _opt_expected_utility_helper(i=0, lookahead_limit=lookahead_limit, t=time_horizon, model=model, pruning_on=pruning_on)
