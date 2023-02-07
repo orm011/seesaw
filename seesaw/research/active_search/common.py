@@ -108,3 +108,7 @@ class IncrementalModel:
         desc_order = np.argsort(-curr_pred)
         ret_idxs = desc_order[:top_k]
         return idxs[:ret_idxs], curr_pred[:ret_idxs]
+
+    def pbound(self, n) -> float:
+        ''' upper bound on max p_i if we added n more positive results '''
+        raise NotImplementedError
