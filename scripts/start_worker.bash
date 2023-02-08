@@ -9,6 +9,13 @@ SHM_AVAILABLE_KB=`df /dev/shm | grep -v Available | awk '{print $4}'`
 OBJ_MEM_BYTES=$(( SHM_AVAILABLE_KB*1024 - 1024*1024*1024  )) # leave 1GB off
 export RAY_DISABLE_PYARROW_VERSION_CHECK=1
 
+
+if [ -z "$SLURM_CPUS_ON_NODE" ]; 
+then
+    echo 'SLURM_CPUS_ON_NODE not set or zero, ensure running within slurm' 
+    exit 1
+fi
+
 COMMON_ARGS="--temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES --num-cpus=$((2*SLURM_CPUS_ON_NODE))"
 
 SIGFILE=$HOME/ray2.head
