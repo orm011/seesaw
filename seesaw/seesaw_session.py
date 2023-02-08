@@ -52,6 +52,7 @@ class Session:
 
         self.loop = build_loop_from_params(self.gdm, self.q, params=self.params)
         self.action_log = []
+        self._last_change = None
         self._log("init")
 
     def get_totals(self):
@@ -99,7 +100,7 @@ class Session:
 
     def refine(self):
         self._log("refine.start")
-        self.loop.refine()
+        self.loop.refine(self._last_change)
         self._log("refine.end")
 
     def get_state(self) -> SessionState:
@@ -157,6 +158,8 @@ class Session:
         ## clear bitmap and reconstruct bc user may have erased previously accepted images
         self.action_log = state.action_log  # just replace the log
         gdata = state.gdata
+        old_accepted = self.accepted.copy()
+        old_seen = self.seen.copy()
         self.accepted.clear()
         self.seen.clear()
         for ldata in gdata:
@@ -166,6 +169,17 @@ class Session:
                 if is_image_accepted(imdata):
                     self.accepted.add(imdata.dbidx)
                 self.q.label_db.put(imdata.dbidx, imdata.boxes)
+
+
+        delta_accepted = self.accepted - old_accepted
+        delta_seen = self.seen - old_seen
+
+        changed = delta_seen.union(delta_accepted)
+        changes = []
+        for idx in changed:
+            changes.append((idx, 1 if idx in delta_accepted else 0 ))
+        self._last_change = changes
+
 
 def get_labeled_subset_dbdidxs(qgt, c_name):
     labeled = ~qgt[c_name].isna()

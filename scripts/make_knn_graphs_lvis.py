@@ -52,6 +52,7 @@ class KNNMaker:
             ds = gdm.get_dataset(dataset_name)
             if subset_name is not None:
                 ds = ds.load_subset(subset_name)
+
             index = ds.load_index(index_name, options=dict(use_vec_index=False))
             build_and_save_knng(index, knng_name=knng_name, n_neighbors=n_neighbors, 
                     num_cpus=self.num_cpus, low_memory=False)
@@ -67,7 +68,7 @@ class KNNMaker:
 
 idxname = 'multiscalemed'
 combinations = [ #('bdd', idxname, None), ('lvis', idxname, None), 
-                ('objectnet', idxname, None)]
+                ('objectnet', 'multiscalemed', 'small_sample')]
 
 # all_subsets = qgt.columns.values
 ds = ray.data.from_items(combinations, parallelism=min(len(combinations), 100))

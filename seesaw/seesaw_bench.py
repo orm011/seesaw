@@ -253,6 +253,7 @@ def benchmark_loop(
         idxbatch = session.next()
 
         for idx in idxbatch:
+            #print(idx, subset)  
             assert idx in subset, f'returned a dbidx outside of range'
             assert idx not in seen_dbidxs, f'returned a repeated dbidx'
             seen_dbidxs.add(idx)
@@ -573,9 +574,11 @@ def generate_benchmark_configs(
         if isinstance(ddict , dict):
             dataset_name = ddict['name']
             cats = ddict.get('categories', [])
+            default_c_name = ddict.get('subset', None)
         else:
             dataset_name = ddict
             cats = []
+            default_c_name = None
 
         assert dataset_name in avail_datasets
         ds = gdm.get_dataset(dataset_name)        
@@ -589,7 +592,7 @@ def generate_benchmark_configs(
                 break
 
             for i,config in enumerate(base_configs):
-                index_meta = dict(d_name=dataset_name, c_name=(category if dataset_name == 'lvis' else None))
+                index_meta = dict(d_name=dataset_name, c_name=(default_c_name if default_c_name is not None else category if dataset_name == 'lvis' else None))
                 s = get_session_params(s_template, config=config, index_meta=index_meta)
                 b = get_bench_params(b_template, name=config['name'], sample_id=config['sample_id'], dataset=dataset_name, category=category)
                 ans.append((b, s))

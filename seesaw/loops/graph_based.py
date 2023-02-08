@@ -89,7 +89,7 @@ class KnnProp2(LoopBase):
         self.q.returned.update(ans['dbidxs'])
         return ans
 
-    def refine(self):
+    def refine(self, change=None):
         # labels already added.
         # go over labels here since it takes time
         ## translating box labels to labels over the vector index.

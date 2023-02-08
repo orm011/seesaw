@@ -17,7 +17,7 @@ class LogReg2(PointBased):
         self.model = None
 
     # def set_text_vec(self) # let super do this
-    def refine(self):
+    def refine(self, change=None):
         Xt, yt = self.q.getXy()
         
         if self.model is None:

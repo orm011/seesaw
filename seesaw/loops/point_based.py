@@ -9,7 +9,7 @@ class PointBased(LoopBase):
         self.state.tvec = vec
         self.curr_vec = vec
 
-    def refine(self):
+    def refine(self, change=None):
         raise NotImplementedError('implement in subclass')
 
     def next_batch(self):
@@ -38,5 +38,5 @@ class Plain(PointBased):
     def from_params(gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
         return Plain(gdm, q, params)
 
-    def refine(self):
+    def refine(self, change=None):
         pass # no feedback

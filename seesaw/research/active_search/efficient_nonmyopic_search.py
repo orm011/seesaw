@@ -30,8 +30,8 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
     probs = np.concatenate([1-p1, p1], axis=-1)
 
     def _solve_idx(idx):
-        util0 = _opt_expected_utility_helper(i=i+1, lookahead_limit =  lookahead_limit, t=t, model=model.with_label(idx, 0), pruning_on=pruning_on)
-        util1 = _opt_expected_utility_helper(i=i+1, lookahead_limit =  lookahead_limit, t=t, model=model.with_label(idx, 1), pruning_on=pruning_on)
+        util0 = _opt_expected_utility_helper(i=i+1, lookahead_limit=lookahead_limit, t=t, model=model.with_label(idx, 0), pruning_on=pruning_on)
+        util1 = _opt_expected_utility_helper(i=i+1, lookahead_limit=lookahead_limit, t=t, model=model.with_label(idx, 1), pruning_on=pruning_on)
         return np.array([util0.value, util1.value])
 
     if pruning_on:

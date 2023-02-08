@@ -35,7 +35,7 @@ class LoopBase:
     def next_batch(self):
         raise NotImplementedError('implement me in subclass')
 
-    def refine(self):
+    def refine(self, change=None):
         raise NotImplementedError('implement me in sublcass')
 
 

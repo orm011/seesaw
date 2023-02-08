@@ -28,7 +28,7 @@ class PseudoLR(PointBased):
         super().set_text_vec(tvec)
         self.knn_based.set_text_vec(tvec)
 
-    def refine(self):
+    def refine(self, change=None):
         self.knn_based.refine() # label prop,. # if only positives wont do anything.
         # if negatives it will try to help (not clear it works that way)
         
