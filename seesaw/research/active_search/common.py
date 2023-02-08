@@ -88,12 +88,12 @@ class Result:
 
 
 ## how do we structure this so it returns a new object of the 
-class IncrementalModel:
+class ProbabilityModel:
     dataset : Dataset
     def __init__(self, dataset):
         self.dataset = dataset
 
-    def with_label(self, idx, y) -> 'IncrementalModel':
+    def condition(self, idx, y) -> 'ProbabilityModel':
         ''' returns new model
         '''
         raise NotImplementedError()
@@ -109,6 +109,6 @@ class IncrementalModel:
         ret_idxs = desc_order[:top_k]
         return idxs[ret_idxs], curr_pred[ret_idxs]
 
-    def pbound(self, n) -> float:
+    def probability_bound(self, n) -> float:
         ''' upper bound on max p_i if we added n more positive results '''
         raise NotImplementedError

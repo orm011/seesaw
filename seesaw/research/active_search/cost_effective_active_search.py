@@ -3,20 +3,20 @@ import math
 import numpy as np
 import torch
 
-from .common import IncrementalModel, Result
+from .common import ProbabilityModel, Result
 
 
-def expected_cost(idx, *, r : int,  t : int,  model : IncrementalModel) -> float:
+def expected_cost(idx, *, r : int,  t : int,  model : ProbabilityModel) -> float:
     p = model.predict_proba(np.array([idx])).item()
     # case y = 1
-    res1 = min_expected_cost_approx(r-1,  t=t-1, model = model.with_label(idx,1))
+    res1 = min_expected_cost_approx(r-1,  t=t-1, model = model.condition(idx,1))
 
     # case y = 0
-    res0 = min_expected_cost_approx(r,  t=t-1, model = model.with_label(idx,0))
+    res0 = min_expected_cost_approx(r,  t=t-1, model = model.condition(idx,0))
     
     return p*res1.value + (1-p)*res0.value
 
-def min_expected_cost_approx(r : int, *,  top_k : int = None, t : int, model : IncrementalModel) -> Result:
+def min_expected_cost_approx(r : int, *,  top_k : int = None, t : int, model : ProbabilityModel) -> Result:
     if t == 1:
         indices = model.dataset.remaining_indices()
         probs = model.predict_proba(indices)

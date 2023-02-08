@@ -5,7 +5,7 @@ import numpy as np
 from ..research.knn_methods import LabelPropagation
 from ..research.active_search.cost_effective_active_search import  min_expected_cost_approx
 from ..research.active_search.efficient_nonmyopic_search import efficient_nonmyopic_search
-from ..research.active_search.common import IncrementalModel, Dataset
+from ..research.active_search.common import ProbabilityModel, Dataset
 from .graph_based import get_label_prop
 
 ## 1. need a loop base impl. to plug into system.
@@ -91,28 +91,27 @@ class ActiveSearch(LoopBase):
                 self.prob_model = self.prob_model.with_label(idx2, y)
 
 ### how does the first lp get made? copy what you would normally use.
-
-class PropModel(IncrementalModel):
+class PropagationModel(ProbabilityModel):
     def __init__(self, dataset : Dataset, lp : LabelPropagation, predicted : np.ndarray):
         super().__init__(dataset)
         self.lp  = lp
         self.predicted = predicted
 
 
-    def with_label(self, idx, y) -> 'PropModel':
+    def with_label(self, idx, y) -> 'PropagationModel':
         ''' returns new model
         '''
 
         new_dataset = self.dataset.with_label(idx, y)
         idxs, labs = new_dataset.get_labels()
         new_predicted = self.lp.fit_transform(label_ids=idxs, label_values=labs, start_value=self.predicted)
-        return PropModel(new_dataset, self.lp, new_predicted)
+        return PropagationModel(new_dataset, self.lp, new_predicted)
 
     def predict_proba(self, idxs : np.ndarray ) -> np.ndarray:
         return self.predicted[idxs]
     
 
-class LKNNModel(IncrementalModel):
+class LKNNModel(ProbabilityModel):
     ''' Implements L-KNN prob. model used in Active Search paper.
     '''    
     def __init__(self, dataset : Dataset, gamma : float, matrix : sp.csr_array, numerators : np.ndarray, denominators : np.ndarray):
