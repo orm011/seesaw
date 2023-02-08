@@ -14,7 +14,7 @@ class LKNNModel(ProbabilityModel):
         self.gamma = gamma
 
         assert dataset.vectors.shape[0] == matrix.shape[0]
-        print(f'{matrix.shape=}')
+        # print(f'{matrix.shape=}')
 
         ## set probs to estimates, then replace estimates with labels
         self._probs = (gamma + numerators) / (1 + denominators)
@@ -43,8 +43,6 @@ class LKNNModel(ProbabilityModel):
 
         row  = self.matrix.getrow(idx) # may include itself, but will ignore these
         _, neighbors = row.nonzero()
-        #neighbors = neighbors.reshape(-1)
-        print(neighbors)
 
         curr_label = self.dataset.idx2label.get(idx, None)
         if curr_label is None:
