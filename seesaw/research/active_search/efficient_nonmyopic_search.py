@@ -18,18 +18,19 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
     if (i == lookahead_limit):
         return _expected_utility_approx(t - i, model)
 
-
     assert (i + 1) == lookahead_limit # pruning bounds implicitly assume this
     idxs = model.dataset.remaining_indices()
     p1 = model.predict_proba(idxs)
     order_desc = np.argsort(-p1)
 
     idxs = idxs[order_desc]
-    p1 = p1[order_desc]
+    p1 = p1[order_desc].reshape(-1,1)
 
     probs = np.concatenate([1-p1, p1], axis=-1)
+    assert probs.shape[0] == p1.shape[0]
+    assert probs.shape[1] == 2
 
-    def _solve_idx(idx):
+    def _solve_idx(idx, i):
         util0 = _opt_expected_utility_helper(i=i+1, lookahead_limit=lookahead_limit, t=t, model=model.condition(idx, 0), pruning_on=pruning_on)
         util1 = _opt_expected_utility_helper(i=i+1, lookahead_limit=lookahead_limit, t=t, model=model.condition(idx, 1), pruning_on=pruning_on)
         return np.array([util0.value, util1.value])
@@ -42,17 +43,19 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
         value_bound0 =  ps.sum()
         upper_bounds = p1 * value_bound1 + (1-p1) * value_bound0
 
-        lower_bound = _solve_idx(idxs[0]) @ probs[0,:]
+        lower_bound = _solve_idx(idxs[0], i) @ probs[0,:]
         pruned = upper_bounds < lower_bound
         pruned_fraction = pruned.sum()/pruned.shape[0]
         print(f'{pruned_fraction=:.02f}')
 
+        pruned = pruned.squeeze()
         idxs = idxs[~pruned]
         probs = probs[~pruned]
     
     values = np.zeros_like(probs)
-    for i,idx in enumerate(idxs):
-        values[i,:] = _solve_idx(idx)
+    for j,idx in enumerate(idxs):
+        ans = _solve_idx(idx, i)
+        values[j,:] = ans
 
     expected_utils = (probs * values).sum(axis=-1)
     assert expected_utils.shape[0] == values.shape[0]
@@ -63,7 +66,7 @@ def efficient_nonmyopic_search(model : ProbabilityModel, *, time_horizon : int, 
     ''' lookahead_limit: 0 means no tree search, 1 
         time_horizon: how many moves into the future
     '''
-    assert lookahead_limit <= 1, 'implementation assumes at most 1 lookahead (pruning)'
+    assert 0 <= lookahead_limit <= 1, 'implementation assumes at most 1 lookahead (pruning)'
     assert lookahead_limit <= time_horizon
     assert time_horizon > 0
     return _opt_expected_utility_helper(i=0, lookahead_limit=lookahead_limit, t=time_horizon, model=model, pruning_on=pruning_on)

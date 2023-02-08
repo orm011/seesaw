@@ -60,7 +60,7 @@ class ActiveSearch(LoopBase):
             #TODO: r should depend on configuration target  - current state?
             ## what does it mean for vectors in the same image?
             #res = min_expected_cost_approx(new_r, t=max_t, top_k=None, model=prop_model)
-            res = efficient_nonmyopic_search(self.prob_model, time_horizon=top_k, lookahead_limit=0, pruning_on=False)
+            res = efficient_nonmyopic_search(self.prob_model, time_horizon=top_k, lookahead_limit=1, pruning_on=True)
             top_idx = res.index
         
         vec_idx = np.array([top_idx])
