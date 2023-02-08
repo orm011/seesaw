@@ -73,7 +73,7 @@ class Session:
         self._log("next.start")
 
         start = time.time()
-        r = self.loop.next_batch()
+        r = self.loop.next_batch_external()
 
         delta = time.time() - start
 

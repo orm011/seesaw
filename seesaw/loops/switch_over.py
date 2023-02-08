@@ -41,7 +41,7 @@ class SwitchOver(LoopBase):
 
     def next_batch(self):
         if self.switch_condition(): # use method 1 once condition met
-            return self.method1.next_batch()
+            return self.method1.next_batch_external()
         else:
-            return self.method0.next_batch()
+            return self.method0.next_batch_external()
 

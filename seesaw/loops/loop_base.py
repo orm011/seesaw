@@ -24,6 +24,7 @@ class LoopBase:
         self.state = LoopState()
         self.q = q
         self.index = self.q.index
+        self.start_policy = 'none'
 
     @staticmethod
     def from_params(gdm, q, params) -> 'LoopBase':
@@ -32,8 +33,12 @@ class LoopBase:
     def set_text_vec(self, tvec):
         raise NotImplementedError('implement me in subclass')
 
-    def next_batch(self):
+    def next_batch_external(self):
         raise NotImplementedError('implement me in subclass')
+
+    # def next_batch_external(self):
+    #     if self.start_policy
+
 
     def refine(self, change=None):
         raise NotImplementedError('implement me in sublcass')
