@@ -8,9 +8,10 @@ datasets:
   # - name: lvis
   - name: objectnet
     subset: small_sample
-    # categories:
-    #   - air freshener
-    #   - egg carton
+    categories:
+       - air freshener
+       - egg carton
+       - eyeglasses
 shared_session_params: # see SessionParams
   batch_size: 1
   shortlist_size: 50
