@@ -44,9 +44,12 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
         upper_bounds = p1 * value_bound1 + (1-p1) * value_bound0
 
         lower_bound = _solve_idx(idxs[0], i) @ probs[0,:]
+        assert upper_bounds[0] >= lower_bound, 'the upper bound for this element should be higher than the actual value'
+
         pruned = upper_bounds < lower_bound
         pruned_fraction = pruned.sum()/pruned.shape[0]
-        print(f'{pruned_fraction=:.02f}')
+        kept = pruned.shape[0] - pruned.sum()
+        print(f'{pruned_fraction=:.03f} {kept=}')
 
         pruned = pruned.squeeze()
         idxs = idxs[~pruned]
