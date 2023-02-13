@@ -1,3 +1,6 @@
+from seesaw.loops.active_search import LKNNSearch
+
+
 def build_loop_from_params(gdm, q, params):
     from .pseudo_lr import PseudoLR
     from .log_reg import LogReg2
@@ -6,7 +9,7 @@ def build_loop_from_params(gdm, q, params):
 
     # from .old_seesaw import OldSeesaw
     # from .switch_over import SwitchOver
-    from .active_search import ActiveSearch
+    from .active_search import ActiveSearch, LKNNSearch
 
     cls_dict = {
         'knn_prop2':KnnProp2,
@@ -14,6 +17,7 @@ def build_loop_from_params(gdm, q, params):
         'log_reg2':LogReg2,
         'pseudo_lr':PseudoLR,
         'active_search':ActiveSearch,
+        'lknn':LKNNSearch,
 
         ## older, may need to implement from_params()
       #  'old_seesaw':OldSeesaw, # aka pytorch in old code

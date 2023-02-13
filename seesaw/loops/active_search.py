@@ -40,6 +40,7 @@ class ActiveSearch(LoopBase):
         return ActiveSearch(gdm, q, p, weight_matrix=label_prop2.lp.weight_matrix)
 
     def set_text_vec(self, tvec):
+        super().set_text_vec(tvec)
         self.scores = self.q.index.score(tvec)
 
     def next_batch(self):
@@ -49,19 +50,14 @@ class ActiveSearch(LoopBase):
         ### run planning stuff here. what do we do about rest of things in the frame?
         ### for now, nothing. just return one thing.
         ## 1. current scores are already propagating, no?
+        top_k = 100
 
-        if len(self.q.returned) == 0: # return same result as clip first try.
-            top_idx = np.argmax(self.scores)
-        else:
-            new_r = 10
-            max_t = 2
-            top_k = 100
-
-            #TODO: r should depend on configuration target  - current state?
-            ## what does it mean for vectors in the same image?
-            #res = min_expected_cost_approx(new_r, t=max_t, top_k=None, model=prop_model)
-            res = efficient_nonmyopic_search(self.prob_model, time_horizon=top_k, lookahead_limit=1, pruning_on=True)
-            top_idx = res.index
+        #TODO: r should depend on configuration target  - current state?
+        ## what does it mean for vectors in the same image?
+        #res = min_expected_cost_approx(new_r, t=max_t, top_k=None, model=prop_model)
+        res = efficient_nonmyopic_search(self.prob_model, time_horizon=top_k, lookahead_limit=self.params.interactive_options['lookahead'], 
+                                            pruning_on=self.params.interactive_options['pruning_on'])
+        top_idx = res.index
         
         vec_idx = np.array([top_idx])
         abs_idx = self.q.index.vector_meta['dbidx'].iloc[vec_idx].values
@@ -88,4 +84,48 @@ class ActiveSearch(LoopBase):
             for (idx, y) in change:
                 df = self.q.index.vector_meta
                 idx2 = df.query(f'dbidx == {idx}').index[0]
+                assert df.iloc[idx2].dbidx == idx
                 self.prob_model = self.prob_model.condition(idx2, y)
+
+class LKNNSearch(LoopBase):
+    def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams, weight_matrix : sp.csr_array):
+        super().__init__(gdm, q, params)
+
+        dataset = Dataset.from_vectors(q.index.vectors)
+        self.prob_model = LKNNModel.from_dataset(dataset, gamma=.1, weight_matrix=weight_matrix)
+        self.dataset = self.prob_model.dataset
+
+    @staticmethod
+    def from_params(gdm, q, p: SessionParams):
+        label_prop2 = get_label_prop(q, p.interactive_options)
+        return LKNNSearch(gdm, q, p, weight_matrix=label_prop2.lp.weight_matrix)
+
+    def next_batch(self):
+        """
+        gets next batch of image indices based on current vector
+        """
+        ### run planning stuff here. what do we do about rest of things in the frame?
+        ### for now, nothing. just return one thing.
+        ## 1. current scores are already propagating, no?
+        vec_idx = self.prob_model.top_k_remaining(top_k=1)[0]
+        abs_idx = self.q.index.vector_meta['dbidx'].iloc[vec_idx].values
+        ans = {'dbidxs': abs_idx, 'activations': None }
+        self.q.returned.update(ans['dbidxs'])
+        return ans
+
+    def refine(self, change=None):
+        # labels already added.
+        # go over labels here since it takes time
+        ## translating box labels to labels over the vector index.
+        #### for each frame in a box label. box join with the vector index for that box.
+        # seen_ids = np.array(self.q.label_db.get_seen())
+        if change is None:
+            assert False
+        else:
+            print(f'updating model with {change=}')
+            for (idx, y) in change:
+                df = self.q.index.vector_meta
+                idx2 = df.query(f'dbidx == {idx}').index[0]
+                assert df.iloc[idx2].dbidx == idx
+                self.prob_model = self.prob_model.condition(idx2, y)
+
