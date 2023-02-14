@@ -47,15 +47,11 @@ class ActiveSearch(LoopBase):
         """
         gets next batch of image indices based on current vector
         """
-        ### run planning stuff here. what do we do about rest of things in the frame?
-        ### for now, nothing. just return one thing.
-        ## 1. current scores are already propagating, no?
-        top_k = 100
+        remaining_time = max(self.params.interactive_options['time_horizon'] - len(self.q.returned), 0)
+        lookahead_limit = min(self.params.interactive_options['lookahead'], remaining_time)
 
-        #TODO: r should depend on configuration target  - current state?
-        ## what does it mean for vectors in the same image?
-        #res = min_expected_cost_approx(new_r, t=max_t, top_k=None, model=prop_model)
-        res = efficient_nonmyopic_search(self.prob_model, time_horizon=top_k, lookahead_limit=self.params.interactive_options['lookahead'], 
+        res = efficient_nonmyopic_search(self.prob_model, time_horizon=remaining_time, 
+                                            lookahead_limit=lookahead_limit, 
                                             pruning_on=self.params.interactive_options['pruning_on'])
         top_idx = int(res.index) 
         
