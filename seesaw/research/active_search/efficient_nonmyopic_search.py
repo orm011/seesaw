@@ -20,11 +20,7 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
 
     assert (i + 1) == lookahead_limit # pruning bounds implicitly assume this
     idxs = model.dataset.remaining_indices()
-    p1 = model.predict_proba(idxs)
-    order_desc = np.argsort(-p1)
-
-    idxs = idxs[order_desc]
-    p1 = p1[order_desc].reshape(-1,1)
+    p1 = model.predict_proba(idxs).reshape(-1,1)
 
     probs = np.concatenate([1-p1, p1], axis=-1)
     assert probs.shape[0] == p1.shape[0]
@@ -36,6 +32,12 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
         return np.array([util0.value, util1.value])
 
     if pruning_on:
+        order_desc = np.argsort(-p1)
+        idxs = np.array(idxs)
+        idxs = idxs[order_desc]
+        p1 = p1[order_desc].reshape(-1,1)
+
+
         pbound = model.probability_bound(1)
         value_bound1 = 1 + (t - i)*pbound
         _, ps = model.top_k_remaining(top_k=(t - i)) 
@@ -63,7 +65,7 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
     expected_utils = (probs * values).sum(axis=-1)
     assert expected_utils.shape[0] == values.shape[0]
     pos = np.argmax(expected_utils)
-    return Result(value=expected_utils[pos], index=idxs[pos])
+    return Result(value=expected_utils[pos], index=idxs[int(pos)])
 
 def efficient_nonmyopic_search(model : ProbabilityModel, *, time_horizon : int,  lookahead_limit : int, pruning_on : bool) -> Result:
     ''' lookahead_limit: 0 means no tree search, 1 

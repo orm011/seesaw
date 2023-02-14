@@ -57,7 +57,7 @@ class ActiveSearch(LoopBase):
         #res = min_expected_cost_approx(new_r, t=max_t, top_k=None, model=prop_model)
         res = efficient_nonmyopic_search(self.prob_model, time_horizon=top_k, lookahead_limit=self.params.interactive_options['lookahead'], 
                                             pruning_on=self.params.interactive_options['pruning_on'])
-        top_idx = res.index
+        top_idx = int(res.index) 
         
         vec_idx = np.array([top_idx])
         abs_idx = self.q.index.vector_meta['dbidx'].iloc[vec_idx].values
@@ -87,6 +87,8 @@ class ActiveSearch(LoopBase):
                 assert df.iloc[idx2].dbidx == idx
                 self.prob_model = self.prob_model.condition(idx2, y)
 
+import sys
+
 class LKNNSearch(LoopBase):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams, weight_matrix : sp.csr_array):
         super().__init__(gdm, q, params)
@@ -107,7 +109,7 @@ class LKNNSearch(LoopBase):
         ### run planning stuff here. what do we do about rest of things in the frame?
         ### for now, nothing. just return one thing.
         ## 1. current scores are already propagating, no?
-        vec_idx = self.prob_model.top_k_remaining(top_k=1)[0]
+        vec_idx, _ = self.prob_model.top_k_remaining(top_k=1)
         abs_idx = self.q.index.vector_meta['dbidx'].iloc[vec_idx].values
         ans = {'dbidxs': abs_idx, 'activations': None }
         self.q.returned.update(ans['dbidxs'])

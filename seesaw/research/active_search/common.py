@@ -42,8 +42,8 @@ class Dataset:
         return idxs, labs
 
 
-    def remaining_indices(self):
-        return np.array(self.all_indices - self.seen_indices)
+    def remaining_indices(self) -> pr.BitMap:
+        return self.all_indices - self.seen_indices
 
 
 def test_dataset():
@@ -107,7 +107,13 @@ class ProbabilityModel:
         curr_pred = self.predict_proba(idxs)
         desc_order = np.argsort(-curr_pred)
         ret_idxs = desc_order[:top_k]
-        return idxs[ret_idxs], curr_pred[ret_idxs]
+
+        ans = []
+        for idx in ret_idxs:
+            ans.append(idxs[int(idx)])
+
+        idx_ans = np.array(ans)
+        return idx_ans, curr_pred[ret_idxs]
 
     def probability_bound(self, n) -> float:
         ''' upper bound on max p_i if we added n more positive results '''
