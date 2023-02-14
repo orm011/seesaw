@@ -68,26 +68,19 @@ class LazyTopK:
 class LKNNModel(ProbabilityModel):
     ''' Implements L-KNN prob. model used in Active Search paper.
     '''    
-    def __init__(self, dataset : Dataset, gamma : float, matrix : sp.csr_array, numerators : np.ndarray, denominators : np.ndarray):
+    def __init__(self, dataset : Dataset, gamma : float, matrix : sp.csr_array, numerators : np.ndarray, denominators : np.ndarray, lz_topk: LazyTopK):
 
         super().__init__(dataset)
         self.matrix = matrix
         self.numerators = numerators
         self.denominators = denominators
         self.gamma = gamma
+        self.lz_topk = lz_topk
 
         assert dataset.vectors.shape[0] == matrix.shape[0]
-        # print(f'{matrix.shape=}')
 
         ## set probs to estimates, then replace estimates with labels
         self._probs = (gamma + numerators) / (1 + denominators)
-#        self.order_desc = order_desc
-#        assert order_desc.shape[0] == self._probs.shape[0]
-
-        if len(dataset.seen_indices) > 0:
-            idxs, labels = dataset.get_labels()
-            self._probs[idxs] = labels
-
 
     @staticmethod
     def from_dataset( dataset : Dataset, weight_matrix : sp.csr_array, gamma : float):
@@ -100,7 +93,10 @@ class LKNNModel(ProbabilityModel):
         init_scores = (numerators + gamma) / (1 + denominators)
         init_sort = np.argsort(-init_scores)
 
-        return LKNNModel(dataset, gamma=gamma, matrix=weight_matrix, numerators=np.zeros(sz), denominators=np.zeros(sz))
+        lz_topk = LazyTopK(dataset=dataset, desc_idxs=init_sort, desc_scores=init_scores[init_sort], 
+                            desc_changed_scores=np.array([]),desc_changed_idxs=np.array([]))
+
+        return LKNNModel(dataset, gamma=gamma, matrix=weight_matrix, numerators=np.zeros(sz), denominators=np.zeros(sz), lz_topk=lz_topk)
 
 
     def condition(self, idx, y) -> 'LKNNModel':
@@ -124,21 +120,34 @@ class LKNNModel(ProbabilityModel):
             pass
 
 
+        new_scores = (numerators[neighbors] + self.gamma)/(1 + denominators[neighbors])
         # only idx and neighbors may have changed
         # new order = merge remaining order desc and neighbors
-
-
         new_dataset = self.dataset.with_label(idx, y)
 
+        ## new changed_idxs = old changed_idxs updated with new
+        old_dict = dict(zip(self.lz_topk.changed_idxs, self.lz_topk.changed_scores))
+        new_dict = dict(zip(neighbors, new_scores))
 
-        return LKNNModel(new_dataset, gamma=self.gamma, matrix=self.matrix, numerators=numerators, denominators=denominators)
+        old_dict.update(new_dict)
+        idxs = np.array(list(old_dict.keys()))
+        values = np.array(list(old_dict.values()))
+
+        desc_order = np.argsort(-values)
+        desc_changed_idxs = idxs[desc_order]
+        desc_changed_scores = values[desc_order]
+        
+        lz_topk  =  LazyTopK(dataset=new_dataset, desc_idxs=self.lz_topk.desc_scores, desc_scores=self.lz_topk.desc_scores,
+        desc_changed_scores=desc_changed_scores, desc_changed_idxs=desc_changed_idxs)
+
+        return LKNNModel(new_dataset, gamma=self.gamma, matrix=self.matrix, numerators=numerators, denominators=denominators, lz_topk=lz_topk)
 
     def predict_proba(self, idxs : np.ndarray ) -> np.ndarray:
         return self._probs[idxs]
 
     def top_k_remaining(self, top_k : int) -> Tuple[np.ndarray, np.ndarray]:
         ## cheap form of finding the top k highest scoring without materializing all scores
-        pass
+        return self.lz_topk.top_k_remaining(k=top_k)
 
     def probability_bound(self, n) -> np.ndarray:
         idxs = self.dataset.remaining_indices()
