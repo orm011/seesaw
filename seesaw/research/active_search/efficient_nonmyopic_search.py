@@ -32,11 +32,11 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
         return np.array([util0.value, util1.value])
 
     if pruning_on:
-        order_desc = np.argsort(-p1)
-        idxs = np.array(idxs)
-        idxs = idxs[order_desc]
-        p1 = p1[order_desc].reshape(-1,1)
+        top_idxs, top_pvals = model.top_k_remaining(1)
+        top_idx = top_idxs[0]
+        pval = top_pvals[0]
 
+        p1 = p1.reshape(-1,1)
 
         pbound = model.probability_bound(1)
         value_bound1 = 1 + (t - i)*pbound
@@ -45,7 +45,7 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
         value_bound0 =  ps.sum()
         upper_bounds = p1 * value_bound1 + (1-p1) * value_bound0
 
-        lower_bound = _solve_idx(idxs[0], i) @ probs[0,:]
+        lower_bound = _solve_idx(top_idx, i) @ np.array([1-pval, pval])
         assert upper_bounds[0] >= lower_bound, 'the upper bound for this element should be higher than the actual value'
 
         pruned = upper_bounds < lower_bound
