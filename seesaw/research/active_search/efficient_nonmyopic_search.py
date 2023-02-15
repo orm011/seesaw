@@ -1,8 +1,10 @@
 
 from .common import ProbabilityModel, Result
 import numpy as np
+import pyroaring as pr
 
 def _expected_utility_approx(t: int, model : ProbabilityModel):
+    assert t > 0
     idxs, scores = model.top_k_remaining(top_k=t)
     next_idx = idxs[0]
     expected_u = scores.sum()
@@ -15,10 +17,12 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
        returns the expected utlity at horizon t for this batch, assuming an exact
        look-ahead of k <= t
     '''
-    if (i == lookahead_limit):
+
+    assert i >= 0
+    assert i < lookahead_limit
+    if (i == lookahead_limit - 1):
         return _expected_utility_approx(t - i, model)
 
-    assert (i + 1) == lookahead_limit # pruning bounds implicitly assume this
     idxs = model.dataset.remaining_indices()
     p1 = model.predict_proba(idxs).reshape(-1,1)
 
@@ -40,13 +44,14 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
 
         pbound = model.probability_bound(1)
         value_bound1 = 1 + (t - i)*pbound
-        _, ps = model.top_k_remaining(top_k=(t - i)) 
-        assert ps.shape[0] == t - i
+        _, ps = model.top_k_remaining(top_k=(t - i))
+        len_remaining = len(model.dataset.remaining_indices())
+        len_remaining2 = min(t-i, len_remaining)
+        assert ps.shape[0] == len_remaining2, f'{ps.shape[0]=} {t-i=} {len_remaining=}'
         value_bound0 =  ps.sum()
         upper_bounds = p1 * value_bound1 + (1-p1) * value_bound0
 
         lower_bound = _solve_idx(top_idx, i) @ np.array([1-pval, pval])
-        assert upper_bounds[0] >= lower_bound, 'the upper bound for this element should be higher than the actual value'
 
         pruned = upper_bounds < lower_bound
         pruned_fraction = pruned.sum()/pruned.shape[0]
@@ -54,11 +59,20 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
         print(f'{pruned_fraction=:.03f} {kept=}')
 
         pruned = pruned.squeeze()
-        idxs = idxs[~pruned]
+        positions = np.where(pruned)[0]
+
+        pruned_set = pr.BitMap()
+        for pos in positions:
+            pruned_set.add(idxs[int(pos)])
+
+        idxs = idxs - pruned_set
         probs = probs[~pruned]
+        assert len(idxs) == len(probs)
+    else:
+        pruned_set = pr.BitMap()
     
     values = np.zeros_like(probs)
-    for j,idx in enumerate(idxs):
+    for j,idx in enumerate(idxs):        
         ans = _solve_idx(idx, i)
         values[j,:] = ans
 
@@ -71,7 +85,7 @@ def efficient_nonmyopic_search(model : ProbabilityModel, *, time_horizon : int, 
     ''' lookahead_limit: 0 means no tree search, 1 
         time_horizon: how many moves into the future
     '''
-    assert 0 <= lookahead_limit <= 1, 'implementation assumes at most 1 lookahead (pruning)'
+    assert 1 <= lookahead_limit <= 2, 'implementation assumes at most 1 lookahead (pruning)'
     assert lookahead_limit <= time_horizon
     assert time_horizon > 0
     return _opt_expected_utility_helper(i=0, lookahead_limit=lookahead_limit, t=time_horizon, model=model, pruning_on=pruning_on)
