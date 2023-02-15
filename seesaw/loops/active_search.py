@@ -47,8 +47,12 @@ class ActiveSearch(LoopBase):
         """
         gets next batch of image indices based on current vector
         """
-        remaining_time = max(self.params.interactive_options['time_horizon'] - len(self.q.returned), 0)
-        lookahead_limit = min(self.params.interactive_options['lookahead'], remaining_time)
+        remaining_time = self.params.interactive_options['time_horizon'] - len(self.q.returned)
+        assert remaining_time > 0
+
+        lookahead = self.params.interactive_options['lookahead']
+        assert lookahead > 0
+        lookahead_limit = min(lookahead, remaining_time)
 
         res = efficient_nonmyopic_search(self.prob_model, time_horizon=remaining_time, 
                                             lookahead_limit=lookahead_limit, 
