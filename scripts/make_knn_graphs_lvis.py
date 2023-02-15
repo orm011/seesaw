@@ -11,8 +11,9 @@ root = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/'
 gdm = GlobalDataManager(root)
 dataset_name = 'objectnet'
 ds = gdm.get_dataset(dataset_name)
-subset_name = 'small_sample'
-idxname = 'multiscalecoarse'
+subset_name = 'class_subset2'
+#subset_name = 'small_sample'
+idxname = 'multiscalemed'
 _ = ds.load_index(idxname, options=dict(use_vec_index=False))
 _, qgt = ds.load_ground_truth()
 import pyroaring as pr
@@ -66,9 +67,8 @@ class KNNMaker:
 #         for category in qgt.columns.values:
 #             combinations.append((dataset_name, index_name, category))
 
-idxname = 'multiscalemed'
 combinations = [ #('bdd', idxname, None), ('lvis', idxname, None), 
-                ('objectnet', 'multiscalemed', 'small_sample')]
+                ('objectnet', idxname, subset_name)]
 
 # all_subsets = qgt.columns.values
 ds = ray.data.from_items(combinations, parallelism=min(len(combinations), 100))
