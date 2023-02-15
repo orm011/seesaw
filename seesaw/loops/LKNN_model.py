@@ -12,51 +12,51 @@ class LazyTopK:
 
         self.desc_scores = desc_scores
         self.desc_idxs = desc_idxs
+        
+        assert self.desc_scores.shape[0] == self.desc_idxs.shape[0]
 
         self.changed_idxs = desc_changed_idxs
-        self.changed_idx_set= pr.BitMap(desc_changed_idxs)
+        self.changed_idx_set= pr.BitMap(desc_changed_idxs.reshape(-1))
         self.changed_scores = desc_changed_scores
+        assert self.changed_idxs.shape[0] == self.changed_scores.shape[0]
+        assert len(self.changed_idx_set) == self.changed_scores.shape[0]
 
-    def __iter__(self):
-        i = 0
-        j = 0
-
-        while True:
-            while i < len(self.desc_scores) and (
-                    self.desc_idxs[i] in self.dataset.seen_indices
-                    or 
-                    self.desc_idxs[i] in self.changed_idx_set
-                 ):
-                i+=1
-
-            if i < len(self.desc_scores):
-                top_orig_score = self.desc_scores[i]
+    def _iter_desc_scores(self):
+        ignore_set = self.dataset.seen_indices.union(self.changed_idx_set)
+        for (idx, score) in zip(self.desc_idxs, self.desc_scores):
+            if idx not in ignore_set:
+                yield (idx, score)
             else:
-                top_orig_score = - math.inf
+                pass
 
-            while j < len(self.changed_idxs) and (
-                    self.changed_idxs[j] in self.dataset.seen_indices
-                ):
-                j+=1
-            if j < len(self.changed_idxs):
-                top_changed_score = self.changed_scores[j]
+    def _iter_changed_scores(self):
+        for (idx, score) in zip(self.changed_idxs, self.changed_scores):
+            if idx not in self.dataset.seen_indices:
+                yield (idx, score)
+        
+    def iter_desc(self):
+        """ merges both streams in descending order, excluding any already seen elements
+        """
+        iter1 = self._iter_desc_scores()
+        iter2 = self._iter_changed_scores()
+
+        idx1, score1 = next(iter1)
+        idx2, score2 = next(iter2)
+        while (idx1 > -1) or (idx2 > -1):
+            if score1 >= score2:
+                yield (idx1, score1)
+                idx1, score1 = next(iter1, (-1, -math.inf))
             else:
-                top_changed_score = - math.inf
+                yield (idx2, score2)
+                idx2, score2 = next(iter2, (-1, -math.inf))
 
-            if i == len(self.desc_scores) and j == len(self.changed_scores):
-                break
-
-            if top_orig_score >= top_changed_score:
-                yield (self.desc_idxs[i], top_orig_score)
-                i+=1
-            else:
-                yield (self.changed_idxs[j], top_changed_score)
-                j+=1
+        assert (idx1 == -1) and (idx2 == -1), 'how did we get here'
 
     def top_k_remaining(self, k):
         vals = []
         idxs = []
-        for i, (idx, val) in enumerate(iter(self)):
+        
+        for i, (idx, val) in enumerate(self.iter_desc()):
             if i >= k:
                 break
 
