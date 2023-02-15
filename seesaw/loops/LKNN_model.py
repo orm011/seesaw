@@ -207,7 +207,7 @@ class LKNNModel(ProbabilityModel):
             iter1 = self._iter_desc_scores()
             iter2 = self._iter_changed_scores()
 
-            idx1, score1 = next(iter1)
+            idx1, score1 = next(iter1, (-1, -math.inf)) # should be rare but in principle it is possible
             idx2, score2 = next(iter2, (-1, -math.inf)) # could be empty if everything has been seen
             while (idx1 > -1) or (idx2 > -1):
                 if score1 >= score2:
