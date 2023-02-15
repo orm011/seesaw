@@ -76,8 +76,6 @@ def test_dataset():
     assert 1 not in d3.remaining_indices()
     assert 5 not in d3.remaining_indices()
 
-import torch
-
 class Result:
     value : float
     index : int
