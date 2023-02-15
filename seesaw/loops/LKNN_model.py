@@ -107,8 +107,11 @@ class LKNNModel(ProbabilityModel):
         denominators = self.denominators.copy()
 
 
-        row  = self.matrix[[idx],:] # may include itself, but will ignore these
-        _, neighbors = row.nonzero()
+        #row  = self.matrix[[idx],:] # may include itself, but will ignore these
+        #_, neighbors = row.nonzero()
+        assert self.matrix.format == 'csr', 'use arrays directly to make access fast'
+        start, end = self.matrix.indptr[idx:idx+2]
+        neighbors = self.matrix.indices[start:end]
 
         curr_label = self.dataset.idx2label.get(idx, None)
         if curr_label is None:
