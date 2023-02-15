@@ -65,22 +65,37 @@ class LazyTopK:
 
         return np.array(idxs), np.array(vals)
 
+import numexpr
+
 class LKNNModel(ProbabilityModel):
     ''' Implements L-KNN prob. model used in Active Search paper.
     '''    
-    def __init__(self, dataset : Dataset, gamma : float, matrix : sp.csr_array, numerators : np.ndarray, denominators : np.ndarray, lz_topk: LazyTopK):
+    def __init__(self, dataset : Dataset, gamma : float, matrix : sp.csr_array, numerators : np.ndarray, denominators : np.ndarray, 
+    score: np.ndarray, desc_idx : np.ndarray, desc_score : np.ndarray, desc_changed_idx : np.ndarray, desc_changed_score : np.ndarray):
 
         super().__init__(dataset)
         self.matrix = matrix
         self.numerators = numerators
         self.denominators = denominators
+        self.score = score
         self.gamma = gamma
-        self.lz_topk = lz_topk
+        
+        self.desc_idx = desc_idx
+        self.desc_score = desc_score
 
-        assert dataset.vectors.shape[0] == matrix.shape[0]
+        ## starts off null, gets filled after first branching
+        self.desc_changed_idx = desc_changed_idx
+        self.desc_changed_score = desc_changed_score
 
-        ## set probs to estimates, then replace estimates with labels
-        self._probs = (gamma + numerators) / (1 + denominators)
+        self._init_sets()
+        
+    def _init_sets(self):
+        if self.desc_changed_idx is not None:
+            self.changed_idx_set = pr.FrozenBitMap(self.desc_changed_idx)
+        else:
+            self.changed_idx_set = pr.FrozenBitMap()
+
+        self.ignore_set = self.dataset.seen_indices.union(self.changed_idx_set)
 
     @staticmethod
     def from_dataset( dataset : Dataset, weight_matrix : sp.csr_array, gamma : float):
@@ -93,64 +108,118 @@ class LKNNModel(ProbabilityModel):
         init_scores = (numerators + gamma) / (1 + denominators)
         init_sort = np.argsort(-init_scores)
 
-        lz_topk = LazyTopK(dataset=dataset, desc_idxs=init_sort, desc_scores=init_scores[init_sort], 
-                            desc_changed_scores=np.array([]),desc_changed_idxs=np.array([]))
+        return LKNNModel(dataset, gamma=gamma, matrix=weight_matrix, numerators=np.zeros(sz), denominators=np.zeros(sz),  score=init_scores, desc_idx=init_sort, 
+        desc_score=init_scores[init_sort], desc_changed_idx=None, desc_changed_score=None)
 
-        return LKNNModel(dataset, gamma=gamma, matrix=weight_matrix, numerators=np.zeros(sz), denominators=np.zeros(sz), lz_topk=lz_topk)
+    def _compute_updated_arrays(self, ids, numerator_delta : int, denominator_delta : int):
+        change_numerators = self.numerators[ids] + numerator_delta 
+        change_denominators = self.denominators[ids] + denominator_delta
+        change_scores = (change_numerators + self.gamma)/(change_denominators + 1)
+        #change_scores = numexpr.evaluate('(change_numerators + self.gamma)/()')
+        desc_order = np.argsort(-change_scores)
+        desc_changed_idxs = ids[desc_order]
+        desc_changed_scores = change_scores[desc_order]
+        return desc_changed_idxs, desc_changed_scores, change_numerators, change_denominators, change_scores
 
 
-    def condition(self, idx, y) -> 'LKNNModel':
-        ''' returns new model
-        '''
-
-        numerators = self.numerators.copy()
-        denominators = self.denominators.copy()
-
-
-        #row  = self.matrix[[idx],:] # may include itself, but will ignore these
-        #_, neighbors = row.nonzero()
-        assert self.matrix.format == 'csr', 'use arrays directly to make access fast'
+    def _condition_shared(self, idx, y):
         start, end = self.matrix.indptr[idx:idx+2]
         neighbors = self.matrix.indices[start:end]
 
         curr_label = self.dataset.idx2label.get(idx, None)
         if curr_label is None:
-            numerators[neighbors] += y
-            denominators[neighbors] += 1
+            numerator_delta = y
+            denominator_delta = 1
         elif curr_label != y:
-            numerators[neighbors] += (y - curr_label)
-        else: # do nothing.
-            pass
+            numerator_delta = (y - curr_label)
+            denominator_delta = 0
+        else:
+            numerator_delta = 0
+            denominator_delta = 0
 
-
-        new_scores = (numerators[neighbors] + self.gamma)/(1 + denominators[neighbors])
-        # only idx and neighbors may have changed
-        # new order = merge remaining order desc and neighbors
+        desc_changed_idx, desc_changed_score,  num_change, denom_change, score_change = self._compute_updated_arrays(neighbors, numerator_delta, denominator_delta)
         new_dataset = self.dataset.with_label(idx, y)
+        return new_dataset, neighbors, desc_changed_idx, desc_changed_score, num_change, denom_change, score_change
 
-        ## new changed_idxs = old changed_idxs updated with new
-        old_dict = dict(zip(self.lz_topk.changed_idxs, self.lz_topk.changed_scores))
-        new_dict = dict(zip(neighbors, new_scores))
-
-        old_dict.update(new_dict)
-        idxs = np.array(list(old_dict.keys()))
-        values = np.array(list(old_dict.values()))
-
-        desc_order = np.argsort(-values)
-        desc_changed_idxs = idxs[desc_order]
-        desc_changed_scores = values[desc_order]
+    def condition(self, idx, y) -> 'LKNNModel':
+        ''' returns new model
+        '''
+        #row  = self.matrix[[idx],:] # may include itself, but will ignore these
+        #_, neighbors = row.nonzero()
+        assert self.desc_changed_idx is None
+        assert self.matrix.format == 'csr', 'use arrays directly to make access fast'
         
-        lz_topk  =  LazyTopK(dataset=new_dataset, desc_idxs=self.lz_topk.desc_idxs, desc_scores=self.lz_topk.desc_scores,
-        desc_changed_scores=desc_changed_scores, desc_changed_idxs=desc_changed_idxs)
+        new_dataset, neighbors, desc_changed_idx, desc_changed_score, num_change, denom_change, score_change = self._condition_shared(idx, y)
+        return LKNNModel(new_dataset, gamma=self.gamma, matrix=self.matrix, numerators=self.numerators, denominators=self.denominators, score=self.score,
+        desc_idx=self.desc_idx, desc_score=self.desc_score, desc_changed_idx=desc_changed_idx, desc_changed_score=desc_changed_score)
 
-        return LKNNModel(new_dataset, gamma=self.gamma, matrix=self.matrix, numerators=numerators, denominators=denominators, lz_topk=lz_topk)
+
+    def condition_(self, idx, y):
+        assert self.desc_changed_idx is None
+        new_dataset, neighbors, desc_changed_idx, desc_changed_score, num_change, denom_change, score_change = self._condition_shared(idx, y)
+        self.dataset = new_dataset
+        self.numerators[neighbors] = num_change
+        self.denominators[neighbors] = denom_change
+        self.score[neighbors] = score_change
+
+        ## slow. sort everything
+        self.desc_idx = np.argsort(-self.score)
+        self.desc_score = self.score[self.desc_idx]
+
+        self._init_sets()
 
     def predict_proba(self, idxs : np.ndarray ) -> np.ndarray:
-        return self._probs[idxs]
+        basic_score = self.score[idxs]
+        assert self.desc_changed_idx is None, 'is this ever called after first round'
+        return basic_score
+
+    def _iter_desc_scores(self):
+        for (idx, score) in zip(self.desc_idx, self.desc_score):
+            if idx not in self.ignore_set:
+                yield (idx, score)
+            else:
+                pass
+
+    def _iter_changed_scores(self):
+        for (idx, score) in zip(self.desc_changed_idx, self.desc_changed_score):
+            if idx not in self.dataset.seen_indices:
+                yield (idx, score)
+
+    def iter_desc(self):
+        """ merges both streams in descending order, excluding any already seen elements
+        """
+        if self.desc_changed_idx is not None:
+
+            iter1 = self._iter_desc_scores()
+            iter2 = self._iter_changed_scores()
+
+            idx1, score1 = next(iter1)
+            idx2, score2 = next(iter2)
+            while (idx1 > -1) or (idx2 > -1):
+                if score1 >= score2:
+                    yield (idx1, score1)
+                    idx1, score1 = next(iter1, (-1, -math.inf))
+                else:
+                    yield (idx2, score2)
+                    idx2, score2 = next(iter2, (-1, -math.inf))
+
+            assert (idx1 == -1) and (idx2 == -1), 'how did we get here'
+        else:
+            iter1 =  self._iter_desc_scores()
+            for x in iter1:
+                yield x
 
     def top_k_remaining(self, top_k : int) -> Tuple[np.ndarray, np.ndarray]:
         ## cheap form of finding the top k highest scoring without materializing all scores
-        return self.lz_topk.top_k_remaining(k=top_k)
+        vals = []
+        idxs = []
+        for i, (idx, val) in enumerate(self.iter_desc()):
+            if i >= top_k:
+                break
+
+            idxs.append(idx)
+            vals.append(val)
+        return np.array(idxs), np.array(vals)
 
     def probability_bound(self, n) -> np.ndarray:
         idxs = self.dataset.remaining_indices()

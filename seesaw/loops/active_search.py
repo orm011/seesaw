@@ -85,7 +85,7 @@ class ActiveSearch(LoopBase):
                 df = self.q.index.vector_meta
                 idx2 = df.query(f'dbidx == {idx}').index[0]
                 assert df.iloc[idx2].dbidx == idx
-                self.prob_model = self.prob_model.condition(idx2, y)
+                self.prob_model.condition_(idx2, y)
 
 import sys
 
