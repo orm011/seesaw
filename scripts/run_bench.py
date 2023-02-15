@@ -72,8 +72,8 @@ for i,yl in enumerate(yls):
     print(f"{len(cfgs)} generated from {args.configs[i]}")
 
     if args.dryrun: # limit size of benchmark and classes per dataset
-        shared_bench_params['n_batches'] = 5
-        shared_bench_params['max_results'] = 4
+        shared_bench_params['n_batches'] = 10
+        shared_bench_params['max_results'] = 6
 
         cfgs = generate_benchmark_configs(
             gdm,
