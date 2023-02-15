@@ -137,7 +137,7 @@ class LKNNModel(ProbabilityModel):
         desc_changed_idxs = idxs[desc_order]
         desc_changed_scores = values[desc_order]
         
-        lz_topk  =  LazyTopK(dataset=new_dataset, desc_idxs=self.lz_topk.desc_scores, desc_scores=self.lz_topk.desc_scores,
+        lz_topk  =  LazyTopK(dataset=new_dataset, desc_idxs=self.lz_topk.desc_idxs, desc_scores=self.lz_topk.desc_scores,
         desc_changed_scores=desc_changed_scores, desc_changed_idxs=desc_changed_idxs)
 
         return LKNNModel(new_dataset, gamma=self.gamma, matrix=self.matrix, numerators=numerators, denominators=denominators, lz_topk=lz_topk)
