@@ -111,18 +111,26 @@ class LKNNModel(ProbabilityModel):
         return LKNNModel(dataset, gamma=gamma, matrix=weight_matrix, numerators=np.zeros(sz), denominators=np.zeros(sz),  score=init_scores, desc_idx=init_sort, 
         desc_score=init_scores[init_sort], desc_changed_idx=None, desc_changed_score=None)
 
-    def _compute_updated_arrays(self, ids, numerator_delta : int, denominator_delta : int):
-        change_numerators = self.numerators[ids] + numerator_delta 
-        change_denominators = self.denominators[ids] + denominator_delta
-        change_scores = (change_numerators + self.gamma)/(change_denominators + 1)
-        #change_scores = numexpr.evaluate('(change_numerators + self.gamma)/()')
+    def _compute_updated_arrays(self, ids, numerator_delta : int, denominator_delta : int, ret_num_denom=False):
+        #change_scores = (change_numerators + self.gamma)/(change_denominators + 1)
+        numerators = self.numerators[ids]
+        denominators = self.denominators[ids]
+        gamma = self.gamma
+
+        change_scores = numexpr.evaluate('(numerators + numerator_delta + gamma)/(denominators + denominator_delta + 1)')
         desc_order = np.argsort(-change_scores)
         desc_changed_idxs = ids[desc_order]
         desc_changed_scores = change_scores[desc_order]
-        return desc_changed_idxs, desc_changed_scores, change_numerators, change_denominators, change_scores
+
+        if ret_num_denom:
+            change_numerators = self.numerators[ids] + numerator_delta 
+            change_denominators = self.denominators[ids] + denominator_delta
+            return desc_changed_idxs, desc_changed_scores, change_scores,  change_numerators, change_denominators
+        else:
+            return desc_changed_idxs, desc_changed_scores, change_scores, None, None
 
 
-    def _condition_shared(self, idx, y):
+    def _condition_shared(self, idx, y, ret_num_denom=False):
         start, end = self.matrix.indptr[idx:idx+2]
         neighbors = self.matrix.indices[start:end]
 
@@ -137,9 +145,10 @@ class LKNNModel(ProbabilityModel):
             numerator_delta = 0
             denominator_delta = 0
 
-        desc_changed_idx, desc_changed_score,  num_change, denom_change, score_change = self._compute_updated_arrays(neighbors, numerator_delta, denominator_delta)
+        desc_changed_idx, desc_changed_score, score_change, num_change, denom_change = self._compute_updated_arrays(neighbors,
+                     numerator_delta, denominator_delta, ret_num_denom=ret_num_denom)
         new_dataset = self.dataset.with_label(idx, y)
-        return new_dataset, neighbors, desc_changed_idx, desc_changed_score, num_change, denom_change, score_change
+        return new_dataset, neighbors, desc_changed_idx, desc_changed_score, score_change, num_change, denom_change
 
     def condition(self, idx, y) -> 'LKNNModel':
         ''' returns new model
@@ -149,14 +158,17 @@ class LKNNModel(ProbabilityModel):
         assert self.desc_changed_idx is None
         assert self.matrix.format == 'csr', 'use arrays directly to make access fast'
         
-        new_dataset, neighbors, desc_changed_idx, desc_changed_score, num_change, denom_change, score_change = self._condition_shared(idx, y)
-        return LKNNModel(new_dataset, gamma=self.gamma, matrix=self.matrix, numerators=self.numerators, denominators=self.denominators, score=self.score,
-        desc_idx=self.desc_idx, desc_score=self.desc_score, desc_changed_idx=desc_changed_idx, desc_changed_score=desc_changed_score)
+        new_dataset, neighbors, desc_changed_idx, desc_changed_score, score_change, _, _ = self._condition_shared(idx, y, ret_num_denom=False)
+        return LKNNModel(new_dataset, gamma=self.gamma, matrix=self.matrix, numerators=self.numerators, denominators=self.denominators, 
+                            score=self.score,
+                            desc_idx=self.desc_idx, 
+                            desc_score=self.desc_score, 
+                            desc_changed_idx=desc_changed_idx, desc_changed_score=desc_changed_score)
 
 
     def condition_(self, idx, y):
         assert self.desc_changed_idx is None
-        new_dataset, neighbors, desc_changed_idx, desc_changed_score, num_change, denom_change, score_change = self._condition_shared(idx, y)
+        new_dataset, neighbors, desc_changed_idx, desc_changed_score, score_change,num_change, denom_change = self._condition_shared(idx, y, ret_num_denom=True)
         self.dataset = new_dataset
         self.numerators[neighbors] = num_change
         self.denominators[neighbors] = denom_change
@@ -175,6 +187,7 @@ class LKNNModel(ProbabilityModel):
 
     def _iter_desc_scores(self):
         for (idx, score) in zip(self.desc_idx, self.desc_score):
+            assert int(idx) == idx
             if idx not in self.ignore_set:
                 yield (idx, score)
             else:
@@ -182,6 +195,7 @@ class LKNNModel(ProbabilityModel):
 
     def _iter_changed_scores(self):
         for (idx, score) in zip(self.desc_changed_idx, self.desc_changed_score):
+            assert int(idx) == idx
             if idx not in self.dataset.seen_indices:
                 yield (idx, score)
 
@@ -194,7 +208,7 @@ class LKNNModel(ProbabilityModel):
             iter2 = self._iter_changed_scores()
 
             idx1, score1 = next(iter1)
-            idx2, score2 = next(iter2)
+            idx2, score2 = next(iter2, (-1, -math.inf)) # could be empty if everything has been seen
             while (idx1 > -1) or (idx2 > -1):
                 if score1 >= score2:
                     yield (idx1, score1)
