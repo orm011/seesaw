@@ -9,12 +9,42 @@ datasets:
   - name: objectnet
     #subset: small_sample
     #subset: class_subset2
-    # categories:
-    #   - eyeglasses
-    #   - egg carton
-    #   - combination lock
-    #   - soap bar
-    #   - air freshener
+    categories:
+      - kettle
+      - ziploc bag
+      - bicycle
+      - power cable
+      - dress shoe (men)
+      - paperclip
+      - orange
+      - watch
+      - cd case
+      - tie
+      - safety pin
+      - lettuce
+      - bucket
+      - ladle
+      - envelope
+      - toilet paper roll
+      - coffee table
+      - razor
+      - suitcase
+      - lampshade
+      - document folder (closed)
+      - paper plates
+      - soap bar
+      - whistle
+      - bread knife
+      - mixing / salad bowl
+      - padlock
+      - stopper (sink/tub)
+      - poster
+      - contact lens case
+      - eyeglasses
+      - egg carton
+      - combination lock
+      - soap bar
+      - air freshener
 shared_session_params: # see SessionParams
   batch_size: 1 
   shortlist_size: 50
