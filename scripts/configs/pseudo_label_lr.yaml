@@ -8,10 +8,10 @@ datasets:
   # - name: lvis
   - name: objectnet
     #subset: small_sample
-    subset: class_subset2
+    #subset: class_subset2
     categories:
-      - egg carton
       - eyeglasses
+      - egg carton
       - combination lock
       - soap bar
       - air freshener
@@ -36,77 +36,18 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    # - name: lknn
-    #   max_samples: 20
-    #   interactive: lknn
-    #   start_policy: after_first_positive
-    #   interactive_options:
-    #     matrix_options:
-    #       knn_path: nndescent10
-    #       self_edges : False
-    #       normalized_weights : False
-    #       knn_k: 
-    #         choose: [5]
-    #       edist: 
-    #         choose: [.05]
-    #         # choose: [1.6]
-    #         # choose: [.05]
-    #         # choose: [.00075,  .00625, .2, .4, 3.2]
-    #         # choose: [.05]
-    #         # choose: [0.00038, .00075, 3.2]
-    #         # choose: [.05]
-    #     normalize_scores : False
-    #     sigmoid_before_propagate: True  
-    #     calib_a: 
-    #       choose: [10.]
-    #     calib_b: 
-    #       choose: [-0.4]
-    #     prior_weight: 
-    #       choose: [0.] # good for unnormalized
-    # - name: active_search_l0
-    #   max_samples: 20
-    #   interactive: active_search
-    #   start_policy: after_first_positive
-    #   interactive_options:
-    #     lookahead: 1
-    #     time_horizon: 30 # make equal to n_batches
-    #     pruning_on: True # makes no difference for lookahead 0
-    #     matrix_options:
-    #       knn_path: nndescent10
-    #       self_edges : False
-    #       normalized_weights : False
-    #       knn_k: 
-    #         choose: [5]
-    #       edist: 
-    #         choose: [.05]
-    #         # choose: [1.6]
-    #         # choose: [.05]
-    #         # choose: [.00075,  .00625, .2, .4, 3.2]
-    #         # choose: [.05]
-    #         # choose: [0.00038, .00075, 3.2]
-    #         # choose: [.05]
-    #     normalize_scores : False
-    #     sigmoid_before_propagate: True  
-    #     calib_a: 
-    #       choose: [10.]
-    #     calib_b: 
-    #       choose: [-0.4]
-    #     prior_weight: 
-    #       choose: [0.] # good for unnormalized
-    - name: active_search_l1_prune
+    - name: lknn
       max_samples: 20
-      interactive: active_search
+      interactive: lknn
       start_policy: after_first_positive
       interactive_options:
-        lookahead: 2
-        pruning_on: True
-        time_horizon: 30
         matrix_options:
-          knn_path: nndescent10
+          knn_path: nndescent60
           self_edges : False
+          symmetric: False
           normalized_weights : False
           knn_k: 
-            choose: [5]
+            choose: [10]
           edist: 
             choose: [.05]
             # choose: [1.6]
@@ -123,38 +64,101 @@ variants:
           choose: [-0.4]
         prior_weight: 
           choose: [0.] # good for unnormalized
-    # - name: active_search_l1
-    #   max_samples: 20
-    #   interactive: active_search
-    #   start_policy: after_first_positive
-    #   interactive_options:
-    #     lookahead: 2
-    #     time_horizon: 30 # make equal to n_batches
-    #     pruning_on: False
-    #     matrix_options:
-    #       knn_path: nndescent10
-    #       self_edges : False
-    #       normalized_weights : False
-    #       knn_k: 
-    #         choose: [5]
-    #       edist: 
-    #         choose: [.05]
-    #         # choose: [1.6]
-    #         # choose: [.05]
-    #         # choose: [.00075,  .00625, .2, .4, 3.2]
-    #         # choose: [.05]
-    #         # choose: [0.00038, .00075, 3.2]
-    #         # choose: [.05]
-    #     normalize_scores : False
-    #     sigmoid_before_propagate: True  
-    #     calib_a: 
-    #       choose: [10.]
-    #     calib_b: 
-    #       choose: [-0.4]
-    #     prior_weight: 
-    #       choose: [0.] # good for unnormalized
-#     - name: baseline
-#       interactive: plain
+    - name: active_search_l0
+      max_samples: 20
+      interactive: active_search
+      start_policy: after_first_positive
+      interactive_options:
+        lookahead: 1
+        time_horizon: 30 # make equal to n_batches
+        pruning_on: True # makes no difference for lookahead 0
+        matrix_options:
+          knn_path: nndescent60
+          self_edges : False
+          normalized_weights : False
+          symmetric: False
+          knn_k: 
+            choose: [10]
+          edist: 
+            choose: [.05]
+            # choose: [1.6]
+            # choose: [.05]
+            # choose: [.00075,  .00625, .2, .4, 3.2]
+            # choose: [.05]
+            # choose: [0.00038, .00075, 3.2]
+            # choose: [.05]
+        normalize_scores : False
+        sigmoid_before_propagate: True  
+        calib_a: 
+          choose: [10.]
+        calib_b: 
+          choose: [-0.4]
+        prior_weight: 
+          choose: [0.] # good for unnormalized
+    - name: active_search_l1_prune
+      max_samples: 20
+      interactive: active_search
+      start_policy: after_first_positive
+      interactive_options:
+        lookahead: 2
+        pruning_on: True
+        time_horizon: 30
+        matrix_options:
+          knn_path: nndescent60
+          symmetric: False
+          self_edges : False
+          normalized_weights : False
+          knn_k: 
+            choose: [10]
+          edist: 
+            choose: [.05]
+            # choose: [1.6]
+            # choose: [.05]
+            # choose: [.00075,  .00625, .2, .4, 3.2]
+            # choose: [.05]
+            # choose: [0.00038, .00075, 3.2]
+            # choose: [.05]
+        normalize_scores : False
+        sigmoid_before_propagate: True  
+        calib_a: 
+          choose: [10.]
+        calib_b: 
+          choose: [-0.4]
+        prior_weight: 
+          choose: [0.] # good for unnormalized
+    - name: active_search_l1
+      max_samples: 20
+      interactive: active_search
+      start_policy: after_first_positive
+      interactive_options:
+        lookahead: 2
+        time_horizon: 30 # make equal to n_batches
+        pruning_on: False
+        matrix_options:
+          knn_path: nndescent60
+          symmetric : False
+          self_edges : False
+          normalized_weights : False
+          knn_k: 
+            choose: [10]
+          edist: 
+            choose: [.05]
+            # choose: [1.6]
+            # choose: [.05]
+            # choose: [.00075,  .00625, .2, .4, 3.2]
+            # choose: [.05]
+            # choose: [0.00038, .00075, 3.2]
+            # choose: [.05]
+        normalize_scores : False
+        sigmoid_before_propagate: True  
+        calib_a: 
+          choose: [10.]
+        calib_b: 
+          choose: [-0.4]
+        prior_weight: 
+          choose: [0.] # good for unnormalized
+    # - name: baseline
+    #   interactive: plain
 #     - name: log_reg2
 #       max_samples: 10
 #       interactive: log_reg2

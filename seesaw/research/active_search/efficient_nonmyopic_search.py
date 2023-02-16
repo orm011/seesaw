@@ -1,4 +1,5 @@
 
+from seesaw.loops.LKNN_model import LKNNModel
 from .common import ProbabilityModel, Result
 import numpy as np
 import pyroaring as pr
@@ -77,6 +78,24 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
     assert expected_utils.shape[0] == values.shape[0]
     pos = np.argmax(expected_utils)
     return Result(value=expected_utils[pos], index=idxs[int(pos)], pruned_fraction=pruned_fraction)
+
+
+def _opt_expected_utility_helper_lknn2(*, i : int,  lookahead_limit : int, t : int, model : LKNNModel, pruning_on : bool):
+    assert i == 0
+    assert i < lookahead_limit
+
+    ## first version
+    deltas = model.matrix.indptr[1:] - model.matrix.indptr[:-1]
+    assert (deltas == deltas[0]).all()
+    delta = deltas[0]
+
+    indices = model.matrix.indices.reshape(-1,delta)
+    top_k_idx, top_k_values = model.top_k_remaining(top_k=t + delta)
+
+
+    
+
+
 
 def efficient_nonmyopic_search(model : ProbabilityModel, *, time_horizon : int,  lookahead_limit : int, pruning_on : bool) -> Result:
     ''' lookahead_limit: 0 means no tree search, 1 
