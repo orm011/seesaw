@@ -8,7 +8,7 @@ def _expected_utility_approx(t: int, model : ProbabilityModel):
     idxs, scores = model.top_k_remaining(top_k=t)
     next_idx = idxs[0]
     expected_u = scores.sum()
-    return Result(value=expected_u, index=next_idx)
+    return Result(value=expected_u, index=next_idx, pruned_fraction=None)
 
 def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, model : ProbabilityModel, pruning_on : bool):
     '''l: lookahead exact horizon
@@ -65,6 +65,7 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
         probs = probs[~pruned]
         assert len(idxs) == len(probs)
     else:
+        pruned_fraction = 0.
         pruned_set = pr.BitMap()
     
     values = np.zeros_like(probs)
@@ -75,7 +76,7 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
     expected_utils = (probs * values).sum(axis=-1)
     assert expected_utils.shape[0] == values.shape[0]
     pos = np.argmax(expected_utils)
-    return Result(value=expected_utils[pos], index=idxs[int(pos)])
+    return Result(value=expected_utils[pos], index=idxs[int(pos)], pruned_fraction=pruned_fraction)
 
 def efficient_nonmyopic_search(model : ProbabilityModel, *, time_horizon : int,  lookahead_limit : int, pruning_on : bool) -> Result:
     ''' lookahead_limit: 0 means no tree search, 1 

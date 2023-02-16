@@ -26,6 +26,10 @@ class LoopBase:
         self.index = self.q.index
         self.curr_vec = None
 
+
+    def get_stats(self):
+        return None
+
     def set_text_vec(self, vec):
         self.curr_vec = vec
 

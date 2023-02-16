@@ -110,6 +110,7 @@ class BenchResult(BaseModel):
     session: SessionState
     run_info: dict
     total_time: float
+    method_stats : Optional[dict] = None # empty dict creates problems for parquet
 
 
 class BenchSummary(BaseModel):

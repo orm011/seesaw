@@ -76,13 +76,16 @@ def test_dataset():
     assert 1 not in d3.remaining_indices()
     assert 5 not in d3.remaining_indices()
 
+from typing import Optional
 class Result:
     value : float
     index : int
+    pruned_fraction : Optional[float]
     
-    def __init__(self, value, index):
+    def __init__(self, value, index, pruned_fraction = None):
         self.value = value
         self.index = index
+        self.pruned_fraction = pruned_fraction
 
 
 ## how do we structure this so it returns a new object of the 

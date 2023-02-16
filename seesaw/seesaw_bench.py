@@ -368,6 +368,7 @@ class BenchRunner(object):
                     nimages=gtseries.shape[0],
                     session=session.get_state(),
                     run_info=run_info,
+                    method_stats=session.get_method_stats(),
                     total_time=time.time() - start,
                 )
 
@@ -404,6 +405,7 @@ def summarize_session(res: BenchResult):
         nimages=res.nimages,
         ntotal=res.ntotal,
         total_time=res.total_time,
+        method_stats=res.method_stats
     )
 
 

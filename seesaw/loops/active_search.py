@@ -33,6 +33,7 @@ class ActiveSearch(LoopBase):
         dataset = Dataset.from_vectors(q.index.vectors)
         self.prob_model = LKNNModel.from_dataset(dataset, gamma=.1, weight_matrix=weight_matrix)
         self.dataset = self.prob_model.dataset
+        self.pruned_fractions = []
 
     @staticmethod
     def from_params(gdm, q, p: SessionParams):
@@ -42,6 +43,9 @@ class ActiveSearch(LoopBase):
     def set_text_vec(self, tvec):
         super().set_text_vec(tvec)
         self.scores = self.q.index.score(tvec)
+
+    def get_stats(self):
+        return {'pruned_fractions':self.pruned_fractions}
 
     def next_batch(self):
         """
@@ -58,7 +62,7 @@ class ActiveSearch(LoopBase):
                                             lookahead_limit=lookahead_limit, 
                                             pruning_on=self.params.interactive_options['pruning_on'])
         top_idx = int(res.index) 
-        
+        self.pruned_fractions.append(res.pruned_fraction)
         vec_idx = np.array([top_idx])
         abs_idx = self.q.index.vector_meta['dbidx'].iloc[vec_idx].values
         ans = {'dbidxs': abs_idx, 'activations': None }

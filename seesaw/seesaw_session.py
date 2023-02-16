@@ -58,6 +58,9 @@ class Session:
     def get_totals(self):
         return {"seen": len(self.seen), "accepted": len(self.accepted)}
 
+    def get_method_stats(self):
+        return self.loop.get_stats()
+
     def _log(self, message: str):
         self.action_log.append(
             {
