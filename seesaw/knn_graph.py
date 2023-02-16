@@ -28,7 +28,7 @@ def knn_kernel(edist=2.1):
 
     return kernel
 
-def get_weight_matrix(df, *, kfun, self_edges, normalized, laplacian=False) -> sp.csr_array:
+def get_weight_matrix(df, *, kfun, self_edges, normalized, laplacian=False, symmetric=True) -> sp.csr_array:
     n = df.src_vertex.unique().shape[0]
     
 
@@ -49,38 +49,39 @@ def get_weight_matrix(df, *, kfun, self_edges, normalized, laplacian=False) -> s
     # edge weights must be positive bc zero values break sparse matrix rep. assumptions
     weight_mat =  sp.coo_array( (edge_weight_array[mask], 
                         (df.src_vertex.values[mask], df.dst_vertex.values[mask])), shape=(n,n))
-    symmetric_weight = weight_mat.T + weight_mat
-    
-    pos = symmetric_adj.nonzero()
-    weight_values = symmetric_weight[pos]
-    edge_counts = symmetric_adj[pos]
-    adjusted_values = weight_values/edge_counts
-    symmetric_weight[pos] = adjusted_values
-    out_w = symmetric_weight
-    diag_iis = np.arange(n)
-    
-    assert np.isclose(kfun(np.zeros(1)), np.ones(1)) # sanity check on kfun
 
-    ## assert diagonal is set to 1s
-    ## this checks we are dealing ok with repeated edges ok
-    isclose = np.isclose(out_w.diagonal(), 1., atol=1e-5)
-    assert isclose.all()
+    if symmetric:
+        symmetric_weight = weight_mat.T + weight_mat        
+        pos = symmetric_adj.nonzero()
+        weight_values = symmetric_weight[pos]
+        edge_counts = symmetric_adj[pos]
+        adjusted_values = weight_values/edge_counts
+        symmetric_weight[pos] = adjusted_values
+        out_w = symmetric_weight
+        diag_iis = np.arange(n)
+
+        ## assert diagonal is set to 1s
+        ## this checks we are dealing ok with repeated edges ok
+        isclose = np.isclose(out_w.diagonal(), 1., atol=1e-5)
+        assert isclose.all()
+        assert np.isclose(kfun(np.zeros(1)), np.ones(1)) # sanity check on kfun
+    else:
+        out_w = weight_mat
 
     if not self_edges:
         out_w.setdiag(0.) # mutates out_w
     
     if normalized:
+        assert symmetric
         ## D^-1/2 @ W @ D^-1/2
         Dvec = out_w.sum(axis=-1).reshape(-1)
         sqrt_invDmat = sp.coo_array( (1./np.sqrt(Dvec), (diag_iis, diag_iis)), shape=(n,n) )
         tmp = out_w.tocsr() @ sqrt_invDmat.tocsc() # type csr
         out_w = sqrt_invDmat.tocsr() @ tmp.tocsc()
             
-    assert np.isclose(out_w.sum(axis=0), out_w.sum(axis=1)).all(), 'expect symmetric in any scenario'
+    if symmetric:
+        assert np.isclose(out_w.sum(axis=0), out_w.sum(axis=1)).all(), 'expect symmetric in any scenario'
 
-    out_w.sum_duplicates()
-    out_w.sort_indices()
-    assert out_w.has_sorted_indices    
 
     if laplacian:
         assert not self_edges, 'unknown meaning of this parameter combination'
@@ -88,7 +89,10 @@ def get_weight_matrix(df, *, kfun, self_edges, normalized, laplacian=False) -> s
         out_w.setdiag(-D)
         out_w = -out_w
 
-    out_w  =  out_w.tocsr()
+    out_w = out_w.tocsr()
+    out_w.sum_duplicates()
+    out_w.sort_indices()
+    assert out_w.has_sorted_indices    
     return out_w
     
 def edge_loss(laplacian_m, labels):

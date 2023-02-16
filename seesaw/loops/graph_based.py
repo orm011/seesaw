@@ -21,6 +21,7 @@ class WeightMatrixOptions(BaseModel):
     edist : float
     self_edges : bool
     normalized_weights : bool
+    symmetric : bool
 
 
 def lookup_weight_matrix(opts : WeightMatrixOptions, use_cache : bool) -> sp.csr_array:
@@ -32,7 +33,8 @@ def lookup_weight_matrix(opts : WeightMatrixOptions, use_cache : bool) -> sp.csr
         wm = get_weight_matrix(knng.knn_df, 
                             kfun=rbf_kernel(opts.edist),
                             self_edges=opts.self_edges, 
-                            normalized=opts.normalized_weights)
+                            normalized=opts.normalized_weights,
+                            symmetric=opts.symmetric)
         return wm
 
     return _cache_closure(init, key=key, use_cache=use_cache)
