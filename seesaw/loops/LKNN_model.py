@@ -66,11 +66,17 @@ class LazyTopK:
         return np.array(idxs), np.array(vals)
 
 import numexpr
+import numpy.random
+
+def initial_gamma_array(gamma, shape):
+    rnd = np.random.default_rng(seed=0)
+    return rnd.normal(loc=gamma, scale=1e-6, size=shape)
+
 
 class LKNNModel(ProbabilityModel):
     ''' Implements L-KNN prob. model used in Active Search paper.
     '''    
-    def __init__(self, dataset : Dataset, gamma : float, matrix : sp.csr_array, numerators : np.ndarray, denominators : np.ndarray, 
+    def __init__(self, dataset : Dataset, gamma : np.ndarray, matrix : sp.csr_array, numerators : np.ndarray, denominators : np.ndarray, 
     score: np.ndarray, desc_idx : np.ndarray, desc_score : np.ndarray, desc_changed_idx : np.ndarray, desc_changed_score : np.ndarray):
 
         super().__init__(dataset)
@@ -79,6 +85,9 @@ class LKNNModel(ProbabilityModel):
         self.denominators = denominators
         self.score = score
         self.gamma = gamma
+        assert (gamma.shape == self.numerators.shape)
+        assert ((0 < gamma) & (gamma < 1)).all(), 'this could fail by chance, decrase var. or fix properly by applying sigmoid'
+
         
         self.desc_idx = desc_idx
         self.desc_score = desc_score
@@ -105,17 +114,20 @@ class LKNNModel(ProbabilityModel):
         sz = weight_matrix.shape[0]
         numerators=np.zeros(sz)
         denominators=np.zeros(sz)
-        init_scores = (numerators + gamma) / (1 + denominators)
+        initial_gamma=initial_gamma_array(gamma, numerators.shape)
+
+        init_scores = (numerators + initial_gamma) / (denominators + 1)
         init_sort = np.argsort(-init_scores)
 
-        return LKNNModel(dataset, gamma=gamma, matrix=weight_matrix, numerators=np.zeros(sz), denominators=np.zeros(sz),  score=init_scores, desc_idx=init_sort, 
+        
+        return LKNNModel(dataset, gamma=initial_gamma, matrix=weight_matrix, numerators=np.zeros(sz), denominators=np.zeros(sz),  score=init_scores, desc_idx=init_sort, 
         desc_score=init_scores[init_sort], desc_changed_idx=None, desc_changed_score=None)
 
     def _compute_updated_arrays(self, ids, numerator_delta : int, denominator_delta : int, ret_num_denom=False):
         #change_scores = (change_numerators + self.gamma)/(change_denominators + 1)
         numerators = self.numerators[ids]
         denominators = self.denominators[ids]
-        gamma = self.gamma
+        gamma = self.gamma[ids]
 
         change_scores = numexpr.evaluate('(numerators + numerator_delta + gamma)/(denominators + denominator_delta + 1)')
         desc_order = np.argsort(-change_scores)

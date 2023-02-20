@@ -31,7 +31,8 @@ class ActiveSearch(LoopBase):
         self.scores = None
 
         dataset = Dataset.from_vectors(q.index.vectors)
-        self.prob_model = LKNNModel.from_dataset(dataset, gamma=.1, weight_matrix=weight_matrix)
+        gamma = params.interactive_options['gamma']            
+        self.prob_model = LKNNModel.from_dataset(dataset, gamma=gamma, weight_matrix=weight_matrix)
         self.dataset = self.prob_model.dataset
         self.pruned_fractions = []
 
@@ -100,7 +101,8 @@ class LKNNSearch(LoopBase):
         super().__init__(gdm, q, params)
 
         dataset = Dataset.from_vectors(q.index.vectors)
-        self.prob_model = LKNNModel.from_dataset(dataset, gamma=.1, weight_matrix=weight_matrix)
+        gamma = params.interactive_options['gamma']            
+        self.prob_model = LKNNModel.from_dataset(dataset, gamma=gamma, weight_matrix=weight_matrix)
         self.dataset = self.prob_model.dataset
 
     @staticmethod

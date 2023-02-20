@@ -173,7 +173,7 @@ def _opt_expected_utility_helper_lknn2(*, i : int,  lookahead_limit : int, t : i
     neighbor_ids_sorted = np.sort(neighbor_ids)
     N = neighbor_ids_sorted.shape[0]
 
-    assert 0 < model.gamma < 1
+    assert ((0 < model.gamma) & (model.gamma < 1)).all()
     assert (model.numerators <= model.denominators).all()
 
     numerators = model.numerators + model.gamma
