@@ -170,6 +170,7 @@ class LKNNModel(ProbabilityModel):
         assert self.desc_changed_idx is None
         new_dataset, neighbors, desc_changed_idx, desc_changed_score, score_change,num_change, denom_change = self._condition_shared(idx, y, ret_num_denom=True)
         self.dataset = new_dataset
+        print(f'{idx=} {neighbors=}')
         self.numerators[neighbors] = num_change
         self.denominators[neighbors] = denom_change
         self.score[neighbors] = score_change
