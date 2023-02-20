@@ -112,15 +112,20 @@ def _top_sum(*, seen_idxs, numerators,  denominators, gamma, scores, neighbor_id
     top_score_by_kpd_rep = np.repeat(top_score_by_kpd, N).reshape(-1,N).T
     # top_id_rep = np.repeat(top_kpd_asc, N).reshape(-1,N).T
     
-    ## make overwritten score -inf so it will be ignored when sorting
-    ## TODO: problem: jjs_in_topk can be larger than array. did we m
+    ## make overwritten score -inf to self, and to overwritten elements so it will be ignored when sorting
+    self_id = top_kpd_asc[:-1].reshape(1,-1) == node_ids
+    top_score_by_kpd_rep[self_id] = -np.inf
+
     top_score_by_kpd_rep[iis, jjs_in_topk]  = -np.inf
 
     ## double check? 
     top_score_by_kpd_rep = top_score_by_kpd_rep[:,:-1] # remove sentinel inf
 
     def _compute_conditioned_scores(new_scores1):
+        self_id = (neighbor_ids_sorted == node_ids)
         neighbor_scores1 = np.take(new_scores1, neighbor_ids_sorted)
+        ## removes itself from topk
+        neighbor_scores1[self_id] = - math.inf
         top_kp2d_scores = np.concatenate([top_score_by_kpd_rep, neighbor_scores1], axis=-1)
         #top_kp2d_ids = np.concatenate([top_id_rep, neighbor_ids_sorted], axis=-1)
     
