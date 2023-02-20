@@ -120,7 +120,7 @@ def _top_sum(*, seen_idxs, numerators,  denominators, gamma, scores, neighbor_id
     top_score_by_kpd_rep = top_score_by_kpd_rep[:,:-1] # remove sentinel inf
 
     def _compute_conditioned_scores(new_scores1):
-        neighbor_scores1 = np.take_along_axis(new_scores1, neighbor_ids_sorted, axis=1)
+        neighbor_scores1 = np.take(new_scores1, neighbor_ids_sorted)
         top_kp2d_scores = np.concatenate([top_score_by_kpd_rep, neighbor_scores1], axis=-1)
         #top_kp2d_ids = np.concatenate([top_id_rep, neighbor_ids_sorted], axis=-1)
     
