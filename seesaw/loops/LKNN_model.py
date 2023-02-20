@@ -139,9 +139,11 @@ class LKNNModel(ProbabilityModel):
             numerator_delta = y
             denominator_delta = 1
         elif curr_label != y:
+            assert False, 'no benchmark scenario should reach this'
             numerator_delta = (y - curr_label)
             denominator_delta = 0
         else:
+            assert False, 'no benchmark scenario should reach here'
             numerator_delta = 0
             denominator_delta = 0
 
