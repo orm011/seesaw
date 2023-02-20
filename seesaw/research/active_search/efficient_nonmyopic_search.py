@@ -72,12 +72,14 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
     values = np.zeros_like(probs)
     for j,idx in enumerate(idxs):        
         ans = _solve_idx(idx, i)
-        print(f'{idx=}, {ans=}')
+        #print(f'{idx=}, {ans=}')
         values[j,:] = ans
 
     expected_utils = (probs * (values + np.array([0,1]).reshape(1,-1))).sum(axis=-1)
     assert expected_utils.shape[0] == values.shape[0]
     pos = np.argmax(expected_utils)
+    index = idxs[int(pos)]
+    print(f'{_solve_idx(index, i)=}, {probs[pos]=}')
     return Result(value=expected_utils[pos], index=idxs[int(pos)], pruned_fraction=pruned_fraction)
 
 import math
@@ -93,7 +95,7 @@ def _top_sum(*, seen_idxs, numerators,  denominators, gamma, scores, neighbor_id
     ## we do this by finding out if the insertion location element is equal to the value
     top_kpd_order_asc = np.argsort(top_kpd_ids)
 
-
+    node_ids = np.arange(N).reshape(-1,1)
     ## this sentinal above is so that searchsorted can position them correctly
     sentinel = numerators.shape[0]
     top_kpd_asc = np.concatenate([top_kpd_ids[top_kpd_order_asc], [sentinel]])
@@ -101,7 +103,7 @@ def _top_sum(*, seen_idxs, numerators,  denominators, gamma, scores, neighbor_id
     
     insert_pos = np.searchsorted(top_kpd_asc, neighbor_ids_sorted)
     top_ids_in_position = top_kpd_asc[insert_pos]
-    overwrites = (top_ids_in_position == neighbor_ids_sorted) # those which are equal to their insertion location
+    overwrites = (top_ids_in_position == neighbor_ids_sorted) 
     iis, jjs = np.where(overwrites)
     jjs_in_topk = insert_pos[iis,jjs]
     
@@ -117,8 +119,6 @@ def _top_sum(*, seen_idxs, numerators,  denominators, gamma, scores, neighbor_id
     top_score_by_kpd_rep[self_id] = -np.inf
 
     top_score_by_kpd_rep[iis, jjs_in_topk]  = -np.inf
-
-    ## double check? 
     top_score_by_kpd_rep = top_score_by_kpd_rep[:,:-1] # remove sentinel inf
 
     def _compute_conditioned_scores(new_scores1):
@@ -131,12 +131,11 @@ def _top_sum(*, seen_idxs, numerators,  denominators, gamma, scores, neighbor_id
     
         # now sort scores
         posns = np.argsort(top_kp2d_scores)
-        top_k_scores = np.take_along_axis(top_kp2d_scores, posns[:,-K:], axis=1)
-        
+        topKpos = posns[:,-K:]
+        assert topKpos.shape[1] == K
+        top_k_scores = np.take_along_axis(top_kp2d_scores, topKpos, axis=1)
         assert (top_k_scores > -np.inf).all() # sanity check
         # top_k_ids = np.take_along_axis(top_kp2d_ids, posns[:,-K:], axis=1)
-
-        ## sums 
         expected_scores1 = top_k_scores.sum(axis=1)
         return expected_scores1
     
@@ -155,8 +154,10 @@ def _top_sum(*, seen_idxs, numerators,  denominators, gamma, scores, neighbor_id
     
     ### need to compute scores p1*e1 + p0*e0
     ## the infinity scores (which have been cancelled) will become nan when added to plus infinity
-    return scores*(1+expected_scores1) + (1-scores)*expected_scores0
-
+    final_scores = scores*(1+expected_scores1) + (1-scores)*expected_scores0
+    index = np.nanargmax(final_scores)
+    print(f'{expected_scores0[index]=} {expected_scores1[index]=}, {scores[index]=} {(1-scores)[index]=}, {neighbor_ids_sorted[index]=}')
+    return final_scores
 
 def _opt_expected_utility_helper_lknn2(*, i : int,  lookahead_limit : int, t : int, model : LKNNModel, pruning_on : bool):
     assert i == 0
@@ -172,11 +173,15 @@ def _opt_expected_utility_helper_lknn2(*, i : int,  lookahead_limit : int, t : i
     neighbor_ids_sorted = np.sort(neighbor_ids)
     N = neighbor_ids_sorted.shape[0]
 
+    assert 0 < model.gamma < 1
+    assert (model.numerators <= model.denominators).all()
 
     numerators = model.numerators + model.gamma
     denominators = model.denominators + 1
     numerators[model.dataset.seen_indices] = -math.inf # will rank lowest
     scores = numerators/denominators
+
+    assert (numerators <= denominators).all()
 
     if lookahead_limit == 2:
         expected_value =  _top_sum(seen_idxs=model.dataset.seen_indices, 
