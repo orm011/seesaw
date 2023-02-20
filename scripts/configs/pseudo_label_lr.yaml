@@ -125,7 +125,7 @@ variants:
     #       choose: [-0.4]
     #     prior_weight: 
     #       choose: [0.] # good for unnormalized
-    - name: active_search_l1_prune
+    - name: active_search_l1
       max_samples: 20
       interactive: active_search
       start_policy: after_first_positive
@@ -134,7 +134,8 @@ variants:
           #vectorized
           choose: [vectorized, loop]
         lookahead: 2
-        pruning_on: True
+        pruning_on: False
+        gamma: .1
         time_horizon: 30
         matrix_options:
           knn_path: nndescent10
