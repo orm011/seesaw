@@ -11,7 +11,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--max_iter", type=int, default=10, help='manual control number of max iterations (in dry run)')
+    "--dryrun_max_iter", type=int, default=5, help='manual control number of max iterations (in dry run)')
 
 parser.add_argument("--num_cpus", type=int, default=8, help="number of cpus per actor")
 
