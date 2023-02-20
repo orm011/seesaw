@@ -135,8 +135,15 @@ def _top_sum(*, seen_idxs, numerators,  denominators, gamma, scores, neighbor_id
         expected_scores1 = top_k_scores.sum(axis=1)
         return expected_scores1
     
-    new_scores1 = (numerators + 1)/denominators
-    new_scores0 = numerators/denominators
+    new_denom = denominators + 1
+    new_scores1 = (numerators + 1)/new_denom
+    new_scores0 = numerators/new_denom
+
+    print(f'{np.nanmax(new_scores1)=} {np.nanmax(new_scores0)=}')
+
+    assert (new_scores1 <= 1).all()
+    assert ((new_scores0 >= 0) | (new_scores0 == -np.inf)).all()
+    assert (new_scores0 <= new_scores1).all()
     
     expected_scores1 = _compute_conditioned_scores(new_scores1)
     expected_scores0 = _compute_conditioned_scores(new_scores0)
