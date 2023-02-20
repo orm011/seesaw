@@ -9,6 +9,10 @@ parser = argparse.ArgumentParser("runs benchmark tests and stores metrics in fol
 parser.add_argument(
     "--dryrun", action="store_true", help="run one benchmark locally per dataset"
 )
+
+parser.add_argument(
+    "--max_iter", type=int, default=10, help='manual control number of max iterations (in dry run)')
+
 parser.add_argument("--num_cpus", type=int, default=8, help="number of cpus per actor")
 
 parser.add_argument("--mem_gbs", type=int, default=12, help="amount of memory GB per actor")
@@ -72,7 +76,7 @@ for i,yl in enumerate(yls):
     print(f"{len(cfgs)} generated from {args.configs[i]}")
 
     if args.dryrun: # limit size of benchmark and classes per dataset
-        shared_bench_params['n_batches'] = 20
+        shared_bench_params['n_batches'] = args.max_iter
         shared_bench_params['max_results'] = 10
 
         cfgs = generate_benchmark_configs(
