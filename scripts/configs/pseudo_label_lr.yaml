@@ -130,6 +130,9 @@ variants:
       interactive: active_search
       start_policy: after_first_positive
       interactive_options:
+        implementation: 
+          #vectorized
+          choose: [vectorized, loop]
         lookahead: 2
         pruning_on: True
         time_horizon: 30

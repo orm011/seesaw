@@ -60,7 +60,8 @@ class ActiveSearch(LoopBase):
 
         res = efficient_nonmyopic_search(self.prob_model, time_horizon=remaining_time, 
                                             lookahead_limit=lookahead_limit, 
-                                            pruning_on=self.params.interactive_options['pruning_on'])
+                                            pruning_on=self.params.interactive_options['pruning_on'], 
+                                            implementation=self.params.interactive_options['implementation'])
         top_idx = int(res.index) 
         self.pruned_fractions.append(res.pruned_fraction)
         vec_idx = np.array([top_idx])
