@@ -72,6 +72,7 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
     values = np.zeros_like(probs)
     for j,idx in enumerate(idxs):        
         ans = _solve_idx(idx, i)
+        print(f'{idx=}, {ans=}')
         values[j,:] = ans
 
     expected_utils = (probs * values).sum(axis=-1)
@@ -79,19 +80,111 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
     pos = np.argmax(expected_utils)
     return Result(value=expected_utils[pos], index=idxs[int(pos)], pruned_fraction=pruned_fraction)
 
+import math
+
+
+def _top_sum(*, seen_idxs, numerators,  denominators, gamma, scores, neighbor_ids_sorted, N, K, D):
+    """ returns the expected value after K steps for each index """
+    
+    top_kpd_ids = np.argsort(scores)[-(K+D):]
+    top_scores = scores[top_kpd_ids]    
+
+    ## first detect the over-writes to top k scores
+    ## we do this by finding out if the insertion location element is equal to the value
+    top_kpd_order_asc = np.argsort(top_kpd_ids)
+
+
+    ## this sentinal above is so that searchsorted can position them correctly
+    sentinel = numerators.shape[0]
+    top_kpd_asc = np.concatenate([top_kpd_ids[top_kpd_order_asc], [sentinel]])
+    top_score_by_kpd = top_scores[top_kpd_order_asc]
+    
+    insert_pos = np.searchsorted(top_kpd_asc, neighbor_ids_sorted)
+    top_ids_in_position = top_kpd_asc[insert_pos]
+    overwrites = (top_ids_in_position == neighbor_ids_sorted) # those which are equal to their insertion location
+    iis, jjs = np.where(overwrites)
+    jjs_in_topk = insert_pos[iis,jjs]
+    
+    assert (top_kpd_asc[jjs_in_topk] == neighbor_ids_sorted[iis,jjs]).all() , 'ids should match for there to be a conflict'
+    # check the ids match. this was the goal of the above
+
+    ### expand the top k scores by copying because we will over-write them
+    top_score_by_kpd_rep = np.repeat(top_score_by_kpd, N).reshape(-1,N).T
+    # top_id_rep = np.repeat(top_kpd_asc, N).reshape(-1,N).T
+    
+    ## make overwritten score -inf so it will be ignored when sorting
+    ## TODO: problem: jjs_in_topk can be larger than array. did we m
+    top_score_by_kpd_rep[iis, jjs_in_topk]  = -np.inf
+
+    ## double check? 
+    top_score_by_kpd_rep = top_score_by_kpd_rep[:,:-1] # remove sentinel inf
+
+    def _compute_conditioned_scores(new_scores1):
+        neighbor_scores1 = np.take_along_axis(new_scores1, neighbor_ids_sorted, axis=1)
+        top_kp2d_scores = np.concatenate([top_score_by_kpd_rep, neighbor_scores1], axis=-1)
+        #top_kp2d_ids = np.concatenate([top_id_rep, neighbor_ids_sorted], axis=-1)
+    
+        # now sort scores
+        posns = np.argsort(top_kp2d_scores)
+        top_k_scores = np.take_along_axis(top_kp2d_scores, posns[:,-K:], axis=1)
+        
+        assert (top_k_scores > -np.inf).all() # sanity check
+        # top_k_ids = np.take_along_axis(top_kp2d_ids, posns[:,-K:], axis=1)
+
+        ## sums 
+        expected_scores1 = top_k_scores.sum(axis=1)
+        return expected_scores1
+    
+    new_scores1 = (numerators + 1)/denominators
+    new_scores0 = numerators/denominators
+    
+    expected_scores1 = _compute_conditioned_scores(new_scores1)
+    expected_scores0 = _compute_conditioned_scores(new_scores0)
+    
+    ### need to compute scores p1*e1 + p0*e0
+    ## the infinity scores (which have been cancelled) will become nan when added to plus infinity
+    return scores*(1+expected_scores1) + (1-scores)*expected_scores0
+
 
 def _opt_expected_utility_helper_lknn2(*, i : int,  lookahead_limit : int, t : int, model : LKNNModel, pruning_on : bool):
     assert i == 0
-    assert i < lookahead_limit
+    assert lookahead_limit <=2
+    assert t >= lookahead_limit
 
     ## first version
     deltas = model.matrix.indptr[1:] - model.matrix.indptr[:-1]
     assert (deltas == deltas[0]).all()
-    delta = deltas[0]
+    D = deltas[0]
 
-    indices = model.matrix.indices.reshape(-1,delta)
-    top_k_idx, top_k_values = model.top_k_remaining(top_k=t + delta)
+    neighbor_ids = model.matrix.indices.reshape(-1,D)
+    neighbor_ids_sorted = np.sort(neighbor_ids)
+    N = neighbor_ids_sorted.shape[0]
 
+
+    numerators = model.numerators + model.gamma
+    denominators = model.denominators + 1
+    numerators[model.dataset.seen_indices] = -math.inf # will rank lowest
+    scores = numerators/denominators
+
+    if lookahead_limit == 2:
+        expected_value =  _top_sum(seen_idxs=model.dataset.seen_indices, 
+                                        numerators=numerators, denominators=denominators, 
+                                        scores=scores,
+                                        gamma=model.gamma,
+                                        neighbor_ids_sorted=neighbor_ids_sorted, N=N, K=t-1, D=D)
+        best_idx = np.nanargmax(expected_value)
+        return Result(value=expected_value[best_idx], index=best_idx, pruned_fraction=0.)
+    else:
+        assert lookahead_limit == 1
+        assert t == 1
+
+        best_idx = np.nanargmax(scores)
+        return Result(value=scores[best_idx], index=best_idx, pruned_fraction=0.)
+
+
+        
+    ## goal: get sums of the top_k remaining scores.
+    ## note: when idx appears on both sides, old value should not count.
 
     
 
@@ -104,4 +197,6 @@ def efficient_nonmyopic_search(model : ProbabilityModel, *, time_horizon : int, 
     assert 1 <= lookahead_limit <= 2, 'implementation assumes at most 1 lookahead (pruning)'
     assert lookahead_limit <= time_horizon
     assert time_horizon > 0
-    return _opt_expected_utility_helper(i=0, lookahead_limit=lookahead_limit, t=time_horizon, model=model, pruning_on=pruning_on)
+    #return _opt_expected_utility_helper(i=0, lookahead_limit=lookahead_limit, t=time_horizon, model=model, pruning_on=pruning_on)
+    return _opt_expected_utility_helper_lknn2(i=0, lookahead_limit=lookahead_limit, t=time_horizon, model=model, pruning_on=pruning_on)
+
