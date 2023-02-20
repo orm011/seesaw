@@ -75,7 +75,7 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
         print(f'{idx=}, {ans=}')
         values[j,:] = ans
 
-    expected_utils = (probs * values).sum(axis=-1)
+    expected_utils = (probs * (values + np.array([0,1]).reshape(1,-1))).sum(axis=-1)
     assert expected_utils.shape[0] == values.shape[0]
     pos = np.argmax(expected_utils)
     return Result(value=expected_utils[pos], index=idxs[int(pos)], pruned_fraction=pruned_fraction)
