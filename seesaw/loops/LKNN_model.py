@@ -68,6 +68,7 @@ class LazyTopK:
 import numexpr
 import numpy.random
 
+
 def initial_gamma_array(gamma, shape):
     rnd = np.random.default_rng(seed=0)
     return rnd.normal(loc=gamma, scale=1e-6, size=shape)
@@ -107,20 +108,20 @@ class LKNNModel(ProbabilityModel):
         self.ignore_set = self.dataset.seen_indices.union(self.changed_idx_set)
 
     @staticmethod
-    def from_dataset( dataset : Dataset, weight_matrix : sp.csr_array, gamma : float):
+    def from_dataset( dataset : Dataset, weight_matrix : sp.csr_array, gamma : np.ndarray):
         assert weight_matrix.format == 'csr'
         assert len(dataset.idx2label) == 0, 'not implemented other case'
         ## need to initialize numerator and denominator
         sz = weight_matrix.shape[0]
         numerators=np.zeros(sz)
         denominators=np.zeros(sz)
-        initial_gamma=initial_gamma_array(gamma, numerators.shape)
 
-        init_scores = (numerators + initial_gamma) / (denominators + 1)
+        assert gamma.shape == numerators.shape
+        init_scores = (numerators + gamma) / (denominators + 1)
         init_sort = np.argsort(-init_scores)
 
         
-        return LKNNModel(dataset, gamma=initial_gamma, matrix=weight_matrix, numerators=np.zeros(sz), denominators=np.zeros(sz),  score=init_scores, desc_idx=init_sort, 
+        return LKNNModel(dataset, gamma=gamma, matrix=weight_matrix, numerators=np.zeros(sz), denominators=np.zeros(sz),  score=init_scores, desc_idx=init_sort, 
         desc_score=init_scores[init_sort], desc_changed_idx=None, desc_changed_score=None)
 
     def _compute_updated_arrays(self, ids, numerator_delta : int, denominator_delta : int, ret_num_denom=False):
@@ -179,6 +180,37 @@ class LKNNModel(ProbabilityModel):
                             desc_score=self.desc_score, 
                             desc_changed_idx=desc_changed_idx, desc_changed_score=desc_changed_score)
 
+    def with_gamma(self, new_gamma : np.ndarray) -> 'LKNNModel':
+
+        new_scores = (self.numerators + new_gamma )/(self.denominators + 1)
+        new_desc_idx = np.argsort(-new_scores)
+        new_desc_score = new_scores[new_desc_idx]
+
+        if self.desc_changed_idx is not None:
+            assert False, 'check this is correct'
+            chg_numerators = self.numerators[self.desc_changed_idx]
+            chg_denom = self.denominators[self.desc_changed_idx]
+            chg_scores = (chg_numerators + new_gamma[self.desc_changed_idx])/(chg_denom + 1)
+
+            new_order_desc = np.argsort(-chg_scores)
+            new_desc_chg_idx = self.desc_changed_idx[new_order_desc]
+            new_desc_chg_score = chg_scores[new_order_desc]
+        else:
+            new_desc_chg_idx = None
+            new_desc_chg_score = None
+
+        return LKNNModel(self.dataset, 
+                        gamma=new_gamma, 
+                        matrix=self.matrix, 
+                        numerators=self.numerators, 
+                        denominators=self.denominators, 
+                        score=new_scores,
+                        desc_idx=new_desc_idx, 
+                            desc_score=new_desc_score, 
+                            desc_changed_idx=new_desc_chg_idx, 
+                            desc_changed_score=new_desc_chg_score)
+
+
 
     def condition_(self, idx, y):
         assert self.desc_changed_idx is None
@@ -196,8 +228,9 @@ class LKNNModel(ProbabilityModel):
         self._init_sets()
 
     def predict_proba(self, idxs : np.ndarray ) -> np.ndarray:
-        basic_score = self.score[idxs]
         assert self.desc_changed_idx is None, 'is this ever called after first round'
+
+        basic_score = self.score[idxs]
         return basic_score
 
     def _iter_desc_scores(self):
@@ -252,5 +285,5 @@ class LKNNModel(ProbabilityModel):
 
     def probability_bound(self, n) -> np.ndarray:
         idxs = self.dataset.remaining_indices()
-        prob_bounds = (self.gamma + n + self.numerators[idxs])/(1 + n + self.denominators[idxs])
+        prob_bounds = (self.gamma[idxs] + n + self.numerators[idxs])/(1 + n + self.denominators[idxs])
         return np.max(prob_bounds)

@@ -24,6 +24,7 @@ from .LKNN_model import LKNNModel
 ### number of exact planning rounds (can only really be 1 or 2). 
 import scipy.sparse as sp
 
+from .LKNN_model import initial_gamma_array
 
 class ActiveSearch(LoopBase):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams, weight_matrix : sp.csr_array):
@@ -31,8 +32,11 @@ class ActiveSearch(LoopBase):
         self.scores = None
 
         dataset = Dataset.from_vectors(q.index.vectors)
-        gamma = params.interactive_options['gamma']            
-        self.prob_model = LKNNModel.from_dataset(dataset, gamma=gamma, weight_matrix=weight_matrix)
+        gamma_mean = params.interactive_options['gamma']
+        initial_gamma=initial_gamma_array(gamma_mean, q.index.vectors.shape[0])
+
+        self.use_clip_as_gamma = params.interactive_options['use_clip_as_gamma']            
+        self.prob_model = LKNNModel.from_dataset(dataset, gamma=initial_gamma, weight_matrix=weight_matrix)
         self.dataset = self.prob_model.dataset
         self.pruned_fractions = []
 
@@ -44,6 +48,9 @@ class ActiveSearch(LoopBase):
     def set_text_vec(self, tvec):
         super().set_text_vec(tvec)
         self.scores = self.q.index.score(tvec)
+        if self.use_clip_as_gamma:
+            self.prob_model = self.prob_model.with_gamma(self.scores)
+            #self.prob_model = LKNNModel.from_dataset(self.prob_model.dataset, gamma=self.scores, weight_matrix=self.prob_model.matrix)
 
     def get_stats(self):
         return {'pruned_fractions':self.pruned_fractions}
@@ -101,8 +108,11 @@ class LKNNSearch(LoopBase):
         super().__init__(gdm, q, params)
 
         dataset = Dataset.from_vectors(q.index.vectors)
-        gamma = params.interactive_options['gamma']            
-        self.prob_model = LKNNModel.from_dataset(dataset, gamma=gamma, weight_matrix=weight_matrix)
+        gamma_mean = params.interactive_options['gamma']
+        initial_gamma=initial_gamma_array(gamma_mean, q.index.vectors.shape[0])
+
+        self.use_clip_as_gamma = self.params.interactive_options['use_clip_as_gamma']      
+        self.prob_model = LKNNModel.from_dataset(dataset, gamma=initial_gamma, weight_matrix=weight_matrix)
         self.dataset = self.prob_model.dataset
 
     @staticmethod
@@ -110,6 +120,12 @@ class LKNNSearch(LoopBase):
         label_prop2 = get_label_prop(q, p.interactive_options)
         return LKNNSearch(gdm, q, p, weight_matrix=label_prop2.lp.weight_matrix)
 
+    def set_text_vec(self, tvec):
+        super().set_text_vec(tvec)
+        self.scores = self.q.index.score(tvec)
+        if self.use_clip_as_gamma:
+            self.prob_model = self.prob_model.with_gamma(self.scores)
+#            LKNNModel.from_dataset(self.prob_model.dataset, gamma=self.scores, weight_matrix=self.prob_model.matrix)
     def next_batch(self):
         """
         gets next batch of image indices based on current vector
@@ -118,6 +134,7 @@ class LKNNSearch(LoopBase):
         ### for now, nothing. just return one thing.
         ## 1. current scores are already propagating, no?
         vec_idx, _ = self.prob_model.top_k_remaining(top_k=1)
+        print(f'{vec_idx=}')
         abs_idx = self.q.index.vector_meta['dbidx'].iloc[vec_idx].values
         ans = {'dbidxs': abs_idx, 'activations': None }
         self.q.returned.update(ans['dbidxs'])
