@@ -188,13 +188,6 @@ class LKNNModel(ProbabilityModel):
 
         if self.desc_changed_idx is not None:
             assert False, 'check this is correct'
-            chg_numerators = self.numerators[self.desc_changed_idx]
-            chg_denom = self.denominators[self.desc_changed_idx]
-            chg_scores = (chg_numerators + new_gamma[self.desc_changed_idx])/(chg_denom + 1)
-
-            new_order_desc = np.argsort(-chg_scores)
-            new_desc_chg_idx = self.desc_changed_idx[new_order_desc]
-            new_desc_chg_score = chg_scores[new_order_desc]
         else:
             new_desc_chg_idx = None
             new_desc_chg_score = None
@@ -216,7 +209,7 @@ class LKNNModel(ProbabilityModel):
         assert self.desc_changed_idx is None
         new_dataset, neighbors, desc_changed_idx, desc_changed_score, score_change,num_change, denom_change = self._condition_shared(idx, y, ret_num_denom=True)
         self.dataset = new_dataset
-        print(f'{idx=} {neighbors=}')
+        #print(f'{idx=} {neighbors=}')
         self.numerators[neighbors] = num_change
         self.denominators[neighbors] = denom_change
         self.score[neighbors] = score_change
