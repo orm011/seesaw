@@ -150,7 +150,7 @@ variants:
           self_edges : False
           normalized_weights : False
           knn_k: 
-            choose: [5]
+            choose: [10]
           edist: 
             choose: [.05]
             # choose: [1.6]

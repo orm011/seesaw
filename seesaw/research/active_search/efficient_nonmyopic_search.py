@@ -38,7 +38,7 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
 
     def _solve_idx(idx, i, verbose=False):
         if verbose:
-            print(f'{idx} cond 0')
+            print(f'{idx} cond0')
         util0 = _opt_expected_utility_helper(i=i+1, lookahead_limit=lookahead_limit, t=t, model=model.condition(idx, 0), pruning_on=pruning_on, verbose=verbose)
         if verbose:
             print(f'\n{idx} cond1')
@@ -81,132 +81,91 @@ def _opt_expected_utility_helper(*, i : int,  lookahead_limit : int, t : int, mo
     values = np.zeros_like(probs)
     for j,idx in enumerate(idxs):        
         ans = _solve_idx(idx, i)
-        #print(f'{idx=}, {ans=}')
         values[j,:] = ans
 
     expected_utils = (probs * (values + np.array([0,1]).reshape(1,-1))).sum(axis=-1)
     assert expected_utils.shape[0] == values.shape[0]
     pos = np.argmax(expected_utils)
-    index = idxs[int(pos)]
-
-    assert 30523 in idxs
-    assert 45306 in idxs
-    pos30523 = idxs.rank(30523) - 1
-    pos45306 = idxs.rank(45306) - 1
-
-    print(f'{model.gamma[30523]=}\n{model.gamma[45306]=}')
-    #print(f'{_solve_idx(index, i)=}, {probs[pos]=}')
-    print(f'{_solve_idx(45306, i, verbose=True)=}\n{probs[pos45306]=}')
-    print(f'{_solve_idx(30523, i, verbose=True)=}\n{probs[pos30523]=}')
-
-
     return Result(value=expected_utils[pos], index=idxs[int(pos)], pruned_fraction=pruned_fraction)
 
 import math
 
 
-def _top_sum(*, numerators,  denominators,  scores, neighbor_ids_sorted, N, K, D):
+def _top_sum(*, numerators,  denominators,  scores, neighbor_ids_sorted, N, K, D, debug=True):
     """ returns the expected value after K steps for each index """
-    
+
+    node_ids = np.arange(N).reshape(-1,1)
     top_kpd_ids = np.argsort(scores)[-(K+D):]
     top_scores = scores[top_kpd_ids]    
 
     ## first detect the over-writes to top k scores
     ## we do this by finding out if the insertion location element is equal to the value
     top_kpd_order_asc = np.argsort(top_kpd_ids)
-
-    node_ids = np.arange(N).reshape(-1,1)
-
-    ## this sentinal above is so that searchsorted can position them correctly
-    sentinel = numerators.shape[0] ## TODO: this is just N.
-    top_kpd_asc = np.concatenate([top_kpd_ids[top_kpd_order_asc], [sentinel]])
+    top_kpd_asc = top_kpd_ids[top_kpd_order_asc]
     top_score_by_kpd = top_scores[top_kpd_order_asc]
 
-    ##TODO: keep top_kpd_asc the same as the other one, and have one with the sentinel just for the stuff below.
 
-    print(f'{top_kpd_asc[:-1]=}\n{top_score_by_kpd=}')
-
-    
+    ## 2. Detect any conflicting scores due to neighbor update. the neighbor update must win,
+    ## therefore we set the old score to -inf. 
+    ## we do this on a row by row basis
+    ## this is shared regardless on the value we condition on, it only depends on neighbors that changed
+    top_kpd_plus_sentinel = np.concatenate([top_kpd_asc,np.array([N])])
     insert_pos = np.searchsorted(top_kpd_asc, neighbor_ids_sorted)
-    top_ids_in_position = top_kpd_asc[insert_pos]
+    top_ids_in_position = top_kpd_plus_sentinel[insert_pos]
     overwrites = (top_ids_in_position == neighbor_ids_sorted) 
     iis, jjs = np.where(overwrites)
     jjs_in_topk = insert_pos[iis,jjs]
-    
-    assert (top_kpd_asc[jjs_in_topk] == neighbor_ids_sorted[iis,jjs]).all() , 'ids should match for there to be a conflict'
-    # check the ids match. this was the goal of the above
 
+    if debug:
+        assert (top_kpd_asc[jjs_in_topk] == neighbor_ids_sorted[iis,jjs]).all() , 'ids should match for there to be a conflict'
 
-    print(f'{top_score_by_kpd.shape=} {top_kpd_asc.shape=}')
     ### expand the top k scores by copying because we will over-write them
     top_score_by_kpd_rep = np.repeat(top_score_by_kpd, N).reshape(-1,N).T
-    top_id_rep = np.repeat(top_kpd_asc[:-1], N).reshape(-1,N).T
+    top_id_rep = np.repeat(top_kpd_asc, N).reshape(-1,N).T
     
     ## make overwritten score -inf to self, and to overwritten elements so it will be ignored when sorting
-    self_id = top_kpd_asc[:-1].reshape(1,-1) == node_ids
+    self_id = top_kpd_asc.reshape(1,-1) == node_ids
     top_score_by_kpd_rep[self_id] = -np.inf
-
-
-    print(f'{top_score_by_kpd_rep[30523]=}\n{top_score_by_kpd_rep[45306]=}')
-
     top_score_by_kpd_rep[iis, jjs_in_topk]  = -np.inf
 
     assert top_score_by_kpd_rep.shape == top_id_rep.shape, f'{top_score_by_kpd_rep.shape=} {top_id_rep.shape=}'
-    ##TODO: check agreement now.
-    ##TODO: which assertions should we put in place here? 
 
-
-    def _compute_conditioned_scores(new_scores1):
+    def _compute_conditioned_scores(new_scores):
         self_id = (neighbor_ids_sorted == node_ids)
-        neighbor_scores1 = np.take(new_scores1, neighbor_ids_sorted)
+        neighbor_scores1 = np.take(new_scores, neighbor_ids_sorted)
         ## removes itself from topk
         neighbor_scores1[self_id] = - math.inf
         top_kp2d_scores = np.concatenate([top_score_by_kpd_rep, neighbor_scores1], axis=-1)
         top_kp2d_ids = np.concatenate([top_id_rep, neighbor_ids_sorted], axis=-1)
-
-
         assert top_kp2d_scores.shape == top_kp2d_ids.shape, f'{top_kp2d_scores.shape=} {top_kp2d_ids.shape=} {top_score_by_kpd_rep.shape=} {top_id_rep.shape=} {neighbor_ids_sorted.shape=}'
-        top_kp2d_isnew = np.concatenate([np.zeros(top_id_rep.shape[1]), np.ones(neighbor_ids_sorted.shape[1])], axis=-1)
-
-#        print(f'{top_kp2d_scores[]=}\n{top_kp2d_ids=}')
     
         # now sort scores
         order_asc = np.argsort(top_kp2d_scores)
         order_desc = np.fliplr(order_asc)
-        topKidxs = np.take_along_axis(top_kp2d_ids, order_desc, axis=1)
+        order_desc = order_desc[:,:K] # keep only top K for each row
+
         top_k_scores = np.take_along_axis(top_kp2d_scores, order_desc, axis=1)
 
-        print(f'{topKidxs[30523]=}\n{top_k_scores[30523]=}')
-        print('\n')
-        print(f'{topKidxs[45306]=}\n{top_k_scores[45306]=}')
+        if debug:
+            top_k_ids = np.take_along_axis(top_kp2d_ids, order_desc, axis=1) # not needed unless debugging
+            assert (top_k_ids != node_ids).all()
 
-        top_k_scores = top_k_scores[:,:K]
         assert (top_k_scores > -np.inf).all() # sanity check
-        # top_k_ids = np.take_along_axis(top_kp2d_ids, posns[:,-K:], axis=1)
-        expected_scores1 = top_k_scores.sum(axis=1)
-        return expected_scores1
+        return top_k_scores.sum(axis=1)
     
     new_denom = denominators + 1
-    new_scores0 = numerators/new_denom
-    new_scores1 = (numerators + 1)/new_denom
+    scores_given0 = numerators/new_denom
+    scores_given1 = (numerators + 1)/new_denom
 
-    assert (new_scores1 <= 1).all()
-    assert ((new_scores0 >= 0) | (new_scores0 == -np.inf)).all()
-    assert (new_scores0 <= new_scores1).all()
+    assert (scores_given1 <= 1).all()
+    assert ((scores_given0 >= 0) | (scores_given0 == -np.inf)).all()
+    assert (scores_given0 <= scores_given1).all()
 
-    print('condition on 1')    
-    expected_scores1 = _compute_conditioned_scores(new_scores1)
-    print('\n------\n')
-    print('condition on 0')
-    expected_scores0 = _compute_conditioned_scores(new_scores0)
+    expected_scores1 = _compute_conditioned_scores(scores_given1)
+    expected_scores0 = _compute_conditioned_scores(scores_given0)
     
-    ### need to compute scores p1*e1 + p0*e0
-    ## the infinity scores (which have been cancelled) will become nan when added to plus infinity
+    ## :NB: the infinity scores (which have been cancelled) will become nan when added to plus infinity
     final_scores = scores*(1+expected_scores1) + (1-scores)*expected_scores0
-    index = np.nanargmax(final_scores)
-    print(f'{expected_scores0[30523]=} {expected_scores1[30523]=}, {scores[30523]=} {(1-scores)[30523]=}, {neighbor_ids_sorted[index]=}')
-    print(f'{expected_scores0[index]=} {expected_scores1[index]=}, {scores[index]=} {(1-scores)[index]=}, {neighbor_ids_sorted[index]=}')
-
     return final_scores
 
 def _opt_expected_utility_helper_lknn2(*, i : int,  lookahead_limit : int, t : int, model : LKNNModel, pruning_on : bool):
@@ -231,8 +190,6 @@ def _opt_expected_utility_helper_lknn2(*, i : int,  lookahead_limit : int, t : i
     numerators[model.dataset.seen_indices] = -math.inf # will rank lowest
     scores = numerators/denominators
 
-    ### why are scores different?
-
     assert (numerators <= denominators).all()
 
     if lookahead_limit == 2:
@@ -240,11 +197,6 @@ def _opt_expected_utility_helper_lknn2(*, i : int,  lookahead_limit : int, t : i
                                     scores=scores,
                                         neighbor_ids_sorted=neighbor_ids_sorted, N=N, K=t-1, D=D)
         best_idx = np.nanargmax(expected_value)
-        print(f'{expected_value[30523]=} {numerators[30523]=} {denominators[30523]=}')
-        print(f'{model.gamma[30523]=} {model.gamma[45306]=}')
-
-        print(f'{scores[30523]=} {scores[45306]=}')
-
         return Result(value=expected_value[best_idx], index=best_idx, pruned_fraction=0.)
     else:
         assert lookahead_limit == 1, lookahead_limit
@@ -262,7 +214,6 @@ def efficient_nonmyopic_search(model : ProbabilityModel, *, time_horizon : int, 
     assert lookahead_limit <= time_horizon
     assert time_horizon > 0
 
-    print(f'{time_horizon=} {lookahead_limit=}')
     if implementation == 'vectorized':
         return _opt_expected_utility_helper_lknn2(i=0, lookahead_limit=lookahead_limit, t=time_horizon, model=model, pruning_on=pruning_on)
     elif implementation == 'loop':
