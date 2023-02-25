@@ -348,7 +348,7 @@ class BenchRunner(object):
                 print('session_params')
                 print(session_params)
 
-                ret = make_session(self.gdm, p)
+                ret = make_session(self.gdm, p, b=b)
                 ds = ret['dataset']
                 boxes, qgt = ds.load_ground_truth()
                 gtseries = qgt[b.ground_truth_category]

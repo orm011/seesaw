@@ -1,9 +1,10 @@
+from seesaw.calibration import Calibrator
 from .loops.loop_base import *
 from .loops.registry import build_loop_from_params
 from .dataset import BaseDataset
 from .indices.interface import AccessMethod
 from .labeldb import LabelDB
-from .basic_types import SessionState, SessionParams, ActivationData, Box, Imdata, is_image_accepted
+from .basic_types import BenchParams, SessionState, SessionParams, ActivationData, Box, Imdata, is_image_accepted
 
 import time
 import pyroaring as pr
@@ -28,6 +29,7 @@ class Session:
         dataset: BaseDataset,
         hdb: AccessMethod,
         params: SessionParams,
+        _y : np.ndarray = None
     ):
         self.gdm = gdm
         self.dataset = dataset
@@ -41,6 +43,11 @@ class Session:
         self.image_timing = {}
         self.index = hdb
         self.q = hdb.new_query()
+
+        if _y is not None:
+            assert self.index.vectors.shape[0] == _y.shape[0]
+            self.q._calibrator = Calibrator(self.index.vectors, _y)
+        
         self.label_db = LabelDB() #prefilled one. not the main one used in q.
         if self.params.annotation_category != None:
             box_data, _ = self.dataset.load_ground_truth()
@@ -188,19 +195,27 @@ def get_labeled_subset_dbdidxs(qgt, c_name):
     labeled = ~qgt[c_name].isna()
     return qgt[labeled].index.values
 
-def make_session(gdm: GlobalDataManager, p: SessionParams):
+def make_session(gdm: GlobalDataManager, p: SessionParams, b : BenchParams = None):
     ds = gdm.get_dataset(p.index_spec.d_name)
     if p.index_spec.c_name is not None:
         print('subsetting...')
         ds = ds.load_subset(p.index_spec.c_name)
         print('done subsetting')
 
+
+    ## NOTE: this won't work with other indices
+    if p.pass_ground_truth:
+        _, gt = ds.load_ground_truth()
+        _y = gt[b.ground_truth_category]
+    else:
+        _y = None
+
     print('loading index')
     idx = ds.load_index(p.index_spec.i_name, options=p.index_options)
     print('done loading index')
     
     print("about to construct session...")
-    session = Session(gdm, ds, idx, p)
+    session = Session(gdm, ds, idx, p, _y=_y)
     print("session constructed...")
     return {
         "session": session,

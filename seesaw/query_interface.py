@@ -1,6 +1,8 @@
 import pyroaring as pr
 from .indices.interface import AccessMethod
 from .labeldb import LabelDB
+import numpy as np
+from .calibration import Calibrator
 
 class InteractiveQuery(object):
     """
@@ -8,7 +10,7 @@ class InteractiveQuery(object):
     to stateless db as part of query
     """
 
-    def __init__(self, index: AccessMethod):
+    def __init__(self, index: AccessMethod, _y : np.ndarray = None):
         self.index = index
 
         # images returned from index (not necessarily seen yet)
@@ -17,6 +19,16 @@ class InteractiveQuery(object):
         # image labels received back
         self.label_db = LabelDB()
 
+
+        ### DEBUG/experiment only. pass query specific ground truth information.
+        if _y is not None:
+            self._calibrator = Calibrator(self.index.vectors, self._y)
+        else:
+            self._calibrator = None
+
+    def get_calibrator(self):
+        return self._calibrator
+        
     def query_stateful(self, *args, **kwargs):
         """
         :param kwargs: forwards arguments to db query method but
