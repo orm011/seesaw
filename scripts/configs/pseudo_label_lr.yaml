@@ -10,41 +10,12 @@ datasets:
     #subset: small_sample
     #subset: class_subset2
     categories:
-      - eyeglasses
-      - egg carton
-      - combination lock
-      - soap bar
-      - air freshener
-      - kettle
-      - ziploc bag
-      - bicycle
-      - power cable
-      - dress shoe (men)
-      - paperclip
-      - orange
-      - watch
-      - cd case
-      - tie
-      - safety pin
-      - lettuce
-      - bucket
-      - ladle
-      - envelope
-      - toilet paper roll
-      - coffee table
-      - razor
-      - suitcase
-      - lampshade
-      - document folder (closed)
-      - paper plates
-      - soap bar
-      - whistle
-      - bread knife
-      - mixing / salad bowl
-      - padlock
-      - stopper (sink/tub)
-      - poster
-      - contact lens case
+     - eyeglasses
+    #   - egg carton
+    #   - combination lock
+    #   - soap bar
+    #   - air freshener
+    #   - kettle
 shared_session_params: # see SessionParams
   batch_size: 1 
   shortlist_size: 50
@@ -58,6 +29,7 @@ shared_session_params: # see SessionParams
   agg_method: plain_score
   # agg_method: avg_score
   aug_larger: greater
+  pass_ground_truth: True
 shared_bench_params: # see BenchParams
   max_feedback: null
   box_drop_prob: 0. 
@@ -66,36 +38,37 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    - name: lknn
-      max_samples: 20
-      interactive: lknn
-      start_policy: after_first_positive
-      interactive_options:
-        gamma: .1
-        use_clip_as_gamma: True
-        matrix_options:
-          knn_path: nndescent10
-          self_edges : False
-          symmetric: False
-          normalized_weights : False
-          knn_k: 
-            choose: [5]
-          edist: 
-            choose: [.05]
-            # choose: [1.6]
-            # choose: [.05]
-            # choose: [.00075,  .00625, .2, .4, 3.2]
-            # choose: [.05]
-            # choose: [0.00038, .00075, 3.2]
-            # choose: [.05]
-        normalize_scores : False
-        sigmoid_before_propagate: True  
-        calib_a: 
-          choose: [10.]
-        calib_b: 
-          choose: [-0.4]
-        prior_weight: 
-          choose: [0.] # good for unnormalized
+#     - name: lknn
+#       max_samples: 20
+#       interactive: lknn
+#       start_policy: after_first_positive
+#       interactive_options:
+#         gamma: calibrate
+# #        gamma: .1
+#         use_clip_as_gamma: True
+#         matrix_options:
+#           knn_path: nndescent60
+#           self_edges : False
+#           symmetric: False
+#           normalized_weights : False
+#           knn_k: 
+#             choose: [10]
+#           edist: 
+#             choose: [.05]
+#             # choose: [1.6]
+#             # choose: [.05]
+#             # choose: [.00075,  .00625, .2, .4, 3.2]
+#             # choose: [.05]
+#             # choose: [0.00038, .00075, 3.2]
+#             # choose: [.05]
+#         normalize_scores : False
+#         sigmoid_before_propagate: True  
+#         calib_a: 
+#           choose: [10.]
+#         calib_b: 
+#           choose: [-0.4]
+#         prior_weight: 
+#           choose: [0.] # good for unnormalized
     # - name: active_search_l0
     #   max_samples: 20
     #   interactive: active_search
@@ -131,26 +104,26 @@ variants:
     #       choose: [-0.4]
     #     prior_weight: 
     #       choose: [0.] # good for unnormalized
-    - name: active_search_l1
+    - name: active_search
       max_samples: 20
       interactive: active_search
       start_policy: after_first_positive
       interactive_options:
         implementation: 
           vectorized
-          #choose: vectorized
-        lookahead: 2
         pruning_on: False
-        gamma: .1
-        use_clip_as_gamma: True
-        time_horizon: 60
+        gamma: clip
+        use_ground_truth_calibration: 
+            choose: [True, False]
+        time_horizon: 
+            choose: [1, 2, 3]
         matrix_options:
-          knn_path: nndescent10
+          knn_path: nndescent60
           symmetric: False
           self_edges : False
           normalized_weights : False
           knn_k: 
-            choose: [5]
+            choose: [20]
           edist: 
             choose: [.05]
             # choose: [1.6]
@@ -198,21 +171,21 @@ variants:
     #       choose: [-0.4]
     #     prior_weight: 
     #       choose: [0.] # good for unnormalized
-    - name: baseline
-      interactive: plain
-    - name: log_reg2
-      max_samples: 10
-      interactive: log_reg2
-      interactive_options:
-        class_weights: 
-          choose: [1.]
-        scale: centered
-        reg_lambda: 
-          choose: [.25] #, .5, 1., 2., 4., 8., 16., 32.]
-          # choose: [4.]
-        max_iter: 200.
-        lr: 1.
-        fit_intercept: false
+    # - name: baseline
+    #   interactive: plain
+    # - name: log_reg2
+    #   max_samples: 10
+    #   interactive: log_reg2
+    #   interactive_options:
+    #     class_weights: 
+    #       choose: [1.]
+    #     scale: centered
+    #     reg_lambda: 
+    #       choose: [.25] #, .5, 1., 2., 4., 8., 16., 32.]
+    #       # choose: [4.]
+    #     max_iter: 200.
+    #     lr: 1.
+    #     fit_intercept: false
 #     - name: pseudo_lr_switch # change to use new config
 #       max_samples: 20
 #       interactive: pseudo_lr

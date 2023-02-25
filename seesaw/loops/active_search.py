@@ -30,12 +30,21 @@ class ActiveSearch(LoopBase):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams, weight_matrix : sp.csr_array):
         super().__init__(gdm, q, params)
         self.scores = None
-
         dataset = Dataset.from_vectors(q.index.vectors)
-        gamma_mean = params.interactive_options['gamma']
+
+        self._calibrator = q.get_calibrator() # only meant to be used for debugs/experiments etc. 
+        if params.interactive_options['use_ground_truth_calibration']:
+            assert self._calibrator is not None
+
+        if params.interactive_options['gamma'] == 'clip':
+            self.use_clip_as_gamma = True
+            gamma_mean = .1 # placeholder but won't be usd
+        else:
+            gamma_mean = params.interactive_options['gamma']
+            assert type(gamma_mean) is float
+
         initial_gamma=initial_gamma_array(gamma_mean, q.index.vectors.shape[0])
 
-        self.use_clip_as_gamma = params.interactive_options['use_clip_as_gamma']            
         self.prob_model = LKNNModel.from_dataset(dataset, gamma=initial_gamma, weight_matrix=weight_matrix)
         self.dataset = self.prob_model.dataset
         self.pruned_fractions = []
@@ -43,14 +52,19 @@ class ActiveSearch(LoopBase):
     @staticmethod
     def from_params(gdm, q, p: SessionParams):
         label_prop2 = get_label_prop(q, p.interactive_options)
+
         return ActiveSearch(gdm, q, p, weight_matrix=label_prop2.lp.weight_matrix)
 
     def set_text_vec(self, tvec):
         super().set_text_vec(tvec)
         self.scores = self.q.index.score(tvec)
         if self.use_clip_as_gamma:
-            self.prob_model = self.prob_model.with_gamma(self.scores)
-            #self.prob_model = LKNNModel.from_dataset(self.prob_model.dataset, gamma=self.scores, weight_matrix=self.prob_model.matrix)
+            if self._calibrator is None:
+                probs = self.scores
+            else:
+                probs = self._calibrator.get_probabilities(tvec, self.q.index.vectors)
+            
+            self.prob_model = self.prob_model.with_gamma(probs)
 
     def get_stats(self):
         return {'pruned_fractions':self.pruned_fractions}
@@ -59,15 +73,18 @@ class ActiveSearch(LoopBase):
         """
         gets next batch of image indices based on current vector
         """
-        remaining_time = self.params.interactive_options['time_horizon'] - len(self.q.returned)
-        assert remaining_time > 0
 
-        lookahead = self.params.interactive_options['lookahead']
-        assert lookahead > 0
-        lookahead_limit = min(lookahead, remaining_time)
+        time_horizon = self.params.interactive_options['time_horizon'] 
+#        if self.params.interactive_options['remaining_horizon']:
+#            time_horizon -=  len(self.q.returned)
+    
+        assert time_horizon > 0
+        #lookahead = self.params.interactive_options['lookahead']
+#        assert lookahead > 0
+        lookahead = min(2, time_horizon) # 1 when time horizon is also 1
 
-        res = efficient_nonmyopic_search(self.prob_model, time_horizon=remaining_time, 
-                                            lookahead_limit=lookahead_limit, 
+        res = efficient_nonmyopic_search(self.prob_model,time_horizon=time_horizon, 
+                                            lookahead_limit=lookahead, 
                                             pruning_on=self.params.interactive_options['pruning_on'], 
                                             implementation=self.params.interactive_options['implementation'])
         top_idx = int(res.index) 
@@ -108,7 +125,14 @@ class LKNNSearch(LoopBase):
         super().__init__(gdm, q, params)
 
         dataset = Dataset.from_vectors(q.index.vectors)
-        gamma_mean = params.interactive_options['gamma']
+
+        self._calibrator = q.get_calibrator() # only meant to be used for debugs/experiments etc. 
+        if params.interactive_options['gamma'] == 'calibrate':
+            assert self._calibrator is not None
+            gamma_mean = self._calibrator.get_mean()
+        else:
+            gamma_mean = params.interactive_options['gamma']
+
         initial_gamma=initial_gamma_array(gamma_mean, q.index.vectors.shape[0])
 
         self.use_clip_as_gamma = self.params.interactive_options['use_clip_as_gamma']      
@@ -123,9 +147,15 @@ class LKNNSearch(LoopBase):
     def set_text_vec(self, tvec):
         super().set_text_vec(tvec)
         self.scores = self.q.index.score(tvec)
+
         if self.use_clip_as_gamma:
-            self.prob_model = self.prob_model.with_gamma(self.scores)
-#            LKNNModel.from_dataset(self.prob_model.dataset, gamma=self.scores, weight_matrix=self.prob_model.matrix)
+            if self._calibrator is None:
+                probs = self.scores
+            else:
+                probs = self._calibrator.get_probabilities(tvec, self.q.index.vectors)
+            
+            self.prob_model = self.prob_model.with_gamma(probs)
+
     def next_batch(self):
         """
         gets next batch of image indices based on current vector

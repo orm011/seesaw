@@ -61,6 +61,7 @@ class MultiscaleParams: #TODO switch session params
 class SessionParams(BaseModel):
     index_spec: IndexSpec
     interactive: str
+    pass_ground_truth: Optional[bool] = False # used for testing only. 
     annotation_category: str = None
     interactive_options: Optional[dict] = None
     batch_size: int
