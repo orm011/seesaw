@@ -23,16 +23,14 @@ def compute_calibrated_probabilities(vector_scorer, X,  y):
     ccv.fit(X, y)
     return ccv.predict_proba(X)[:,1]
 
+import scipy.special
 
-class Calibrator:
+class GroundTruthCalibrator:
     def __init__(self, X, y):
         assert X.shape[0] == y.shape[0]
         self.X = X
         self.y = y
         self._mean = y.mean()
-
-    def get_mean(self):
-        return self._mean
 
     def get_probabilities(self, vector_scorer, vectors):
         ### fit with given labels then apply to given vectors.
@@ -42,3 +40,18 @@ class Calibrator:
 
         infer_scores = vectors @ vector_scorer.reshape(-1)
         return sc.predict(infer_scores)
+
+class FixedCalibrator:
+    def __init__(self, a : float, b : float, sigmoid : bool):
+        self.sigmoid = sigmoid
+        self.a = a
+        self.b = b
+
+    def get_probabilities(self, vector_scorer, vectors):
+        sc = vectors @ vector_scorer.reshape(-1)
+        rescaled = self.a*(sc + self.b)
+        
+        if self.sigmoid:
+            return scipy.special.expit(rescaled)
+        else:
+            return rescaled

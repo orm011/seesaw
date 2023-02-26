@@ -1,4 +1,4 @@
-from seesaw.calibration import Calibrator
+from seesaw.calibration import GroundTruthCalibrator
 from .loops.loop_base import *
 from .loops.registry import build_loop_from_params
 from .dataset import BaseDataset
@@ -46,7 +46,7 @@ class Session:
 
         if _y is not None:
             assert self.index.vectors.shape[0] == _y.shape[0]
-            self.q._calibrator = Calibrator(self.index.vectors, _y)
+            self.q._calibrator = GroundTruthCalibrator(self.index.vectors, _y)
         
         self.label_db = LabelDB() #prefilled one. not the main one used in q.
         if self.params.annotation_category != None:

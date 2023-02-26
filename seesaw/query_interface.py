@@ -2,7 +2,7 @@ import pyroaring as pr
 from .indices.interface import AccessMethod
 from .labeldb import LabelDB
 import numpy as np
-from .calibration import Calibrator
+from .calibration import GroundTruthCalibrator
 
 class InteractiveQuery(object):
     """
@@ -22,7 +22,7 @@ class InteractiveQuery(object):
 
         ### DEBUG/experiment only. pass query specific ground truth information.
         if _y is not None:
-            self._calibrator = Calibrator(self.index.vectors, self._y)
+            self._calibrator = GroundTruthCalibrator(self.index.vectors, self._y)
         else:
             self._calibrator = None
 

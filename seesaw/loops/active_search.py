@@ -23,7 +23,7 @@ from .LKNN_model import LKNNModel
 ### number of results wanted (eg 10)
 ### number of exact planning rounds (can only really be 1 or 2). 
 import scipy.sparse as sp
-
+from ..calibration import GroundTruthCalibrator, FixedCalibrator
 from .LKNN_model import initial_gamma_array
 
 class ActiveSearch(LoopBase):
@@ -32,18 +32,21 @@ class ActiveSearch(LoopBase):
         self.scores = None
         dataset = Dataset.from_vectors(q.index.vectors)
 
-        self._calibrator = q.get_calibrator() # only meant to be used for debugs/experiments etc. 
-        if params.interactive_options['use_ground_truth_calibration']:
-            assert self._calibrator is not None
+        self.gamma = params.interactive_options['gamma']
+        if self.gamma['mode'] == 'clip':
+            calibration = self.gamma['calibration']
+            if calibration == 'ground_truth':
+                self._calibrator = q.get_calibrator()
+            elif calibration == 'sigmoid':
+                self._calibrator = FixedCalibrator(a=self.gamma['a'], b=self.gamma['b'], sigmoid=True)
+            elif calibration == 'raw':
+                self._calibrator = FixedCalibrator(a=1., b=0., sigmoid=False)
 
-        if params.interactive_options['gamma'] == 'clip':
-            self.use_clip_as_gamma = True
-            gamma_mean = .1 # placeholder but won't be usd
-        else:
-            gamma_mean = params.interactive_options['gamma']
-            assert type(gamma_mean) is float
+            initial_gamma=initial_gamma_array(.1, q.index.vectors.shape[0]) # gets over-written. 
 
-        initial_gamma=initial_gamma_array(gamma_mean, q.index.vectors.shape[0])
+        elif self.gamma['mode'] == 'fixed':            
+            initial_gamma=initial_gamma_array(self.gamma['value'], q.index.vectors.shape[0])
+
 
         self.prob_model = LKNNModel.from_dataset(dataset, gamma=initial_gamma, weight_matrix=weight_matrix)
         self.dataset = self.prob_model.dataset
@@ -58,13 +61,12 @@ class ActiveSearch(LoopBase):
     def set_text_vec(self, tvec):
         super().set_text_vec(tvec)
         self.scores = self.q.index.score(tvec)
-        if self.use_clip_as_gamma:
-            if self._calibrator is None:
-                probs = self.scores
-            else:
-                probs = self._calibrator.get_probabilities(tvec, self.q.index.vectors)
-            
+        
+        if self.gamma['mode'] == 'clip':
+            probs = self._calibrator.get_probabilities(tvec, self.q.index.vectors)
             self.prob_model = self.prob_model.with_gamma(probs)
+        else:
+            pass
 
     def get_stats(self):
         return {'pruned_fractions':self.pruned_fractions}
@@ -75,14 +77,11 @@ class ActiveSearch(LoopBase):
         """
 
         time_horizon = self.params.interactive_options['time_horizon'] 
-#        if self.params.interactive_options['remaining_horizon']:
-#            time_horizon -=  len(self.q.returned)
+        if self.params.interactive_options['adjust_horizon']:
+            time_horizon -=  len(self.q.returned)
     
         assert time_horizon > 0
-        #lookahead = self.params.interactive_options['lookahead']
-#        assert lookahead > 0
         lookahead = min(2, time_horizon) # 1 when time horizon is also 1
-
         res = efficient_nonmyopic_search(self.prob_model,time_horizon=time_horizon, 
                                             lookahead_limit=lookahead, 
                                             pruning_on=self.params.interactive_options['pruning_on'], 
