@@ -9,12 +9,14 @@ class BasicTrainer:
 
     def fit(self, train_loader):
         self.mod.train()
-        losses = []
+        rets = []
         def closure():
             self.opt.zero_grad()
             ret = self.mod.training_step(batch, batch_idx)
             loss = ret['loss']
-            losses.append(loss.detach().item())
+            lossval = loss.detach().item()
+            ret['loss'] = lossval
+            rets.append(ret)
             loss.backward()
             return loss
 
@@ -22,7 +24,7 @@ class BasicTrainer:
             for batch_idx, batch in enumerate(train_loader):
                 self.opt.step(closure)
 
-        return losses
+        return rets
 
     def validate(self, dataloader):
         self.mod.eval()
