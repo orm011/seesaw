@@ -72,7 +72,7 @@ class SessionParams(BaseModel):
     method_config: Optional[dict] 
     image_vector_strategy: Optional[Literal[ "matched", 'computed']]
     other_params: Optional[dict]
-    start_policy: Optional[Literal['from_start', 'after_first_positive']] = 'from_start'
+    start_policy: Optional[Literal['from_start', 'after_first_positive', 'after_first_positive_and_negative']] = 'from_start'
 
 class LogEntry(BaseModel):
     logger: Literal["server", 'client']

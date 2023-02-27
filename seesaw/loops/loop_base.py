@@ -61,8 +61,14 @@ class LoopBase:
                 return self.next_batch()
             else:
                 return self._next_batch_curr_vec(vec=self.curr_vec)
-        elif self.params.start_policy == 'first_reversal':
-            assert False
+        elif self.params.start_policy == 'after_first_positive_and_negative':
+            pos, neg = self.q.getXy(get_positions=True)
+            if len(pos) > 0 and len(neg) > 0: ## for now, stick to clip until found one positive result
+                return self.next_batch()
+            else:
+                return self._next_batch_curr_vec(vec=self.curr_vec)
+        elif self.params.start_policy == 'after_first_reversal':
+            assert False, 'implement me'
         else:
             assert False
 
@@ -72,6 +78,21 @@ class LoopBase:
         raise NotImplementedError('implement me in subclass')
 
     def refine(self, change=None):
-        raise NotImplementedError('implement me in sublcass')
+        raise NotImplementedError('implement me in subclass')
 
+    def refine_external(self, change=None):
+        if self.params.start_policy == 'from_start':
+            self.refine(change)
+        elif self.params.start_policy == 'after_first_positive':
+            pos, _ = self.q.getXy(get_positions=True)
+            if len(pos) > 0: ## for now, stick to clip until found one positive result
+                self.refine(change)
+        elif self.params.start_policy == 'after_first_positive_and_negative':
+            pos, neg = self.q.getXy(get_positions=True)
+            if len(pos) > 0 and len(neg) > 0: ## for now, stick to clip until found one positive result
+                self.refine(change)
+        elif self.params.start_policy == 'after_first_reversal':
+            assert False, 'implement me'
+        else:
+            assert False
 

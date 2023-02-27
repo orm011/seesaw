@@ -110,7 +110,7 @@ class Session:
 
     def refine(self):
         self._log("refine.start")
-        self.loop.refine(self._last_change)
+        self.loop.refine_external(self._last_change)
         self._log("refine.end")
 
     def get_state(self) -> SessionState:
