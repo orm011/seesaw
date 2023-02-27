@@ -104,48 +104,92 @@ variants:
     #       choose: [-0.4]
     #     prior_weight: 
     #       choose: [0.] # good for unnormalized
-    - name: active_search
+    - name: multi_reg_ce_loss
       max_samples: 20
-      interactive: active_search
-      start_policy: after_first_positive
+      interactive: multi_reg
+      start_policy: after_first_positive_and_negative
       interactive_options:
-        implementation: 
-          vectorized
-        pruning_on: False
-        gamma:
-          # choose:
-            mode: clip
-            calibration: 
-                choose: [ground_truth, raw]
-            # - mode: fixed
-            #   value:
-            #     choose: [.01, .1]
-        time_horizon: 
-            choose: [60]
-        adjust_horizon: True
+        label_loss_type: ce_loss
+        rank_loss_margin: .2
+        reg_data_lambda: 100.
+        reg_norm_lambda: 10.
+        reg_query_lambda: 1.
+        verbose: False
+        max_iter: 200
+        lr: 1.
         matrix_options:
           knn_path: nndescent60
-          symmetric: False
-          self_edges : False
-          normalized_weights : False
+          symmetric: True
+          self_edges: False
+          normalized_weights: False
           knn_k: 
-            choose: [20]
+            choose: [10]
           edist: 
             choose: [.05]
-            # choose: [1.6]
-            # choose: [.05]
-            # choose: [.00075,  .00625, .2, .4, 3.2]
-            # choose: [.05]
-            # choose: [0.00038, .00075, 3.2]
-            # choose: [.05]
-        normalize_scores : False
-        sigmoid_before_propagate: True  
-        calib_a: 
-          choose: [10.]
-        calib_b: 
-          choose: [-0.4]
-        prior_weight: 
-          choose: [0.] # good for unnormalized
+    - name: multi_reg_rank
+      max_samples: 20
+      interactive: multi_reg
+      start_policy: after_first_positive_and_negative
+      interactive_options:
+        label_loss_type: pairwise_rank_loss
+        rank_loss_margin: .3
+        reg_data_lambda: 100.
+        reg_norm_lambda: 10.
+        reg_query_lambda: 1.
+        verbose: False
+        max_iter: 200
+        lr: 1.
+        matrix_options:
+          knn_path: nndescent60
+          symmetric: True
+          self_edges: False
+          normalized_weights: False
+          knn_k: 
+            choose: [10]
+          edist: 
+            choose: [.05]
+    # - name: active_search
+    #   max_samples: 20
+    #   interactive: active_search
+    #   start_policy: after_first_positive
+    #   interactive_options:
+    #     implementation: 
+    #       vectorized
+    #     pruning_on: False
+    #     gamma:
+    #       # choose:
+    #         mode: clip
+    #         calibration: 
+    #             choose: [ground_truth, raw]
+    #         # - mode: fixed
+    #         #   value:
+    #         #     choose: [.01, .1]
+    #     time_horizon: 
+    #         choose: [60]
+    #     adjust_horizon: True
+    #     matrix_options:
+    #       knn_path: nndescent60
+    #       symmetric: False
+    #       self_edges : False
+    #       normalized_weights : False
+    #       knn_k: 
+    #         choose: [20]
+    #       edist: 
+    #         choose: [.05]
+    #         # choose: [1.6]
+    #         # choose: [.05]
+    #         # choose: [.00075,  .00625, .2, .4, 3.2]
+    #         # choose: [.05]
+    #         # choose: [0.00038, .00075, 3.2]
+    #         # choose: [.05]
+    #     normalize_scores : False
+    #     sigmoid_before_propagate: True  
+    #     calib_a: 
+    #       choose: [10.]
+    #     calib_b: 
+    #       choose: [-0.4]
+    #     prior_weight: 
+    #       choose: [0.] # good for unnormalized
     # - name: active_search_l1
     #   max_samples: 20
     #   interactive: active_search

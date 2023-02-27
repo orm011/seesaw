@@ -1,3 +1,4 @@
+from seesaw.loops.multi_reg import MultiReg
 from seesaw.loops.active_search import LKNNSearch
 
 
@@ -6,6 +7,7 @@ def build_loop_from_params(gdm, q, params):
     from .log_reg import LogReg2
     from .point_based import Plain
     from .graph_based import KnnProp2
+    from .multi_reg import MultiReg
 
     # from .old_seesaw import OldSeesaw
     # from .switch_over import SwitchOver
@@ -18,6 +20,7 @@ def build_loop_from_params(gdm, q, params):
         'pseudo_lr':PseudoLR,
         'active_search':ActiveSearch,
         'lknn':LKNNSearch,
+        'multi_reg':MultiReg,
 
         ## older, may need to implement from_params()
       #  'old_seesaw':OldSeesaw, # aka pytorch in old code
