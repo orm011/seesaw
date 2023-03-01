@@ -107,6 +107,27 @@ class Session:
         self._log(
             "update_state.end"
         )  # log this after updating so that it includes all new information
+        if self._check_reversals():
+            self.loop.set_reversals()
+
+    def _check_reversals(self):
+        ## reversal means there is some 0 followed by a 1.
+        if len(self.accepted) == 0:
+            return False
+        elif len(self.accepted) == len(self.seen):
+            return False
+        else:
+            pass
+
+        min_so_far = 1
+        reversal = False
+        for idx in self.acc_indices:
+            if idx not in self.accepted:
+                min_so_far = 0
+            elif min_so_far == 0: # and idx in accepted
+                reversal = True
+                break
+        return reversal
 
     def refine(self):
         self._log("refine.start")
@@ -183,6 +204,7 @@ class Session:
 
         delta_accepted = self.accepted - old_accepted
         delta_seen = self.seen - old_seen
+        print(f'updating: {delta_seen=} {delta_accepted=}')
 
         changed = delta_seen.union(delta_accepted)
         changes = []

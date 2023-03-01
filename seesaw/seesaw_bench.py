@@ -287,7 +287,6 @@ def benchmark_loop(
             break
 
         if b.max_feedback is None or (batch_num + 1) * p.batch_size <= b.max_feedback:
-            print("refining...")
             session.refine()
 
     return dict(nfound=int(total_results), nseen=int(total_seen))
