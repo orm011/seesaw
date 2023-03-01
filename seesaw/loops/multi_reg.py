@@ -23,7 +23,8 @@ import math
 class RegModule(nn.Module):
     def __init__(self, *, dim, xlx_matrix, qvec,
          label_loss_type, rank_loss_margin=0., 
-         reg_data_lambda=1., reg_norm_lambda=1., reg_query_lambda = 1.,
+         reg_data_lambda=1., reg_norm_lambda=1.,
+         use_qvec_norm,
          verbose=False, max_iter=100, lr=1.):
         super().__init__()
         layer = nn.Linear(dim, 1, bias=False)  # use it for initialization           
@@ -37,7 +38,8 @@ class RegModule(nn.Module):
         self.lr = lr
         self.verbose = verbose
 
-        self.reg_query_lambda = reg_query_lambda
+#        self.reg_query_lambda = reg_query_lambda
+        self.use_qvec_norm = use_qvec_norm
         self.reg_norm_lambda = reg_norm_lambda
         self.reg_data_lambda = reg_data_lambda
 
@@ -63,31 +65,35 @@ class RegModule(nn.Module):
         if self.label_loss_type == 'ce_loss':
             weighted_celoss = F.binary_cross_entropy_with_logits(logits, y, weight=weight,
                                         reduction='none', pos_weight=self.pos_weight)        
-            loss_labels = weighted_celoss.sum()
+            item_losses = weighted_celoss
         elif self.label_loss_type == 'pairwise_rank_loss':
             per_item_loss, max_inv = ref_pairwise_rank_loss(y, scores=logits, 
                                 aggregate='sum',margin=self.rank_loss_margin, return_max_inversions=True)
             
             per_item_normalized = per_item_loss/max_inv
-            loss_labels = per_item_normalized.sum()
+            item_losses = per_item_normalized
         else:
             assert False
 
-        loss_labels = loss_labels/10.
-        loss_norm = (self.weight.norm() - 1.)**2        
+        loss_labels = item_losses.mean()
+
+        if self.use_qvec_norm:
+            normvec = (self.weight - self.qvec)
+        else:
+            normvec = self.weight
+            
+        loss_norm = (normvec @ normvec)/2
         nweight = F.normalize(self.weight, dim=-1)
-        loss_datareg = nweight @ (self.xlx_matrix @ nweight)    
-        loss_queryreg = (1. - (nweight @ self.qvec))/2.
+        loss_datareg = nweight @ (self.xlx_matrix @ nweight)
+        # loss_queryreg = (1. - (nweight @ self.qvec))
 
         return {
             'loss_type':self.label_loss_type,
             'loss_norm' : loss_norm.detach().item(),
             'loss_labels': loss_labels.detach().item(),
             'loss_datareg': loss_datareg.detach().item(),
-            'loss_queryreg': loss_queryreg.detach().item(),
-            'loss': loss_labels + self.reg_data_lambda*loss_datareg + self.reg_query_lambda*loss_queryreg + self.reg_norm_lambda*loss_norm,
+            'loss': loss_labels + self.reg_data_lambda*loss_datareg + self.reg_norm_lambda*loss_norm,
         }
-
     
     def training_step(self, batch, batch_idx):
         losses = self._step(batch)       
@@ -137,9 +143,10 @@ class MultiReg(PointBased):
         model_ = RegModule(dim=X.shape[1], xlx_matrix=self.xlx_matrix, qvec=torch.from_numpy(self.state.tvec).float(), 
                             label_loss_type=self.options['label_loss_type'], 
                             rank_loss_margin=self.options['rank_loss_margin'], 
-                            reg_data_lambda=self.options['reg_data_lambda']*2.4, 
-                            reg_norm_lambda=self.options['reg_norm_lambda']*2.4, 
-                            reg_query_lambda=self.options['reg_query_lambda']*2.4, 
+                            reg_data_lambda=self.options['reg_data_lambda'], 
+                            reg_norm_lambda=self.options['reg_norm_lambda'],
+                            use_qvec_norm=self.options['use_qvec_norm'],
+#                            reg_query_lambda=self.options['reg_query_lambda'], 
                             verbose=self.options['verbose'], 
                             max_iter=self.options['max_iter'], 
                             lr=self.options['lr'])
