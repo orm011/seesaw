@@ -1,11 +1,11 @@
 datasets:
-  # - name: bdd
+  - name: bdd
   #   # categories:
   #   #   - trailer
   #   #   - train
   #   # - wheelchair
-  # - name: coco
-  # - name: lvis
+  - name: coco
+  - name: lvis
   - name: objectnet
     #subset: small_sample
     #subset: class_subset2
@@ -29,7 +29,7 @@ shared_session_params: # see SessionParams
   agg_method: plain_score
   # agg_method: avg_score
   aug_larger: greater
-  pass_ground_truth: True
+  pass_ground_truth: False
 shared_bench_params: # see BenchParams
   max_feedback: null
   box_drop_prob: 0. 
@@ -104,16 +104,27 @@ variants:
     #       choose: [-0.4]
     #     prior_weight: 
     #       choose: [0.] # good for unnormalized
+    
+    ### want: 
+      ## - plain log reg
+      ## + norm reg.
+      ## + query reg.
+      ## + semi-supervised reg.
     - name: multi_reg_ce_loss
-      max_samples: 20
+      max_samples: 10
       interactive: multi_reg
       start_policy: after_first_positive_and_negative
       interactive_options:
         label_loss_type: ce_loss
         rank_loss_margin: .2
-        reg_data_lambda: 100.
-        reg_norm_lambda: 10.
-        reg_query_lambda: 1.
+        reg_data_lambda: 
+            choose: [0]  
+            # [30., 100., 300.]
+        reg_query_lambda: 
+#            choose: [.3, 1., 3.]
+            choose: [.3, 1., 3.,]
+        reg_norm_lambda: 
+            choose: [1.]
         verbose: False
         max_iter: 200
         lr: 1.
@@ -126,16 +137,21 @@ variants:
             choose: [10]
           edist: 
             choose: [.05]
-    - name: multi_reg_rank
-      max_samples: 20
+    - name: multi_reg_ce_loss_no_data
+      max_samples: 10
       interactive: multi_reg
       start_policy: after_first_positive_and_negative
       interactive_options:
-        label_loss_type: pairwise_rank_loss
-        rank_loss_margin: .3
-        reg_data_lambda: 100.
-        reg_norm_lambda: 10.
-        reg_query_lambda: 1.
+        label_loss_type: ce_loss
+        rank_loss_margin: .2
+        reg_data_lambda: 
+            choose: [0]  
+            # [30., 100., 300.]
+        reg_query_lambda: 
+#            choose: [.3, 1., 3.]
+            choose: [.3, 1., 3.,]
+        reg_norm_lambda: 
+            choose: [1.]
         verbose: False
         max_iter: 200
         lr: 1.
@@ -148,6 +164,30 @@ variants:
             choose: [10]
           edist: 
             choose: [.05]
+    # - name: multi_reg_rank
+    #   max_samples: 10
+    #   interactive: multi_reg
+    #   start_policy: after_first_positive_and_negative
+    #   interactive_options:
+    #     label_loss_type: pairwise_rank_loss
+    #     rank_loss_margin: 
+    #         choose: [.3]
+    #     reg_data_lambda: 
+    #         choose: [30., 100., 300.]
+    #     reg_query_lambda: 
+    #         choose: [.3, 1., 3.]
+    #     verbose: False
+    #     max_iter: 200
+    #     lr: 1.
+    #     matrix_options:
+    #       knn_path: nndescent60
+    #       symmetric: True
+    #       self_edges: False
+    #       normalized_weights: False
+    #       knn_k: 
+    #         choose: [10.]
+    #       edist: 
+    #         choose: [.05]
     # - name: active_search
     #   max_samples: 20
     #   interactive: active_search
