@@ -266,29 +266,51 @@ class SeesawDataset(BaseDataset):
 
     def load_ground_truth(self):
         assert os.path.exists(f"{self.dataset_root}/ground_truth")
-            
-        box_data = get_parquet(
-            f"{self.dataset_root}/ground_truth/box_data.parquet",
-            parallelism=0, cache=True
-        )
+        cached_filename = f'{self.dataset_root}/ground_truth/box_data.cached.parquet'
+        orig_filename =   f'{self.dataset_root}/ground_truth/box_data.parquet'
 
-        box_data = box_data.assign(origin=f"{self.dataset_root}/ground_truth/box_data.parquet")
-
-        ammended = False
         annfolder = f"{self.dataset_root}/ground_truth/annotations"
         if os.path.exists(annfolder):
-            print('found annotation folder, ammending annotations...')
             annotation_files = get_subdirs_chronological(annfolder)
-            for sess_path in annotation_files:
-                ammended = True
-                box_data = ammend_annotations(image_root=self.image_root, box_data=box_data, annotation_session_path=sess_path)
         else:
-            print(f'no ammended annotations found in {annfolder}, ignoring')
-        
-        ## fix categorical after breaking it before
-        box_data = box_data.assign(category=pd.Categorical(box_data.category))
-        if ammended:
-            box_data = fix_dbidx(box_data, self.paths)
+            annotation_files = []
+
+        if len(annotation_files) > 0:
+            print('found ammended annotations...')
+            final_path = cached_filename
+            if os.path.exists(cached_filename):
+                folder_mtime = os.stat(annfolder).st_mtime
+                cache_mtime = os.stat(cached_filename).st_mtime
+                compute_combined = cache_mtime < folder_mtime
+            else:
+                compute_combined = True
+
+
+            if compute_combined:
+                print('computing and caching consolidated annotations')
+                box_data = get_parquet(orig_filename, parallelism=0, cache=False)
+                for sess_path in annotation_files:
+                    box_data = ammend_annotations(image_root=self.image_root, box_data=box_data, annotation_session_path=sess_path)
+
+                ## fix categorical after breaking it before
+                box_data = box_data.assign(category=pd.Categorical(box_data.category))
+                box_data = fix_dbidx(box_data, self.paths)
+                box_data.to_parquet(cached_filename)
+                print('done caching.')
+            else:
+                print('using cached annotations')
+
+        else:
+            print(f'no ammended annotations found in {annfolder}. using original version')
+            final_path = orig_filename
+
+        box_data = get_parquet(
+            final_path,
+            parallelism=0, cache=True
+        )
+        box_data = box_data.assign(origin=final_path)
+
+        if len(annotation_files) > 0:
             return box_data, get_default_qgt(self, box_data)
 
         qgt_path = f"{self.dataset_root}/ground_truth/qgt.parquet"
