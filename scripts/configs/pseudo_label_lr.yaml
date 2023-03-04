@@ -112,7 +112,7 @@ variants:
       ## + norm reg.
       ## + query reg.
       ## + semi-supervised reg.
-    - name: multi_reg_ce_loss_normreg
+    - name: multi_reg_ce_loss_normreg_sum
       max_samples: 10
       interactive: multi_reg
 #      start_policy: after_first_positive_and_negative
@@ -136,7 +136,7 @@ variants:
             choose: [10]
           edist: 
             choose: [.05]
-    - name: multi_reg_ce_loss_qreg
+    - name: multi_reg_ce_loss_qreg_sum
       max_samples: 10
       interactive: multi_reg
 #      start_policy: after_first_positive_and_negative
@@ -147,7 +147,7 @@ variants:
         reg_data_lambda: 0
         use_qvec_norm: True
         reg_norm_lambda: 
-            choose: [.1, 1., 10.,]
+            choose: [1., 3., 10.,]
         verbose: False
         max_iter: 200
         lr: 1.
@@ -160,7 +160,7 @@ variants:
             choose: [10]
           edist: 
             choose: [.05]
-    - name: multi_reg_ce_loss_qreg_plus_edgereg
+    - name: multi_reg_ce_loss_qreg_plus_edgereg_sum
       max_samples: 20
       interactive: multi_reg
 #      start_policy: after_first_positive_and_negative
@@ -169,10 +169,10 @@ variants:
         label_loss_type: ce_loss
         rank_loss_margin: .2
         reg_data_lambda:
-            choose: [1., 10., 100., 1000.]
+            choose: [10., 30., 100.,]
         use_qvec_norm: True
         reg_norm_lambda:
-            choose: [.1, 1., 10.,]
+            choose: [ 1., 3., 10.,]
         verbose: False
         max_iter: 200
         lr: 1.

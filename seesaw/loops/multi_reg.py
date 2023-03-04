@@ -75,24 +75,31 @@ class RegModule(nn.Module):
         else:
             assert False
 
-        loss_labels = item_losses.mean()
+        loss_labels = item_losses.sum()/10.
 
+        # if self.use_qvec_norm:
+        #     normvec = (self.weight - self.qvec)
+        # else:
+        #     normvec = self.weight
         if self.use_qvec_norm:
-            normvec = (self.weight - self.qvec)
+            loss_norm = (self.weight.norm() - 1)**2
+
+            nweight = F.normalize(self.weight, dim=-1)
+            diffvec = (nweight - self.qvec)
+            loss_queryreg = (diffvec@diffvec)
         else:
-            normvec = self.weight
-            
-        loss_norm = (normvec @ normvec)/2
-        nweight = F.normalize(self.weight, dim=-1)
+            loss_norm = self.weight.norm()**2
+            loss_queryreg = 0.
+
         loss_datareg = nweight @ (self.xlx_matrix @ nweight)
-        # loss_queryreg = (1. - (nweight @ self.qvec))
 
         return {
             'loss_type':self.label_loss_type,
             'loss_norm' : loss_norm.detach().item(),
             'loss_labels': loss_labels.detach().item(),
             'loss_datareg': loss_datareg.detach().item(),
-            'loss': loss_labels + self.reg_data_lambda*loss_datareg + self.reg_norm_lambda*loss_norm,
+            'loss_queryreg': loss_queryreg.detach().item(),
+            'loss': loss_labels + self.reg_data_lambda*loss_datareg + self.reg_norm_lambda*(loss_norm + loss_queryreg),
         }
     
     def training_step(self, batch, batch_idx):
