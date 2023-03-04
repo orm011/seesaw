@@ -18,11 +18,11 @@ def average_precision(hit_indices, *, npositive, max_results=None, average_recip
     hit_indices = hit_indices[:max_results]
     ranks = hit_indices + 1
     
-    ranks2 = np.concatenate((np.zeros(1), ranks))
-    gaps = ranks2[1:] - ranks2[:-1]
-
     denominators = np.ones(max_results) * np.inf
     if average_reciprocal_gap:
+        ranks2 = np.concatenate((np.zeros(1), ranks))
+        gaps = ranks2[1:] - ranks2[:-1]
+
         numerator = 1.
         denominators[:hit_indices.shape[0]] = gaps
     else:
@@ -50,6 +50,13 @@ def rank_of_kth(hit_indices, *, ntotal, k):
         return math.inf
     else:
         return hit_indices[k - 1] + 1
+
+def rank_kth(hit_indices, *, ntotal, ks): # batch
+    ans = np.ones_like(ks, dtype=float)
+    ans[ks > hit_indices.shape[0]] = np.inf # didn't find it
+    ans[ks > ntotal] = np.nan # not applicable
+    ans[ks <= hit_indices.shape[0]] = hit_indices[ks[ks <= hit_indices.shape[0]] - 1] + 1
+    return ans
 
 
 def best_possible_hits(nseen, npositive):
@@ -100,16 +107,18 @@ def compute_metrics(*, hit_indices, batch_size, nseen, ntotal, max_results):
     AP = average_precision(
         hit_indices, npositive=ntotal, max_results=max_results
     )
-    average_reciprocal = average_reciprocal_gap(hit_indices, npositive=ntotal, max_results=max_results)
+    #average_reciprocal = average_reciprocal_gap(hit_indices, npositive=ntotal, max_results=max_results)
 
-    nAP = normalizedAP(
-        hit_indices, nseen=nseen, npositive=ntotal, max_results=max_results
-    )
+    # nAP = normalizedAP(
+    #     hit_indices, nseen=nseen, npositive=ntotal, max_results=max_results
+    # )
     ndcg = ndcg_score(hit_indices, nseen=nseen, npositive=ntotal)
-    rank_first = rank_of_kth(hit_indices, ntotal=ntotal, k=1)
-    rank_second = rank_of_kth(hit_indices, ntotal=ntotal, k=2)
-    rank_third = rank_of_kth(hit_indices, ntotal=ntotal, k=3)
-    rank_tenth = rank_of_kth(hit_indices, ntotal=ntotal, k=10)
+    rank_arr = rank_kth(hit_indices, ntotal=ntotal, ks=np.array([1,2,3,10]))
+    rank_first, rank_second, rank_third, rank_tenth = rank_arr
+    # rank_of_kth(hit_indices, ntotal=ntotal, k=1)
+    # rank_second = rank_of_kth(hit_indices, ntotal=ntotal, k=2)
+    # rank_third = rank_of_kth(hit_indices, ntotal=ntotal, k=3)
+    # rank_tenth = rank_of_kth(hit_indices, ntotal=ntotal, k=10)
 
     nfound = hit_indices.shape[0]
 
@@ -118,11 +127,11 @@ def compute_metrics(*, hit_indices, batch_size, nseen, ntotal, max_results):
         nfound=nfound,
         ndcg_score=ndcg,
         average_precision=AP,
-        average_reciprocal_gap=average_reciprocal,
-        nAP=nAP,
+#        average_reciprocal_gap=average_reciprocal,
+#        nAP=nAP,
         rank_first=rank_first,
         reciprocal_rank=1./rank_first,
         rank_second=rank_second,
         rank_third=rank_third,
-        rank_tenth = rank_tenth,
+        rank_tenth=rank_tenth,
     )
