@@ -523,7 +523,7 @@ def get_params(stats, param_hash, pretty_print=False):
     return prms
 
 def add_stats(summs):
-    stats = summs.apply(compute_row_metrics, axis='columns',result_type='expand')
+    stats = summs[['hit_indices', 'nseen', 'batch_size', 'ntotal', 'max_results']].apply(compute_row_metrics, axis='columns',result_type='expand')
     return summs.assign(**stats)
 
 def print_error_logs(stats):
