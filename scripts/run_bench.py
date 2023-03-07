@@ -93,8 +93,17 @@ for i,yl in enumerate(yls):
     all_cfgs.extend(cfgs)
     
 
+from seesaw.seesaw_bench import get_param_hash
+
+hashes = []
+for cfg in all_cfgs:
+    b,p = cfg
+    hash = get_param_hash(p.json())
+    hashes.append(hash)
+
 cfgdf = pd.DataFrame.from_records([{**p.dict(), **p.index_spec.dict(), **b.dict()} for (b,p) in all_cfgs])
-totals = cfgdf.groupby(['name', 'd_name', 'i_name', 'ground_truth_category', 'sample_id']).size()
+cfgdf = cfgdf.assign(param_hash=hashes)
+totals = cfgdf.groupby(['name', 'd_name', 'i_name', 'ground_truth_category', 'param_hash']).size()
 ## assert no duplicates with same name, other than different categories, or indices
 assert (totals == 1).all()
 
