@@ -22,9 +22,10 @@ from ..rank_loss import ref_pairwise_logistic_loss, ref_pairwise_rank_loss
 import math
 class RegModule(nn.Module):
     def __init__(self, *, dim, xlx_matrix, qvec,
-         label_loss_type, rank_loss_margin=0., 
-         reg_data_lambda=1., reg_norm_lambda=1.,
+         label_loss_type,  
+         reg_data_lambda, reg_norm_lambda, reg_query_lambda,
          use_qvec_norm,
+         rank_loss_margin=0.,
          verbose=False, max_iter=100, lr=1.):
         super().__init__()
         layer = nn.Linear(dim, 1, bias=False)  # use it for initialization           
@@ -38,7 +39,7 @@ class RegModule(nn.Module):
         self.lr = lr
         self.verbose = verbose
 
-#        self.reg_query_lambda = reg_query_lambda
+        self.reg_query_lambda = reg_query_lambda
         self.use_qvec_norm = use_qvec_norm
         self.reg_norm_lambda = reg_norm_lambda
         self.reg_data_lambda = reg_data_lambda
@@ -81,7 +82,6 @@ class RegModule(nn.Module):
         else:
             assert False
 
-        loss_labels = item_losses.sum()/10.
 
         # if self.use_qvec_norm:
         #     normvec = (self.weight - self.qvec)
@@ -92,22 +92,21 @@ class RegModule(nn.Module):
 
         if self.use_qvec_norm:
             loss_norm = (self.weight.norm() - 1)**2
-
-            diffvec = (nweight - self.qvec)
-            loss_queryreg = (diffvec@diffvec)
+            loss_queryreg = (1 - nweight@self.qvec)/2.
         else:
             loss_norm = self.weight.norm()**2
             loss_queryreg = loss_norm*0.
 
         loss_datareg = nweight @ (self.xlx_matrix @ nweight)
+        loss_labels = item_losses.sum()
+        total_loss =  loss_labels + self.reg_data_lambda*loss_datareg + self.reg_norm_lambda*loss_norm + self.reg_query_lambda*loss_queryreg
 
         return {
-            'loss_type':self.label_loss_type,
-            'loss_norm' : loss_norm.detach().item(),
-            'loss_labels': loss_labels.detach().item(),
-            'loss_datareg': loss_datareg.detach().item(),
-            'loss_queryreg': loss_queryreg.detach().item(),
-            'loss': loss_labels + self.reg_data_lambda*loss_datareg + self.reg_norm_lambda*(loss_norm + loss_queryreg),
+            'loss_norm' :  self.reg_norm_lambda*loss_norm,
+            'loss_labels': loss_labels,
+            'loss_datareg': self.reg_data_lambda*loss_datareg,
+            'loss_queryreg': self.reg_query_lambda*loss_queryreg,
+            'loss': total_loss,
         }
     
     def training_step(self, batch, batch_idx):
@@ -161,7 +160,7 @@ class MultiReg(PointBased):
                             reg_data_lambda=self.options['reg_data_lambda'], 
                             reg_norm_lambda=self.options['reg_norm_lambda'],
                             use_qvec_norm=self.options['use_qvec_norm'],
-#                            reg_query_lambda=self.options['reg_query_lambda'], 
+                            reg_query_lambda=self.options['reg_query_lambda'], 
                             verbose=self.options['verbose'], 
                             max_iter=self.options['max_iter'], 
                             lr=self.options['lr'])
