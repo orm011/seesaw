@@ -31,6 +31,35 @@ def ref_signed_inversions(target, *, scores, margin):
     return all_pairs
 
 
+def ref_pairwise_logistic_loss(target, *, scores,  aggregate='none', return_max_inversions=False):
+    ''' target is the right score (can be binary or not)
+        scores are an output
+        
+        y_ij = (target[j] - target[i]).sign()
+        s_ij = score[j] - score[i]
+        
+        hinge_loss = max(0, margin - y_ij * s_ij) # s_ij should be same sign as y_ij, s_ij and there should be a margin betwween them.
+          #( if y_ij is 0, then s_ij is ignored)
+    '''
+    assert target.shape == scores.shape
+    target_ij = (target.reshape(-1,1) - target.reshape(1,-1)).sign() # want -1 or 1 or 0
+    score_ij = (scores.reshape(-1,1) - scores.reshape(1,-1))
+        
+    loss_ij = torch.log(1 + torch.exp(-score_ij*target_ij))
+    loss_ij = (target_ij**2) * loss_ij     ## handle zero scores
+
+    if aggregate == 'none':
+        return loss_ij
+    elif aggregate == 'sum':
+        losses_sum =loss_ij.sum(0)
+        if return_max_inversions:
+            max_inversions = (target_ij != 0).sum(0)
+            return losses_sum, max_inversions
+        else:
+            return losses_sum
+    else:
+        assert False
+
 def ref_pairwise_rank_loss(target, *, scores, margin, aggregate='none', return_max_inversions=False):
     ''' target is the right score (can be binary or not)
         scores are an output

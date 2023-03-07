@@ -17,7 +17,7 @@ import torch.nn.functional as F
 import torch.optim as opt
 
 import torch.nn as nn
-from ..rank_loss import ref_pairwise_rank_loss
+from ..rank_loss import ref_pairwise_logistic_loss, ref_pairwise_rank_loss
 
 import math
 class RegModule(nn.Module):
@@ -30,7 +30,7 @@ class RegModule(nn.Module):
         layer = nn.Linear(dim, 1, bias=False)  # use it for initialization           
         self.weight = nn.Parameter(layer.weight.reshape(-1), requires_grad=True)
 
-        assert label_loss_type in ['ce_loss', 'pairwise_rank_loss']
+        assert label_loss_type in ['ce_loss', 'pairwise_rank_loss', 'pairwise_logistic_loss']
         self.label_loss_type = label_loss_type
         self.xlx_matrix = xlx_matrix
         self.qvec = F.normalize(qvec.reshape(-1), dim=-1)
@@ -72,6 +72,12 @@ class RegModule(nn.Module):
             
             per_item_normalized = per_item_loss/max_inv
             item_losses = per_item_normalized
+        elif self.label_loss_type == 'pairwise_logistic_loss':
+            per_item_loss, max_inv = ref_pairwise_logistic_loss(y, scores=logits, 
+                                aggregate='sum', return_max_inversions=True)
+            
+            per_item_normalized = per_item_loss/max_inv
+            item_losses = per_item_normalized
         else:
             assert False
 
@@ -81,15 +87,17 @@ class RegModule(nn.Module):
         #     normvec = (self.weight - self.qvec)
         # else:
         #     normvec = self.weight
+
+        nweight = F.normalize(self.weight, dim=-1)
+
         if self.use_qvec_norm:
             loss_norm = (self.weight.norm() - 1)**2
 
-            nweight = F.normalize(self.weight, dim=-1)
             diffvec = (nweight - self.qvec)
             loss_queryreg = (diffvec@diffvec)
         else:
             loss_norm = self.weight.norm()**2
-            loss_queryreg = 0.
+            loss_queryreg = loss_norm*0.
 
         loss_datareg = nweight @ (self.xlx_matrix @ nweight)
 
