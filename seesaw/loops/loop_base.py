@@ -81,8 +81,8 @@ class LoopBase:
         y = matchdf.ys.values
         by_image = matchdf.groupby('dbidx').ys.max()
 
-        len_pos = (by_image.y == 1.).sum()
-        len_neg = (by_image.y == 0.).sum()
+        len_pos = (by_image == 1.).sum()
+        len_neg = (by_image == 0.).sum()
 
         if self.params.start_policy == 'from_start':
             assert self.started
@@ -103,6 +103,6 @@ class LoopBase:
         self.started = self.started or start_condition
         if self.started:
             print('start condition met... refinining custom method...')
-            self.refine(change=matchdf)
+            self.refine(change=change)
 
 

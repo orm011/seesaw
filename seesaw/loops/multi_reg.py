@@ -152,8 +152,7 @@ class MultiReg(PointBased):
         self.refine()
 
     def refine(self, change=None):  
-        matchdf = change
-        assert self.q is not None
+        matchdf = self.q.getXy()
         X = self.q.index.vectors[matchdf.index.values]
         y = matchdf.ys.values
 
