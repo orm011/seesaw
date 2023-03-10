@@ -67,20 +67,14 @@ class RegModule(nn.Module):
             if self.label_loss_type == 'ce_loss':
                 weighted_celoss = F.binary_cross_entropy_with_logits(logits, y, weight=weight,
                                             reduction='none', pos_weight=self.pos_weight)        
-                                        reduction='none', pos_weight=self.pos_weight)        
-                                            reduction='none', pos_weight=self.pos_weight)        
                 item_losses = weighted_celoss
             elif self.label_loss_type == 'pairwise_rank_loss':
-                per_item_loss, max_inv = ref_pairwise_rank_loss(y, scores=logits, 
-            per_item_loss, max_inv = ref_pairwise_rank_loss(y, scores=logits, 
                 per_item_loss, max_inv = ref_pairwise_rank_loss(y, scores=logits, 
                                     aggregate='sum',margin=self.rank_loss_margin, return_max_inversions=True)
                 
                 per_item_normalized = per_item_loss/max_inv
                 item_losses = per_item_normalized
             elif self.label_loss_type == 'pairwise_logistic_loss':
-                per_item_loss, max_inv = ref_pairwise_logistic_loss(y, scores=logits, 
-            per_item_loss, max_inv = ref_pairwise_logistic_loss(y, scores=logits, 
                 per_item_loss, max_inv = ref_pairwise_logistic_loss(y, scores=logits, 
                                     aggregate='sum', return_max_inversions=True)
                 
