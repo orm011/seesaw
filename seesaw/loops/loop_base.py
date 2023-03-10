@@ -25,9 +25,11 @@ class LoopBase:
         self.state = LoopState()
         self.q = q
         self.index = self.q.index
-        self.curr_vec = None
+        self.curr_qvec = None
         self.reversal = False # will be modified by session
         self.started = False
+        if self.params.start_policy == 'from_start':
+            self.started = True
 
     def set_reversals(self):
         if not self.reversal:
@@ -38,7 +40,7 @@ class LoopBase:
         return None
 
     def set_text_vec(self, vec):
-        self.curr_vec = vec
+        self.curr_qvec = vec
 
     def _next_batch_curr_vec(self, vec):
         rescore_m = lambda vecs: vecs @ vec.reshape(-1, 1)
@@ -64,7 +66,7 @@ class LoopBase:
             return self.next_batch()
         else:
             print('start not yet met. next batch using default...')
-            return self._next_batch_curr_vec(vec=self.curr_vec)
+            return self._next_batch_curr_vec(vec=self.curr_qvec)
 
     def next_batch(self):
         ''' meant to be called  only here'''
