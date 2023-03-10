@@ -1,7 +1,5 @@
 #from seesaw.seesaw_session import get_subset
 from seesaw.query_interface import LabelDB
-from seesaw.indices.multiscale.multiscale_index import get_pos_negs_all_v2
-from seesaw.seesaw_bench import fill_imdata
 
 from sklearn.metrics import average_precision_score, roc_auc_score, ndcg_score
 import numpy as np
