@@ -10,39 +10,46 @@ class BasicTrainer:
 
     def fit(self, train_loader):
         self.mod.train()
+
+        batch = (None,None)
+        batch_idx = None
+
+        loss_history = []
         def closure():
             self.opt.zero_grad()
-            ret = self.mod.training_step(batch, batch_idx)
-            
+            ret = self.mod.training_step(batch, batch_idx)            
             weight = self.opt._params[0]
             prev_grad = torch.zeros_like(weight)
 
             if self.verbose:
+                entry = []
                 for (k,v) in ret.items():
                     if k == 'loss':
                         continue
                     
                     v.backward(retain_graph=True)
                     grad_change = (weight.grad - prev_grad)
-                    if self.verbose:
-                        print(f'{k=} {v.detach().item()=} {grad_change.norm()=}')
+                    entry.append({'k':k, 'loss':v.detach().item(), 'grad_norm':grad_change.norm().item()})
                     prev_grad = weight.grad.clone()
 
+                loss_history.extend(entry)
                 self.opt.zero_grad()
 
             ret['loss'].backward()
 
             if self.verbose:
-                ## check the grad from calling one by one is the same as the total grad accumulated?
-                pass
-                
+                assert torch.isclose(weight.grad, prev_grad, atol=1e-5).all(), f'{weight.grad.norm()=} {prev_grad.norm()=}'
+
             return ret['loss']
 
         for _ in range(self.max_epochs):
-            for batch_idx, batch in enumerate(train_loader):
+            if train_loader is not None:
+                for batch_idx, batch in enumerate(train_loader):
+                    self.opt.step(closure)
+            else:
                 self.opt.step(closure)
 
-        return None
+        return loss_history
 
     def validate(self, dataloader):
         self.mod.eval()

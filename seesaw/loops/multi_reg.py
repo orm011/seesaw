@@ -60,34 +60,35 @@ class RegModule(nn.Module):
         else:
             assert len(batch) == 3
             X,y,weight = batch
-            
-        logits = self(X, y)
-        loss_labels= None
-        if self.label_loss_type == 'ce_loss':
-            weighted_celoss = F.binary_cross_entropy_with_logits(logits, y, weight=weight,
+
+        item_losses = (0. * self.weight).sum()
+        if X is not None:            
+            logits = self(X, y)
+            if self.label_loss_type == 'ce_loss':
+                weighted_celoss = F.binary_cross_entropy_with_logits(logits, y, weight=weight,
+                                            reduction='none', pos_weight=self.pos_weight)        
                                         reduction='none', pos_weight=self.pos_weight)        
-            item_losses = weighted_celoss
-        elif self.label_loss_type == 'pairwise_rank_loss':
+                                            reduction='none', pos_weight=self.pos_weight)        
+                item_losses = weighted_celoss
+            elif self.label_loss_type == 'pairwise_rank_loss':
+                per_item_loss, max_inv = ref_pairwise_rank_loss(y, scores=logits, 
             per_item_loss, max_inv = ref_pairwise_rank_loss(y, scores=logits, 
-                                aggregate='sum',margin=self.rank_loss_margin, return_max_inversions=True)
-            
-            per_item_normalized = per_item_loss/max_inv
-            item_losses = per_item_normalized
-        elif self.label_loss_type == 'pairwise_logistic_loss':
+                per_item_loss, max_inv = ref_pairwise_rank_loss(y, scores=logits, 
+                                    aggregate='sum',margin=self.rank_loss_margin, return_max_inversions=True)
+                
+                per_item_normalized = per_item_loss/max_inv
+                item_losses = per_item_normalized
+            elif self.label_loss_type == 'pairwise_logistic_loss':
+                per_item_loss, max_inv = ref_pairwise_logistic_loss(y, scores=logits, 
             per_item_loss, max_inv = ref_pairwise_logistic_loss(y, scores=logits, 
-                                aggregate='sum', return_max_inversions=True)
-            
-            per_item_normalized = per_item_loss/max_inv
-            item_losses = per_item_normalized
-        else:
-            assert False
-
-
-        # if self.use_qvec_norm:
-        #     normvec = (self.weight - self.qvec)
-        # else:
-        #     normvec = self.weight
-
+                per_item_loss, max_inv = ref_pairwise_logistic_loss(y, scores=logits, 
+                                    aggregate='sum', return_max_inversions=True)
+                
+                per_item_normalized = per_item_loss/max_inv
+                item_losses = per_item_normalized
+            else:
+                assert False
+        
         nweight = F.normalize(self.weight, dim=-1)
 
         if self.use_qvec_norm:
@@ -120,17 +121,21 @@ class RegModule(nn.Module):
     def configure_optimizers(self):
         return opt.LBFGS(self.parameters(), max_iter=self.max_iter, lr=self.lr, line_search_fn='strong_wolfe')
 
-    def fit(self, X, y):
-        trainer_ = BasicTrainer(mod=self, max_epochs=1)
-        Xmu = X.mean(axis=0)
-        X = X - Xmu.reshape(1,-1) # center this
-        ds = TensorDataset(torch.from_numpy(X), torch.from_numpy(y))
-        dl = DataLoader(ds, batch_size=X.shape[0], shuffle=True)
+        trainer_ = BasicTrainer(mod=self, max_epochs=1, verbose=self.verbose)
+
+        if X.shape[0] > 0:
+            Xmu = X.mean(axis=0)
+            X = X - Xmu.reshape(1,-1) # center this
+            ds = TensorDataset(torch.from_numpy(X), torch.from_numpy(y))
+            dl = DataLoader(ds, batch_size=X.shape[0], shuffle=True)
+        else:
+            dl= None
 
         losses_ = trainer_.fit(dl)
         if self.verbose:
-            for ret in losses_:
-                print(ret)
+            df = pd.DataFrame.from_records(losses_)
+            agg_df= df.groupby('k').mean()
+            print(agg_df)
         return losses_
     
 
@@ -147,6 +152,8 @@ class MultiReg(PointBased):
 
     def set_text_vec(self, tvec):
         super().set_text_vec(tvec)
+        ## run optimization based on regularization losses
+        self.refine()
 
     def refine(self, change=None):  
         X,y = self.q.getXy()      
@@ -154,7 +161,7 @@ class MultiReg(PointBased):
         assert (y.shape[0] - y.sum()) > 0
         assert self.state.tvec is not None
 
-        model_ = RegModule(dim=X.shape[1], xlx_matrix=self.xlx_matrix, qvec=torch.from_numpy(self.state.tvec).float(), 
+        model_ = RegModule(dim=X.shape[1], xlx_matrix=self.xlx_matrix, qvec=torch.from_numpy(self.curr_qvec).float(), 
                             label_loss_type=self.options['label_loss_type'], 
                             rank_loss_margin=self.options['rank_loss_margin'], 
                             reg_data_lambda=self.options['reg_data_lambda'], 
