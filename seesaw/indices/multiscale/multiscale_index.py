@@ -338,51 +338,19 @@ def get_boxes(vec_meta):
 
 from seesaw.box_utils import left_iou_join
 
-def get_pos_negs_all_v3(label_db: LabelDB, vec_meta: pd.DataFrame):
+def match_labels_to_vectors(label_db: LabelDB, vec_meta: pd.DataFrame):
+    ''' given a set of box labels, and a vector index with box info, 
+        for each vector in an image, find the maximum label overlap with it
+        and use that as a score.
+
+    '''
     idxs = label_db.get_seen()
     vec_meta = vec_meta[vec_meta.dbidx.isin(idxs)]
     boxdf = label_db.get_box_df()
     vec_meta_new = left_iou_join(vec_meta, boxdf)
+
     vec_meta_new = vec_meta_new.assign(ys = (vec_meta_new.max_iou > 0).astype('float'))
-    pos = vec_meta_new.index[vec_meta_new.ys > 0].values
-    neg = vec_meta_new.index[vec_meta_new.ys == 0].values
-    return pos, neg
-
-def get_pos_negs_all_v2(label_db: LabelDB, vec_meta: pd.DataFrame):
-    idxs = label_db.get_seen()
-    pos = [np.array([], dtype=vec_meta.index.values.dtype)]
-    neg = [np.array([], dtype=vec_meta.index.values.dtype)]
-    
-    vec_meta = vec_meta[vec_meta.dbidx.isin(idxs)]
-
-    for idx, acc_vecs in vec_meta.groupby('dbidx'):
-        label_boxes = label_db.get(idx, format="df")
-        if label_boxes.shape[0] == 0:
-            ## every vector is a negative example in this case
-            neg.append(acc_vecs.index.values)
-            pos.append(np.array([], dtype=acc_vecs.index.values.dtype))
-
-        ious = box_iou(label_boxes, acc_vecs)
-        total_iou = ious.sum(axis=0)
-        negatives = total_iou == 0
-        negvec_positions = acc_vecs.index[negatives].values
-
-        # get the highest iou positives for each
-        max_ious_id = np.argmax(ious, axis=1)
-        max_ious = np.max(ious, axis=1)
-
-        pos_idxs = pr.BitMap(max_ious_id[max_ious > 0])
-        # if label_boxes.shape[0] > 0: # some boxes are size 0 bc. of some bug in the data, so don't assert here.
-        #     assert len(pos_idxs) > 0
-
-        posvec_positions = acc_vecs.index[pos_idxs].values
-        pos.append(posvec_positions)
-        neg.append(negvec_positions)
-
-    posidxs = pr.BitMap(np.concatenate(pos))
-    negidxs = pr.BitMap(np.concatenate(neg))
-    return posidxs, negidxs
-
+    return vec_meta_new
 
 def build_index(vecs, file_name):
     t = annoy.AnnoyIndex(512, "dot")
@@ -723,24 +691,14 @@ def add_iou_score(box_df: pd.DataFrame, roi_box_df: pd.DataFrame):
 class BoxFeedbackQuery(InteractiveQuery):
     def __init__(self, db):
         super().__init__(db)
-        # self.acc_pos = []
-        # self.acc_neg = []
+        assert self.index is not None
 
     def getXy(self, get_positions=False):
-        pos, neg = get_pos_negs_all_v3(self.label_db, self.index.vector_meta)
+        matched_df = match_labels_to_vectors(self.label_db, self.index.vector_meta)
+    
         if get_positions:
+            pos = matched_df.index[matched_df.ys > 0].values
+            neg = matched_df.index[matched_df.ys == 0].values
             return pos, neg
-
-        ## we are currently ignoring these positives
-        # self.acc_pos.append(batchpos)
-        # self.acc_neg.append(batchneg)
-        # pos = pr.BitMap.union(*self.acc_pos)
-        # neg = pr.BitMap.union(*self.acc_neg)
-
-        allpos = self.index.vectors[pos]
-        Xt = np.concatenate([allpos, self.index.vectors[neg]])
-        yt = np.concatenate([np.ones(len(allpos)), np.zeros(len(neg))])
-        return Xt, yt
-        # not really valid. some boxes are area 0. they should be ignored.but they affect qgt
-        # if np.concatenate(acc_results).sum() > 0:
-        #    assert len(pos) > 0
+        else:
+            return matched_df[['dbidx', 'ys', 'max_iou']]
