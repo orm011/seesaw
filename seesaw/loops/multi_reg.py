@@ -18,6 +18,7 @@ import torch.optim as opt
 
 import torch.nn as nn
 from ..rank_loss import ref_pairwise_logistic_loss, ref_pairwise_rank_loss
+import pandas as pd
 
 import math
 class RegModule(nn.Module):
@@ -115,6 +116,7 @@ class RegModule(nn.Module):
     def configure_optimizers(self):
         return opt.LBFGS(self.parameters(), max_iter=self.max_iter, lr=self.lr, line_search_fn='strong_wolfe')
 
+    def fit(self, X, y, matchdf):
         trainer_ = BasicTrainer(mod=self, max_epochs=1, verbose=self.verbose)
 
         if X.shape[0] > 0:
@@ -150,10 +152,12 @@ class MultiReg(PointBased):
         self.refine()
 
     def refine(self, change=None):  
-        X,y = self.q.getXy()      
-        assert y.sum() > 0
-        assert (y.shape[0] - y.sum()) > 0
-        assert self.state.tvec is not None
+        matchdf = change
+        assert self.q is not None
+        X = self.q.index.vectors[matchdf.index.values]
+        y = matchdf.ys.values
+
+        assert self.curr_qvec is not None
 
         model_ = RegModule(dim=X.shape[1], xlx_matrix=self.xlx_matrix, qvec=torch.from_numpy(self.curr_qvec).float(), 
                             label_loss_type=self.options['label_loss_type'], 
@@ -166,7 +170,7 @@ class MultiReg(PointBased):
                             max_iter=self.options['max_iter'], 
                             lr=self.options['lr'])
 
-        model_.fit(X,y)
+        model_.fit(X, y, matchdf)
         self.curr_vec = model_.get_coeff()
 
     def next_batch(self):

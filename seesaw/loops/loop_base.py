@@ -72,29 +72,37 @@ class LoopBase:
         ''' meant to be called  only here'''
         raise NotImplementedError('implement me in subclass')
 
-    def refine_wrapper(self, *args, **kwargs):
-        print('start condition met... refinining custom method...')
-        self.started = True
-        self.refine(*args, **kwargs)
-
     def refine(self, change=None):
         raise NotImplementedError('implement me in subclass')
 
     def refine_external(self, change=None):
+        matchdf = self.q.getXy()
+        X = self.q.index.vectors[matchdf.index.values]
+        y = matchdf.ys.values
+        by_image = matchdf.groupby('dbidx').ys.max()
+
+        len_pos = (by_image.y == 1.).sum()
+        len_neg = (by_image.y == 0.).sum()
+
         if self.params.start_policy == 'from_start':
-            self.refine_wrapper(change)
+            assert self.started
+            start_condition = True
+        elif self.params.start_policy == 'after_first_batch':
+            start_condition = (len_pos + len_neg ) > 0
         elif self.params.start_policy == 'after_first_positive':
-            pos, _ = self.q.getXy(get_positions=True)
-            if len(pos) > 0: ## for now, stick to clip until found one positive result
-                self.refine_wrapper(change)
+            start_condition = len_pos > 0
+        elif self.params.start_policy == 'after_first_negative':
+            start_condition = len_neg > 0
         elif self.params.start_policy == 'after_first_positive_and_negative':
-            pos, neg = self.q.getXy(get_positions=True)
-            if len(pos) > 0 and len(neg) > 0: ## for now, stick to clip until found one positive result
-                self.refine_wrapper(change)
+            start_condition = (len_pos > 0) and (len_neg  > 0)        
         elif self.params.start_policy == 'after_first_reversal':
-            if self.reversal:
-                pos, neg = self.q.getXy(get_positions=True)
-                assert len(pos) > 0 and len(neg) > 0
-                self.refine_wrapper(change)
+            start_condition = self.reversal
         else:
-            assert False
+            assert False, 'policy not implemented'
+
+        self.started = self.started or start_condition
+        if self.started:
+            print('start condition met... refinining custom method...')
+            self.refine(change=matchdf)
+
+
