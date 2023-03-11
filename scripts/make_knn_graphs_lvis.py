@@ -4,14 +4,15 @@ import ray
 ray.init('auto', namespace='seesaw')
 from seesaw.dataset_manager import GlobalDataManager
 from seesaw.knn_graph import KNNGraph, compute_knn_from_nndescent, factor_neighbors
+from seesaw.vector_index import build_annoy_idx
 from seesaw.util import reset_num_cpus
 
 
 root = '/home/gridsan/omoll/fastai_shared/omoll/seesaw_root2/'
 gdm = GlobalDataManager(root)
-dataset_name = 'objectnet'
+dataset_name = 'lvis'
 ds = gdm.get_dataset(dataset_name)
-subset_name = 'class_subset2'
+#subset_name = 'class_subset2'
 #subset_name = 'small_sample'
 idxname = 'multiscalemed'
 _ = ds.load_index(idxname, options=dict(use_vec_index=False))
@@ -55,20 +56,22 @@ class KNNMaker:
                 ds = ds.load_subset(subset_name)
 
             index = ds.load_index(index_name, options=dict(use_vec_index=False))
-            build_and_save_knng(index, knng_name=knng_name, n_neighbors=n_neighbors, 
-                    num_cpus=self.num_cpus, low_memory=False)
+            
+            build_annoy_idx(vecs=index.vectors, output_path=index.path + '/vectors.annoy', n_trees=10)
+            # build_and_save_knng(index, knng_name=knng_name, n_neighbors=n_neighbors, 
+            #         num_cpus=self.num_cpus, low_memory=False)
             
            # build_div_knng(index, knng_name=knng_name, n_within_frame=10)
         return batch
 
-# combinations = []
-# for dataset_name in (dataset_name,):
-#     for index_name in (idxname,):
-#         for category in qgt.columns.values:
-#             combinations.append((dataset_name, index_name, category))
+combinations = []
+for dataset_name in (dataset_name,):
+    for index_name in (idxname,):
+        for category in qgt.columns.values:
+            combinations.append((dataset_name, index_name, category))
 
-combinations = [ #('bdd', idxname, None), ('lvis', idxname, None), 
-                ('objectnet', idxname, subset_name)]
+# combinations = [ #('bdd', idxname, None), ('lvis', idxname, None), 
+#                 ('objectnet', idxname, subset_name)]
 
 # all_subsets = qgt.columns.values
 ds = ray.data.from_items(combinations, parallelism=min(len(combinations), 100))
