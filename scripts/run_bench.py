@@ -77,7 +77,7 @@ for i,yl in enumerate(yls):
 
     if args.dryrun: # limit size of benchmark and classes per dataset
         shared_bench_params['n_batches'] = args.dryrun_max_iter
-        shared_bench_params['max_results'] = 10
+        shared_bench_params['max_results'] = args.dryrun_max_iter
 
         cfgs = generate_benchmark_configs(
             gdm,
