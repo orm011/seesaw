@@ -11,7 +11,7 @@ class BasicTrainer:
     def fit(self, train_loader):
         self.mod.train()
 
-        batch = (None,None)
+        batch = (None,None,)
         batch_idx = None
 
         loss_history = []
