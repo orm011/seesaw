@@ -28,7 +28,9 @@ def knn_kernel(edist=2.1):
 
     return kernel
 
-def get_weight_matrix(df, *, kfun, self_edges, normalized, laplacian=False, symmetric=True) -> sp.csr_array:
+def get_weight_matrix(df, *, kfun, self_edges=False, normalized, laplacian=False, symmetric=True) -> sp.csr_array:
+    assert not self_edges
+
     n = df.src_vertex.unique().shape[0]
     
 
@@ -68,31 +70,37 @@ def get_weight_matrix(df, *, kfun, self_edges, normalized, laplacian=False, symm
     else:
         out_w = weight_mat
 
-    if not self_edges:
-        out_w.setdiag(0.) # mutates out_w
+    out_w.setdiag(0.) # mutates out_w
+
+    assert np.isclose(out_w.diagonal(), 0., atol=1e-5).all()
     
-    if normalized:
-        assert symmetric
-        ## D^-1/2 @ W @ D^-1/2
-        Dvec = out_w.sum(axis=-1).reshape(-1)
-        sqrt_invDmat = sp.coo_array( (1./np.sqrt(Dvec), (diag_iis, diag_iis)), shape=(n,n) )
-        tmp = out_w.tocsr() @ sqrt_invDmat.tocsc() # type csr
-        out_w = sqrt_invDmat.tocsr() @ tmp.tocsc()
-            
-    if symmetric:
-        assert np.isclose(out_w.sum(axis=0), out_w.sum(axis=1)).all(), 'expect symmetric in any scenario'
-
-
+    D = out_w.sum(axis=0)
+    assert (D > 0).all(), 'no zero degree nodes allowed'
+    
     if laplacian:
+        assert symmetric
         assert not self_edges, 'unknown meaning of this parameter combination'
-        D = out_w.sum(axis=1)
-        out_w.setdiag(-D)
+
         out_w = -out_w
+        out_w.setdiag(D)
+        assert np.isclose(out_w.sum(0) , 0).all()
+        assert np.isclose(out_w.diagonal(), D).all()
+
+        if normalized:
+            ## D^-1/2 @ L @ D^-1/2
+            sqrt_inv_Dmat = sp.coo_array( (1./np.sqrt(D.reshape(-1)), (diag_iis, diag_iis)), shape=(n,n) )
+            out_w = sqrt_inv_Dmat @ (out_w @ sqrt_inv_Dmat) 
 
     out_w = out_w.tocsr()
     out_w.sum_duplicates()
     out_w.sort_indices()
     assert out_w.has_sorted_indices    
+
+    if symmetric:
+        assert np.isclose(out_w.sum(axis=0), out_w.sum(axis=1)).all(), 'expect symmetric in any scenario'
+
+    
+
     return out_w
     
 def edge_loss(laplacian_m, labels):
