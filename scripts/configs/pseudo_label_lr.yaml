@@ -1,12 +1,12 @@
 datasets:
-  - name: bdd
+#  - name: bdd
   # #   # categories:
   # #   #   - trailer
   # #   #   - train
   # #   # - wheelchair
-  - name: coco
+#  - name: coco
   - name: lvis
-  - name: objectnet
+#  - name: objectnet
     #subset: small_sample
     #subset: class_subset2
     # categories:
@@ -38,8 +38,8 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    # - name: baseline
-    #   interactive: plain
+    - name: baseline
+      interactive: plain
 #     - name: lknn
 #       max_samples: 20
 #       interactive: lknn
@@ -106,7 +106,7 @@ variants:
     #       choose: [-0.4]
     #     prior_weight: 
     #       choose: [0.] # good for unnormalized
-    
+
     ### want: 
       ## - plain log reg
       ## + norm reg.
@@ -167,44 +167,11 @@ variants:
       #     choose: [after_first_positive_and_negative]
       # start_policy: after_first_reversal
       start_policy: 
-        choose: [from_start, after_first_negative, after_first_batch]
+        choose: [after_first_batch]
       interactive_options:
 #        label_loss_type: pairwise_logistic_loss
         label_loss_type: 
-            choose: [ce_loss]
-        rank_loss_margin: .2
-        reg_data_lambda:
-            choose: [3000.]
-        use_qvec_norm: True
-        reg_norm_lambda:
-            choose: [300.]
-        reg_query_lambda: 
-            choose: [30.]
-        verbose: False
-        max_iter: 200
-        lr: 1.
-        matrix_options:
-          knn_path: nndescent60
-          symmetric: True
-          self_edges: False
-          normalized_weights: 
-              choose: [False]
-          knn_k: 
-            choose: [10]
-          edist: 
-            choose: [.05]
-    - name: multi_reg
-      max_samples: 20
-      interactive: multi_reg
-      # start_policy:
-      #     choose: [after_first_positive_and_negative]
-      # start_policy: after_first_reversal
-      start_policy: 
-          choose: [from_start, after_first_negative, after_first_batch]
-      interactive_options:
-#        label_loss_type: pairwise_logistic_loss
-        label_loss_type: 
-            choose: [ce_loss]
+            choose: [ce_loss, pairwise_logistic_loss]
         rank_loss_margin: .2
         reg_data_lambda:
             choose: [1000.]
@@ -215,16 +182,19 @@ variants:
             choose: [10.]
         verbose: False
         max_iter: 200
+        pos_weight: 
+          choose: ['balanced']
         lr: 1.
         matrix_options:
           knn_path: nndescent60
           symmetric: True
           self_edges: False
-          normalized_weights: False
+          normalized_weights: 
+              choose: [False]
           knn_k: 
             choose: [10]
           edist: 
-            choose: [.05]
+            choose: [.03]
 #     - name: multi_reg
 #       max_samples: 20
 #       interactive: multi_reg
