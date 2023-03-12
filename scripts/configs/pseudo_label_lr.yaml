@@ -1,12 +1,12 @@
 datasets:
-#  - name: bdd
+ - name: bdd
   # #   # categories:
   # #   #   - trailer
   # #   #   - train
   # #   # - wheelchair
-#  - name: coco
-  - name: lvis
-#  - name: objectnet
+ - name: coco
+ - name: lvis
+ - name: objectnet
     #subset: small_sample
     #subset: class_subset2
     # categories:
@@ -167,19 +167,19 @@ variants:
       #     choose: [after_first_positive_and_negative]
       # start_policy: after_first_reversal
       start_policy: 
-        choose: [after_first_batch]
+        choose: [ after_first_batch ]
       interactive_options:
 #        label_loss_type: pairwise_logistic_loss
-        label_loss_type: 
-            choose: [ce_loss, pairwise_logistic_loss]
+        label_loss_type:
+            choose: [ ce_loss ]
         rank_loss_margin: .2
         reg_data_lambda:
-            choose: [1000.]
-        use_qvec_norm: True
+            choose: [ 1000., 0. ]
+        use_qvec_norm: None
         reg_norm_lambda:
-            choose: [100.]
+            choose: [ 100., 10. ]
         reg_query_lambda: 
-            choose: [10.]
+            choose: [ 10., 0  ]
         verbose: False
         max_iter: 200
         pos_weight: 
