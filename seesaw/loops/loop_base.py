@@ -44,6 +44,7 @@ class LoopBase:
 
     def _next_batch_curr_vec(self, vec):
         rescore_m = lambda vecs: vecs @ vec.reshape(-1, 1)
+        assert not np.isnan(vec).any(), f'NaN in query vector {vec=}'
 
         b = self.q.query_stateful(
             vector=vec,

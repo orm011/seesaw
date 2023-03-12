@@ -56,6 +56,8 @@ class RegModule(nn.Module):
         return X @ self.weight
     
     def _step(self, batch):
+        assert not self.weight.isnan().any(), f'{self.weight=}'
+
         if len(batch) == 2:                
             X,y=batch # note y can be a floating point
             if y is None:
@@ -69,7 +71,9 @@ class RegModule(nn.Module):
 
         item_losses = (0. * self.weight).sum()
         if X is not None:            
-            item_losses = torch.zeros_like(sample_weight) 
+            assert not y.isnan().any()
+            assert not X.isnan().any()
+            assert not sample_weight.isnan().any()
 
             logits = self(X, y)
             orig_sum = sample_weight.sum()
@@ -120,11 +124,7 @@ class RegModule(nn.Module):
             loss_queryreg = loss_norm*0.
 
         loss_labels = item_losses.sum()
-        loss_datareg = self.reg_data_lambda*(nweight @ (self.xlx_matrix @ nweight))
-        loss_norm = self.reg_norm_lambda*loss_norm
-        loss_queryreg = self.reg_query_lambda*loss_queryreg
-        total_loss =  loss_labels + loss_datareg + loss_norm + loss_queryreg
-        return {
+        ans =  {
             'loss_norm' : loss_norm,
             'loss_labels': loss_labels,
             'loss_datareg': loss_datareg,
@@ -132,6 +132,8 @@ class RegModule(nn.Module):
             'loss': total_loss,
         }
     
+        assert not total_loss.isnan(), f'{ans=}'
+        return ans
     def training_step(self, batch, batch_idx):
         losses = self._step(batch)       
         return losses
