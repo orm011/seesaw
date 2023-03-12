@@ -19,8 +19,8 @@ import torch.optim as opt
 import torch.nn as nn
 from ..rank_loss import ref_pairwise_logistic_loss, ref_pairwise_rank_loss
 import pandas as pd
-
 import math
+
 class RegModule(nn.Module):
     def __init__(self, *, dim, xlx_matrix, qvec,
          label_loss_type,  
@@ -30,13 +30,16 @@ class RegModule(nn.Module):
          pos_weight,
          verbose=False, max_iter=100, lr=1.):
         super().__init__()
-        layer = nn.Linear(dim, 1, bias=False)  # use it for initialization           
-        self.weight = nn.Parameter(layer.weight.reshape(-1), requires_grad=True)
 
         assert label_loss_type in ['ce_loss', 'pairwise_rank_loss', 'pairwise_logistic_loss']
         self.label_loss_type = label_loss_type
         self.xlx_matrix = xlx_matrix
+        assert not math.isclose(qvec.norm().item() , 0.)
+
         self.qvec = F.normalize(qvec.reshape(-1), dim=-1)
+        self.weight = nn.Parameter(self.qvec.clone(), requires_grad=True)
+        assert not self.weight.isnan().any()
+
         self.max_iter = max_iter
         self.lr = lr
         self.verbose = verbose
@@ -63,21 +66,26 @@ class RegModule(nn.Module):
             if y is None:
                 sample_weight = None
             else:
+
                 sample_weight = torch.ones_like(y)
         elif len(batch) == 3:
             X,y,sample_weight = batch
         else:
             assert False
 
-        item_losses = (0. * self.weight).sum()
-        if X is not None:            
+        sample_weight = sample_weight.float()
+        item_losses = self.weight.sum()*0
+        if X is not None:
             assert not y.isnan().any()
             assert not X.isnan().any()
             assert not sample_weight.isnan().any()
 
+            item_losses = self.weight.sum()*torch.zeros_like(sample_weight)
+
             logits = self(X, y)
             orig_sum = sample_weight.sum()
-            pos_total = y@sample_weight
+            assert orig_sum > 0
+            pos_total = (y == 1).float()@sample_weight
             neg_total = orig_sum - pos_total
             if self.label_loss_type == 'ce_loss':
                 if self.pos_weight == 'balanced':
@@ -114,26 +122,28 @@ class RegModule(nn.Module):
 
             item_losses *= sample_weight
         
-        nweight = F.normalize(self.weight, dim=-1)
+        normalized_weight = F.normalize(self.weight, dim=-1)
 
-        if self.use_qvec_norm:
-            loss_norm = (self.weight.norm() - 1)**2
-            loss_queryreg = (1 - nweight@self.qvec)/2.
-        else:
-            loss_norm = self.weight.norm()**2
-            loss_queryreg = loss_norm*0.
 
+        #loss_norm = (self.weight.norm() - 1)**2
+        loss_norm = self.reg_norm_lambda *  ( torch.cosh( (self.weight @ self.weight).log() ) - 1. )
+        loss_datareg = self.reg_data_lambda * ( self.weight @ ( self.xlx_matrix @ self.weight ) )
+        loss_queryreg = self.reg_query_lambda * ( ( 1 - normalized_weight@self.qvec )/2. )
         loss_labels = item_losses.sum()
+
+        total_loss = loss_labels + loss_datareg + loss_norm + loss_queryreg
+
         ans =  {
             'loss_norm' : loss_norm,
-            'loss_labels': loss_labels,
             'loss_datareg': loss_datareg,
             'loss_queryreg': loss_queryreg,
+            'loss_labels': loss_labels,
             'loss': total_loss,
         }
-    
+
         assert not total_loss.isnan(), f'{ans=}'
         return ans
+    
     def training_step(self, batch, batch_idx):
         losses = self._step(batch)       
         return losses
@@ -184,7 +194,10 @@ class MultiReg(PointBased):
     def set_text_vec(self, tvec):
         super().set_text_vec(tvec)
         ## run optimization based on regularization losses
-        self.refine()
+        if self.options['reg_data_lambda'] > 0 and self.options['reg_query_lambda'] > 0 and self.started: # not well defined otherwise
+            self.refine()
+        else:
+            self.curr_vec = self.curr_qvec
 
     def refine(self, change=None):  
         matchdf = self.q.getXy()
