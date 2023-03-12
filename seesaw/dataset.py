@@ -374,6 +374,7 @@ def create_dataset(image_src, output_path, paths=[]) -> SeesawDataset:
 ## 2. change read path to use this rather than gdm to figure out where to read.
 #### it makes it easy to handle subsets of other datasets if we want to try that (eg making classes rarer)
 import pyroaring as pr
+from seesaw.vector_index import VectorIndex
 
 class SeesawDatasetSubset(BaseDataset):
     def __init__(self, parent_dataset, file_meta, path=None):
@@ -400,20 +401,22 @@ class SeesawDatasetSubset(BaseDataset):
         child_indices = os.listdir(f'{self.path}/indices/')
         return set(parent_indices + child_indices)
 
-    def load_index(self, index_name, *, options):        
+    def load_index(self, index_name, *, options):
         if index_name in self.parent.list_indices():
             parent_index = self.parent.load_index(index_name, options=options)
             subset = parent_index.subset(self.dbidxs)
             ## make the path work for other stuff
             subset.path = f'{self.path}/indices/{index_name}/'
+
+            if options.get('use_vec_index', False):
+                fullpath = f"{subset.path}/vectors.annoy"
+                if os.path.exists(fullpath):
+                    print(f'found subset vec index at "{fullpath}"... loading')    
+                    vec_index = VectorIndex(load_path=fullpath, prefault=True)
+                    subset.vec_index = vec_index        
             return subset
         else:
             raise NotImplementedError
-        ## if there is a parent index and also a local structure,
-        ## we want to compute the parent index vectors, 
-        ## but we also want to return the local subset structures.
-        ## we can do this by constructing the index explicitly.
-        ## we have two types of indices though.
 
     def load_ground_truth(self):
         boxes, qgt = self.parent.load_ground_truth()

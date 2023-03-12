@@ -634,11 +634,6 @@ class MultiscaleIndex(AccessMethod):
         mask = self.vector_meta.dbidx.isin(indices)
         if mask.all():
             return self
-        else:
-            if self.vec_index is not None:
-                print(
-                    "warning: after subsetting we lose ability to use pre-built index"
-                )
 
         vector_meta = self.vector_meta[mask].reset_index(drop=True)
         vectors = self.vectors[mask]
