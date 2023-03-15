@@ -34,3 +34,4 @@ node_modules
 seesaw.spc.conf
 .gitignore
 seesaw.spc.conf.1
+.Rproj.user
