@@ -14,7 +14,7 @@ dataset_name = 'lvis'
 ds = gdm.get_dataset(dataset_name)
 #subset_name = 'class_subset2'
 #subset_name = 'small_sample'
-idxname = 'multiscalemed'
+idxname = 'multiscalecoarse'
 _ = ds.load_index(idxname, options=dict(use_vec_index=False))
 _, qgt = ds.load_ground_truth()
 import pyroaring as pr
@@ -65,11 +65,13 @@ class KNNMaker:
         return batch
 
 combinations = []
-for dataset_name in (dataset_name,):
+for dataset_name in ('lvis',):
     for index_name in (idxname,):
         for category in qgt.columns.values:
             combinations.append((dataset_name, index_name, category))
 
+
+combinations = [('bdd', idxname, None), ('lvis', idxname, None)] + combinations
 # combinations = [ #('bdd', idxname, None), ('lvis', idxname, None), 
 #                 ('objectnet', idxname, subset_name)]
 
