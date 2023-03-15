@@ -20,11 +20,11 @@ shared_session_params: # see SessionParams
   batch_size: 1 
   shortlist_size: 50
   index_options: 
-    use_vec_index: True # for bdd and coco.
+    use_vec_index: True
   index_spec : 
-      i_name: multiscalemed
+      #i_name: multiscalemed
       # c_name: small_sample
-#      i_name: multiscalecoarse
+     i_name: multiscalecoarse
       # i_name: coarse
   agg_method: plain_score
   # agg_method: avg_score
@@ -38,8 +38,8 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    - name: baseline
-      interactive: plain
+    # - name: baseline
+    #   interactive: plain
 #     - name: lknn
 #       max_samples: 20
 #       interactive: lknn
@@ -174,12 +174,12 @@ variants:
             choose: [ ce_loss ]
         rank_loss_margin: .2
         reg_data_lambda:
-            choose: [ 1000., 0. ]
+            choose: [ 1000., 0 ]
         use_qvec_norm: None
         reg_norm_lambda:
-            choose: [ 100., 10. ]
+            choose: [ 100., 0 ] 
         reg_query_lambda: 
-            choose: [ 10., 0  ]
+            choose: [ 10. , 0 ]
         verbose: False
         max_iter: 200
         pos_weight: 
