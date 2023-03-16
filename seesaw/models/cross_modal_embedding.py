@@ -1,4 +1,4 @@
-import pytorch_lightning as pl
+#import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import numpy as np
@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data import random_split
 from torchvision import transforms as T
-from pytorch_lightning.loggers import TensorBoardLogger
+#from pytorch_lightning.loggers import TensorBoardLogger
 
 import sklearn
 from sklearn.neighbors import NearestNeighbors, KNeighborsRegressor
@@ -144,7 +144,7 @@ class KVMapping(nn.Module):
         return self.Vmap(weights)  # size B,v_size
 
 
-class TextImageCrossModal(pl.LightningModule):
+class TextImageCrossModal(nn.Module):
     def __init__(self, caption_vec_size, image_vec_size, n_keys, cm_val):
         super().__init__()
         self.save_hyperparameters("caption_vec_size", "image_vec_size", "n_keys")

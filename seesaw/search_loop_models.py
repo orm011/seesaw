@@ -14,7 +14,6 @@ import pandas as pd
 import numpy as np
 
 import os
-import pytorch_lightning as pl
 from .pairwise_rank_loss import compute_inversions
 
 

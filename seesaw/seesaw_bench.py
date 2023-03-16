@@ -1,14 +1,14 @@
 import random
 import copy
 
-from .search_loop_models import *
+#from .search_loop_models import *
 from .search_loop_tools import *
 
 from .dataset_tools import *
 from .fine_grained_embedding import *
 
 # from .multiscale.multiscale_index import *
-from .search_loop_models import adjust_vec, adjust_vec2
+#from .search_loop_models import adjust_vec, adjust_vec2
 import numpy as np
 import math
 from .util import *

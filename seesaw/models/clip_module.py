@@ -1,4 +1,4 @@
-import pytorch_lightning as pl
+#import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import math
@@ -11,7 +11,7 @@ from transformers import (
     CLIPTextConfig,
 )
 import os
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+#from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 import PIL
 import numpy as np
 import random

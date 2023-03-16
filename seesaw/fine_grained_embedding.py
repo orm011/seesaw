@@ -3,7 +3,7 @@ import pyroaring as pr
 import os
 import math
 
-from .search_loop_models import *
+#from .search_loop_models import *
 from .models.embeddings import *
 
 ## want function that selects by dbidx and then rewrites them to be sequential.
