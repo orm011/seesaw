@@ -11,7 +11,7 @@ datasets:
     #subset: class_subset2
     # categories:
     #    - air freshener
-  #    - eyeglasses
+    #    - eyeglasses
     #   - egg carton
     #   - combination lock
     #   - soap bar
@@ -38,8 +38,8 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-    # - name: baseline
-    #   interactive: plain
+    - name: baseline
+      interactive: plain
 #     - name: lknn
 #       max_samples: 20
 #       interactive: lknn
@@ -177,7 +177,7 @@ variants:
             choose: [ 1000., 0 ]
         use_qvec_norm: None
         reg_norm_lambda:
-            choose: [ 100., 0 ] 
+            choose: [ 100. ] 
         reg_query_lambda: 
             choose: [ 10. , 0 ]
         verbose: False
