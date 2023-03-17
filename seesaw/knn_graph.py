@@ -74,7 +74,7 @@ def get_weight_matrix(df, *, kfun, self_edges=False, normalized, laplacian=False
 
     assert np.isclose(out_w.diagonal(), 0., atol=1e-5).all()
     
-    D = out_w.sum(axis=0)
+    D = out_w.sum(axis=1) # dont assume symetric. axis=1 is not the same as axis=0
     assert (D > 0).all(), 'no zero degree nodes allowed'
     
     if laplacian:
