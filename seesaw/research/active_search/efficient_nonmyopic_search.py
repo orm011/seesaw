@@ -206,17 +206,17 @@ def _opt_expected_utility_helper_lknn2(*, i : int,  lookahead_limit : int, t : i
         return Result(value=scores[best_idx], index=best_idx, pruned_fraction=0.)
 
 
-def efficient_nonmyopic_search(model : ProbabilityModel, *, time_horizon : int,  lookahead_limit : int, pruning_on : bool, implementation : str) -> Result:
+def efficient_nonmyopic_search(model : ProbabilityModel, *, reward_horizon : int,  lookahead_limit : int, pruning_on : bool, implementation : str) -> Result:
     ''' lookahead_limit: 0 means no tree search, 1 
         time_horizon: how many moves into the future
     '''
     assert 1 <= lookahead_limit <= 2, 'implementation assumes at most 1 lookahead (pruning)'
-    assert lookahead_limit <= time_horizon
-    assert time_horizon > 0
+    assert lookahead_limit <= reward_horizon
+    assert reward_horizon > 0
 
     if implementation == 'vectorized':
-        return _opt_expected_utility_helper_lknn2(i=0, lookahead_limit=lookahead_limit, t=time_horizon, model=model, pruning_on=pruning_on)
+        return _opt_expected_utility_helper_lknn2(i=0, lookahead_limit=lookahead_limit, t=reward_horizon, model=model, pruning_on=pruning_on)
     elif implementation == 'loop':
-        return _opt_expected_utility_helper(i=0, lookahead_limit=lookahead_limit, t=time_horizon, model=model, pruning_on=pruning_on)
+        return _opt_expected_utility_helper(i=0, lookahead_limit=lookahead_limit, t=reward_horizon, model=model, pruning_on=pruning_on)
 
 
