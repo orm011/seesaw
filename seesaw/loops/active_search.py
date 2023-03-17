@@ -91,7 +91,7 @@ class ActiveSearch(LoopBase):
         adjusted_horizon = int(min(reward_horizon, remaining_steps))
         assert adjusted_horizon > 0, f'need a non-negative horizon for reward to be defined {self.params.interactive_options["reward_horizon"]=} {remaining_steps=}'
 
-        lookahead = min(2, reward_horizon) # 1 when time horizon is also 1
+        lookahead = min(2, adjusted_horizon) # 1 when time horizon is also 1
         res = efficient_nonmyopic_search(self.prob_model,reward_horizon=adjusted_horizon, 
                                             lookahead_limit=lookahead, 
                                             pruning_on=self.params.interactive_options['pruning_on'], 

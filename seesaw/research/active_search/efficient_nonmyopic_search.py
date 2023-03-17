@@ -210,9 +210,9 @@ def efficient_nonmyopic_search(model : ProbabilityModel, *, reward_horizon : int
     ''' lookahead_limit: 0 means no tree search, 1 
         time_horizon: how many moves into the future
     '''
+    assert reward_horizon > 0
     assert 1 <= lookahead_limit <= 2, 'implementation assumes at most 1 lookahead (pruning)'
     assert lookahead_limit <= reward_horizon
-    assert reward_horizon > 0
 
     if implementation == 'vectorized':
         return _opt_expected_utility_helper_lknn2(i=0, lookahead_limit=lookahead_limit, t=reward_horizon, model=model, pruning_on=pruning_on)
