@@ -1,6 +1,8 @@
 #! /bin/bash
 
 set -x # print to output 
+
+echo $-
 TMPNAME=/state/partition1/user/$USER/raytmp/
 
 ## different nodes have differnt amounts available.
@@ -8,7 +10,6 @@ TMPNAME=/state/partition1/user/$USER/raytmp/
 SHM_AVAILABLE_KB=`df /dev/shm | grep -v Available | awk '{print $4}'`
 OBJ_MEM_BYTES=$(( SHM_AVAILABLE_KB*1024 - 1024*1024*1024  )) # leave 1GB off
 export RAY_DISABLE_PYARROW_VERSION_CHECK=1
-
 
 if [ -z "$SLURM_CPUS_ON_NODE" ]; 
 then
@@ -27,15 +28,26 @@ then
     echo $HOSTNAME > $SIGFILE # signal change after done starting
 else 
     echo 'starting worker node'
+    source ~/.bashrc
+
     PREV=
 
     if [[ $USER == omoll ]];
     then
-        set +x
-        source ~/.bashrc
-        set -x
+        # sync conda env now, and rerun bashrc to activate the env
+        sync_conda_to_local
 
-        which python
+        if [ -n `which mamba` ]; then
+            ## need to rerun bashrc to setup mamba now it exists
+            set +x
+            source ~/.bashrc
+            set -x
+        fi
+
+        [ `which mamba` ] && echo 'conda was setup correctly' || echo 'problem setting up conda'
+        echo `which python`
+        echo `which ray`
+        echo `ray --version`
     fi
 
     while true
@@ -50,15 +62,12 @@ else
             
             if [[ $USER == omoll && $HEAD_NODE != '' ]]; # im using virtual env rather than default evnv.
             then 
-                # copy environment first
-                # rsync -rlugv --delete --exclude-from /home/gridsan/omoll/rsync_conda_exclude  $HEAD_NODE:/state/partition1/user/omoll/miniconda3/ /state/partition1/user/omoll/miniconda3/
-                fpsync -n 180 -v -o '-rlugpt --delete --exclude-from /home/gridsan/omoll/rsync_conda_exclude' /home/gridsan/omoll/miniconda3_backup/   /state/partition1/user/omoll/miniconda3
-                # rsync -rlugvR --exclude="pkgs/*" --delete $HEAD_NODE:/state/partition1/user/omoll/miniconda3/
-                # set +x
-                # source /state/partition1/user/omoll/venvs/seesaw/bin/activate
-                # set -x
+                sync_conda_to_local
             fi
 
+            echo `which python`
+            echo `which ray`
+            echo `ray --version`
             ray stop
 
             if [[$HEAD_NODE == '-1']] # message to exit
