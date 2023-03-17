@@ -32,24 +32,6 @@ else
 
     PREV=
 
-    if [[ $USER == omoll ]];
-    then
-        # sync conda env now, and rerun bashrc to activate the env
-        sync_conda_to_local
-
-        if [ -n `which mamba` ]; then
-            ## need to rerun bashrc to setup mamba now it exists
-            set +x
-            source ~/.bashrc
-            set -x
-        fi
-
-        [ `which mamba` ] && echo 'conda was setup correctly' || echo 'problem setting up conda'
-        echo `which python`
-        echo `which ray`
-        echo `ray --version`
-    fi
-
     while true
     do
         CURRENT=`stat -c '%y' $SIGFILE`
@@ -61,8 +43,16 @@ else
             PREV=$CURRENT
             
             if [[ $USER == omoll && $HEAD_NODE != '' ]]; # im using virtual env rather than default evnv.
-            then 
-                sync_conda_to_local
+            then
+                sync_conda_to_local ## update conda env
+
+                ### re-run bash rc so env is activated, and also update any ray env vars
+                set +x
+                source ~/.bashrc
+                set -x
+
+
+                [ `which mamba` ] && echo 'conda was setup correctly' || echo 'problem setting up conda'
             fi
 
             echo `which python`
