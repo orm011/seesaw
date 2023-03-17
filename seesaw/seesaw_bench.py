@@ -18,7 +18,7 @@ from .basic_types import Imdata, SessionParams, BenchParams, BenchResult, BenchS
 from .metrics import compute_metrics
 from .dataset_manager import GlobalDataManager
 import numpy as np
-
+import sys
 import torch
 
 def readjust_interval(x1, x2, max_x):
