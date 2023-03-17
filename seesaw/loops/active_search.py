@@ -25,6 +25,7 @@ from .LKNN_model import LKNNModel
 import scipy.sparse as sp
 from ..calibration import GroundTruthCalibrator, FixedCalibrator
 from .LKNN_model import initial_gamma_array
+import math
 
 class ActiveSearch(LoopBase):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams, weight_matrix : sp.csr_array):
@@ -37,10 +38,14 @@ class ActiveSearch(LoopBase):
             calibration = self.gamma['calibration']
             if calibration == 'ground_truth':
                 self._calibrator = q.get_calibrator()
+                assert self._calibrator is not None
             elif calibration == 'sigmoid':
                 self._calibrator = FixedCalibrator(a=self.gamma['a'], b=self.gamma['b'], sigmoid=True)
             elif calibration == 'raw':
                 self._calibrator = FixedCalibrator(a=1., b=0., sigmoid=False)
+            else:
+                assert False, f'unknown {calibration=}'
+
 
             initial_gamma=initial_gamma_array(.1, q.index.vectors.shape[0]) # gets over-written. 
 
@@ -51,6 +56,7 @@ class ActiveSearch(LoopBase):
         self.prob_model = LKNNModel.from_dataset(dataset, gamma=initial_gamma, weight_matrix=weight_matrix)
         self.dataset = self.prob_model.dataset
         self.pruned_fractions = []
+        self.refine_not_called_before = True
 
     @staticmethod
     def from_params(gdm, q, p: SessionParams):
@@ -76,13 +82,17 @@ class ActiveSearch(LoopBase):
         gets next batch of image indices based on current vector
         """
 
-        time_horizon = self.params.interactive_options['time_horizon'] 
+        reward_horizon = self.params.interactive_options['reward_horizon'] 
         if self.params.interactive_options['adjust_horizon']:
-            time_horizon -=  len(self.q.returned)
-    
-        assert time_horizon > 0
-        lookahead = min(2, time_horizon) # 1 when time horizon is also 1
-        res = efficient_nonmyopic_search(self.prob_model,time_horizon=time_horizon, 
+            remaining_steps = self.params.interactive_options['max_steps'] - len(self.q.returned)
+        else:
+            remaining_steps = math.inf
+
+        adjusted_horizon = int(min(reward_horizon, remaining_steps))
+        assert adjusted_horizon > 0, f'need a non-negative horizon for reward to be defined {self.params.interactive_options["reward_horizon"]=} {remaining_steps=}'
+
+        lookahead = min(2, reward_horizon) # 1 when time horizon is also 1
+        res = efficient_nonmyopic_search(self.prob_model,reward_horizon=adjusted_horizon, 
                                             lookahead_limit=lookahead, 
                                             pruning_on=self.params.interactive_options['pruning_on'], 
                                             implementation=self.params.interactive_options['implementation'])
@@ -109,13 +119,30 @@ class ActiveSearch(LoopBase):
             labels = np.concatenate([np.ones_like(pos), np.zeros_like(neg)])
             self.prob_model = self.prob_model.with_label(idxs[0], y=labels[0])
             self.dataset = self.prob_model.dataset
-        else:
+        else:                
             print(f'updating model with {change=}')
-            for (idx, y) in change:
-                df = self.q.index.vector_meta
-                idx2 = df.query(f'dbidx == {idx}').index[0]
-                assert df.iloc[idx2].dbidx == idx
-                self.prob_model.condition_(idx2, y)
+
+            translated_change = [] # only for current
+
+            if self.refine_not_called_before:
+                ## getXy includes this latest update, ignore
+                ## first time. must update the db with full results.
+                pos, neg = self.q.getXy(get_positions=True)
+                for idx in pos:
+                    translated_change.append((idx,1))
+                for idx in neg:
+                    translated_change.append((idx,0))
+            else:
+                for (idx, y) in change:
+                    df = self.q.index.vector_meta
+                    idx2 = df.query(f'dbidx == {idx}').index[0]
+                    assert df.iloc[idx2].dbidx == idx
+                    translated_change.append((idx2, y))
+
+            for (idx, y) in translated_change:
+                self.prob_model.condition_(idx,y)   
+
+            self.refine_not_called_before = False
 
 import sys
 
