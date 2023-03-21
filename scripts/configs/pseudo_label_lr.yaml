@@ -1,12 +1,12 @@
 datasets:
-#  - name: bdd
+  - name: bdd
   # #   # categories:
   # #   #   - trailer
   # #   #   - train
   # #   # - wheelchair
-#  - name: coco
- - name: lvis
-#  - name: objectnet
+  - name: coco
+  - name: lvis
+  - name: objectnet
     #subset: small_sample
     #subset: class_subset2
     # categories:
@@ -79,6 +79,7 @@ variants:
       max_samples: 20
       interactive: active_search
       start_policy: after_first_positive
+#      start_policy: after_first_batch
       pass_ground_truth: True # for calibration
       interactive_options:
         implementation: 
@@ -93,7 +94,7 @@ variants:
             #   value:
             #     choose: [.01, .1]
         reward_horizon: 
-            choose: [1,2,3]
+            choose: [1,2,10,60]
         max_steps: 60 # adjust to be equal to nbatches
         adjust_horizon: True
         matrix_options:

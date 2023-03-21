@@ -21,7 +21,7 @@ update_geom_defaults("label", list(size = sz))
 table <- read_parquet('./breakdown_df.parquet', as_data_frame=TRUE)
 table <- tibble(table)
 
-table <- (table %>% mutate(dataset=factor(dataset, c('objectnet', 'lvis', 'coco', 'bdd'))))
+#table <- (table %>% mutate(dataset=factor(dataset, c('objectnet', 'lvis', 'coco', 'bdd'))))
 
 # table <- (table %>% mutate(version=recode_factor(version, baseline='CLIP embedding', 
 #                                                  '+ multi-scale representation'='+ multi-scale',  
@@ -29,33 +29,32 @@ table <- (table %>% mutate(dataset=factor(dataset, c('objectnet', 'lvis', 'coco'
 #                                                  '+ DB matched training'='+ DB matching')))
 
 
-tableagg <- (table %>% group_by(query_group, table_row, dataset) %>% summarise(average_precision=mean(average_precision))) 
+#tableagg <- (table %>% group_by(query_group, table_row, dataset) %>% summarise(average_precision=mean(average_precision))) 
 #tableagg <- 
-globalagg <- tableagg %>% group_by(query_group, table_row) %>% summarise(average_precision=mean(average_precision))
+#globalagg <- tableagg %>% group_by(query_group, table_row) %>% summarise(average_precision=mean(average_precision))
 
-table <- bind_rows(tableagg, globalagg %>% mutate(dataset='avg'))
+#table <- bind_rows(tableagg, globalagg %>% mutate(dataset='avg'))
               
-table <- (table %>% mutate(dataset=factor(dataset, c('avg', 'objectnet', 'lvis','bdd', 'coco')), 
-          AP=average_precision))
+table <- (table %>% mutate(AP=average_precision))
 
-bases <- (table %>% group_by(query_group, dataset) %>% summarise(AP=min(AP)))
+bases <- (table %>% group_by(`query group`, dataset) %>% summarise(AP=min(AP)))
 
 ## add baseline to table, column by group
-table <- merge(x = table, bases, by.x = c('query_group', 'dataset'), by.y =c('query_group', 'dataset'), suffixes = c('', '_base'))
+table <- merge(x = table, bases, by.x = c('query group', 'dataset'), by.y =c('query group', 'dataset'), suffixes = c('', '_base'))
 
-table <- (table %>% mutate(dataset=recode_factor(dataset, avg='avg', objectnet='ObjNet', lvis='LVIS', coco='COCO', bdd='BDD')))
+#table <- (table %>% mutate(dataset=recode_factor(dataset, avg='avg', objectnet='ObjNet', lvis='LVIS', coco='COCO', bdd='BDD')))
 
 value_offset = .5
 
 plot <- (ggplot(data=table)  + 
-          geom_col(aes(x=table_row, y=(AP - AP_base*.99)*2), alpha=0.)
-          + geom_col(aes(x=table_row, y=(AP - AP_base*.99)), width=1, color='black')
+          geom_col(aes(x=method, y=(AP - AP_base*.99)*2), alpha=0.)
+          + geom_col(aes(x=method, y=(AP - AP_base*.99)), width=1, color='black')
           + scale_x_discrete(limits=rev)
           # + ylim(.5,1.)
           + coord_flip()
-          + facet_grid(cols=vars(dataset), rows=vars(query_group), scales = 'free')
+          + facet_grid(cols=vars(dataset), rows=vars(`query group`), scales = 'free')
           # + facet_grid(cols=vars(dataset), rows=vars(gp)) 
-          + geom_text(aes(x=table_row, y=(AP - AP_base*.99)*1.05,  
+          + geom_text(aes(x=method, y=(AP - AP_base*.99)*1.05,  
                           label=str_remove(sprintf("%0.2f", round(AP, digits = 2)), "^0+")),
                       hjust='left', color='black')
           + theme(axis.title.x = element_blank(), 
