@@ -19,7 +19,7 @@ def get_active_search_params2(tup):
 
     ans = {}
     
-    ans['time_horizon'] = opts.get('time_horizon', None) if variant in ['active_search'] else None
+    ans['reward_horizon'] = opts.get('reward_horizon', None) if variant in ['active_search'] else None
 
     keys = ['calibration']
 
@@ -51,18 +51,6 @@ def get_multi_reg_params(tup):
         ans[k] = matrix_opts.get(k,None) if variant == 'multi_reg' else None
         
     return ans
-
-def get_active_search_params(tup):
-    session_params = tup[0]
-    variant = session_params['interactive']
-    opts = session_params.get('interactive_options', {})
-    ans = {}
-    keys = ['gamma', 'use_clip_as_gamma', 'time_horizon', 'use_ground_truth_calibration']
-
-    for k in keys:
-        ans[k] = opts.get(k,None) if variant in ['active_search', 'lknn'] else None
-    return ans
-
     
 def get_matrix_params(tup):
     session_params = tup[0]
@@ -110,20 +98,28 @@ def post_process(summs):
     return stats
 
 
-# metric='reciprocal_rank' # 1/first result position. 1 is first result. 0 is not found.
-def display_means(stats, *, metric, return_totals=False, index_name=None):
-    if index_name is not None:
-        stats = stats[stats.index_name == index_name]
+#  other_cols = ['variant', 'index_name', 'start_policy', 'knn_k', 'edist', 'calibration', 'reward_horizon', 'pos_weight', 'reg_data_lambda', 'reg_query_lambda', 'reg_norm_lambda', ]
 
-    totals = stats.groupby(['variant', 'timestamp', 'label_loss_type', 'full_hash', 'easy_variant_name', 'start_policy', 'knn_k', 'edist', 'normalized_weights', 'pos_weight', 'reg_data_lambda', 'reg_query_lambda', 'reg_norm_lambda', 'index_name', 'dataset', ], dropna=False)[metric].mean()
-    by_dataset = totals.unstack(level=-1).reset_index()
+# metric='reciprocal_rank' # 1/first result position. 1 is first result. 0 is not found.
+def display_means(stats, *, other_cols=[], metric, return_totals=False):
+    base_group_cols = ['index_name', 'param_hash', 'timestamp'] # makes sure we don't mix apples and oranges
+    group_cols = [ c for c in base_group_cols if c not in other_cols]
+    column_cols = ['dataset']
+
+    cols = other_cols + group_cols  + column_cols
+
+    totals = stats.groupby(cols, dropna=False)[metric].mean()
+    by_dataset = totals.unstack(level=-1)
+    avg = by_dataset.mean(axis=1)
+    by_dataset = by_dataset.assign(average=avg)
+    by_dataset = by_dataset.reset_index()
+    by_dataset = by_dataset.sort_values(other_cols + group_cols, ascending=True)
+
     with pd.option_context('format.precision', 2):
-        bylvis = by_dataset.sort_values(['index_name', 'variant', 'start_policy', 'label_loss_type', 'reg_query_lambda', 'reg_data_lambda', 'reg_norm_lambda'], ascending=True)
-        display(bylvis.style.background_gradient(axis=0))
+        display(by_dataset.style.background_gradient(axis=0))
         
-    
     if return_totals:
-        return bylvis
+        return by_dataset
     
 def make_clickable(val):
     # target _blank to open new window
