@@ -2,7 +2,7 @@ library(tidyverse)
 library(arrow)
 
 
-target = c(3.8,2.)
+target = c(3.8,3.)
 units = 'in'
 
 if (all(near(dev.size(units=units), target))){
@@ -25,15 +25,42 @@ table <- (table %>% mutate(AP=average_precision))
 
 data <- table %>% filter(`query group` == 'all queries')
 
+hard_counts <- table %>% group_by(`query group`, dataset) %>% summarise(n=n())
+
+#totals <- h
+hard_counts <- hard_counts %>% pivot_wider(names_from=`query group`, values_from = n) %>% mutate(fraction=`hard subset`/`all queries`)
+
+
+make_label <- function(delta_mean, n){
+  strm <- str_remove(sprintf("%0.2f", round(delta_mean, digits = 2)), "^0+")
+  paste(strm, ' (', n, ')', sep='')
+}
+
+# label=make_label(delta_mean, n)),
+# data=dfagg, vjust='center', hjust='left', 
+
+
+
 plot <- (ggplot(data=data)
-         + geom_violin(aes(x=dataset, y=AP), scale='width', linewidth=.1)
-         + geom_errorbar(aes(x=dataset, ymin=AP, ymax=AP), width=.05, linewidth=.4, alpha=.3)
-         + annotate('rect', xmin=-Inf, ymin=0, xmax=Inf, ymax=.5, fill='palegreen', alpha=.1)      
-         + coord_flip()
+         + facet_grid(rows=vars(dataset) )
+         + stat_ecdf(geom = "step", aes(x=AP, group=dataset))
+         #+ geom_violin(aes(x=dataset, y=AP), scale='width', linewidth=.1)
+         #+ geom_errorbar(aes(x=dataset, ymin=AP, ymax=AP), width=.05, linewidth=.4, alpha=.3)
+         #+
+         + annotate('rect', xmin=-Inf, ymin=0, xmax=.5, ymax=.0, fill='palegreen', alpha=.1)
+         + geom_segment(aes(x=-Inf, xend=.5, y=fraction, yend=fraction), data=hard_counts,  linetype='21')
+         + geom_text(aes(x=0, y=fraction + .05, label=make_label(fraction, `hard subset`)), vjust='bottom', hjust='left', data=hard_counts)
+         #+ geom_text(aes(x=.2, y=fraction, label=`fraction`), data=hard_counts)
          
-         + labs(y='AP (bigger is better)', 
-                title='Density plot of zero-shot CLIP accuracy',
+         + geom_text(aes(x=0, y=1, label=`all queries`), data=hard_counts, hjust='left', vjust='top')
+         
+         #+ coord_flip()
+         + labs(x='zero-shot AP @ 60', 
+                y='fraction of queries',
+                title='CDF of zero-shot CLIP accuracy',
          )
+         + scale_y_continuous(breaks=seq(1.))
+         #, limits = c(NA,1.), expand=c(.025, .01))
          + theme(
            axis.title.x = element_text(size=theme_szs),
            axis.text.y=element_text(size=theme_szs),
@@ -43,7 +70,7 @@ plot <- (ggplot(data=data)
            strip.text = element_text(size=theme_szs),
            panel.spacing.x = unit(1, units = 'mm'),
            # panel.border = element_rect(color='black', fill=NULL),
-           axis.title.y=element_blank(),
+           # axis.title.y=element_blank(),
            
            legend.title=element_text(size=theme_szs),
            legend.text=element_text(size=theme_szs),
