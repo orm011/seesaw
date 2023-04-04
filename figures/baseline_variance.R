@@ -31,14 +31,15 @@ hard_counts <- table %>% group_by(`query group`, dataset) %>% summarise(n=n())
 hard_counts <- hard_counts %>% pivot_wider(names_from=`query group`, values_from = n) %>% mutate(fraction=`hard subset`/`all queries`)
 
 
-make_label <- function(delta_mean, n){
+make_label <- function(delta_mean, n,t){
   strm <- str_remove(sprintf("%0.2f", round(delta_mean, digits = 2)), "^0+")
-  paste(strm, ' (', n, ')', sep='')
+  paste(strm, ' (', n, '/', t, ')', sep='')
 }
 
 # label=make_label(delta_mean, n)),
 # data=dfagg, vjust='center', hjust='left', 
 
+theme_szs <- 9
 
 
 plot <- (ggplot(data=data)
@@ -49,21 +50,23 @@ plot <- (ggplot(data=data)
          #+
          + annotate('rect', xmin=-Inf, ymin=0, xmax=.5, ymax=.0, fill='palegreen', alpha=.1)
          + geom_segment(aes(x=-Inf, xend=.5, y=fraction, yend=fraction), data=hard_counts,  linetype='21')
-         + geom_text(aes(x=0, y=fraction + .05, label=make_label(fraction, `hard subset`)), vjust='bottom', hjust='left', data=hard_counts)
+         + geom_text(aes(x=0, y=fraction + .05, label=make_label(fraction, `hard subset`, `all queries`)), vjust='bottom', hjust='left', data=hard_counts)
          #+ geom_text(aes(x=.2, y=fraction, label=`fraction`), data=hard_counts)
          
-         + geom_text(aes(x=0, y=1, label=`all queries`), data=hard_counts, hjust='left', vjust='top')
+         #+ geom_text(aes(x=0, y=1, label=`all queries`), data=hard_counts, hjust='left', vjust='top')
          
          #+ coord_flip()
-         + labs(x='zero-shot AP @ 60', 
-                y='fraction of queries',
-                title='CDF of zero-shot CLIP accuracy',
+         + labs(x='AP', 
+                y='fraction of queries (0 to 1)',
+        #        title='CDF of zero-shot CLIP accuracy',
          )
-         + scale_y_continuous(breaks=seq(1.))
+       #  + scale_y_continuous(breaks=seq(1.))
          #, limits = c(NA,1.), expand=c(.025, .01))
          + theme(
            axis.title.x = element_text(size=theme_szs),
-           axis.text.y=element_text(size=theme_szs),
+           axis.title.y = element_text(size=theme_szs),
+           
+           axis.text.y=element_blank(),
            axis.text.x =element_text(size=theme_szs),
            #aspect.ratio=1.,
            plot.title = element_text(size=theme_szs),
@@ -71,7 +74,7 @@ plot <- (ggplot(data=data)
            panel.spacing.x = unit(1, units = 'mm'),
            # panel.border = element_rect(color='black', fill=NULL),
            # axis.title.y=element_blank(),
-           
+           axis.ticks.y = element_blank(),   
            legend.title=element_text(size=theme_szs),
            legend.text=element_text(size=theme_szs),
            axis.title=element_text(size=theme_szs),
