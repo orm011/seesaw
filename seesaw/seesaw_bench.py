@@ -392,14 +392,22 @@ def summarize_session(res: BenchResult):
     session = res.session
     curr_idx = 0
     hit_indices = []
+    dbidxs = []
+    accepted = []
     for ent in session.gdata: #batch
         for imdata in ent: #image in batch
+            dbidxs.append(imdata.dbidx)
+            accepted.append(is_image_accepted(imdata))
+
+
             if is_image_accepted(imdata):
                 hit_indices.append(curr_idx)
             curr_idx += 1
             
     return dict(
         hit_indices=np.array(hit_indices).astype('int32'),
+        dbidxs = np.array(dbidxs).astype('int32'),
+        accepted = np.array(accepted).astype('int32'),
         nseen=curr_idx,
         nimages=res.nimages,
         ntotal=res.ntotal,
