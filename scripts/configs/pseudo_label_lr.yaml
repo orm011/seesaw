@@ -1,15 +1,65 @@
 datasets:
-  - name: bdd
-  # #   # categories:
-  # #   #   - trailer
-  # #   #   - train
-  # #   # - wheelchair
-  - name: coco
-  - name: lvis
+  # - name: bdd
+  # # #   # categories:
+  # # #   #   - trailer
+  # # #   #   - train
+  # # #   # - wheelchair
+  # - name: coco
+  # - name: lvis
   - name: objectnet
     #subset: small_sample
     #subset: class_subset2
-    # categories:
+    categories:
+      - measuring cup
+      - nut for a screw
+      - toy
+      - tablecloth
+      - skirt
+      - can opener
+      - document folder (closed)
+      - coffee grinder
+      - nail (fastener)
+      - tape measure
+      - power bar
+      - table knife
+      - spray bottle
+      - nightstand
+      - laptop charger
+      - pillow
+      - soap dispenser
+      - portable heater
+      - tongs
+      - dishrag or hand towel
+      - squeegee
+      - letter opener
+      - eraser (white board)
+      - air freshener
+      - power cable
+      - bread knife
+      - hairclip
+      - scrub brush
+      - mixing / salad bowl
+      - drinking cup
+      - multitool
+      - placemat
+      - removable blade
+      - sugar container
+      - travel case
+      - tarp
+      - cellphone
+      - flour container
+      - peeler
+      - water filter
+      - blouse
+      - night light
+      - trash bin
+      - squeeze bottle
+      - extension cable
+      - bookend
+      - flashlight
+      - monitor
+      - coffee table
+      - bottle stopper
     #    - air freshener
     #    - eyeglasses
     #   - egg carton
@@ -35,92 +85,164 @@ shared_bench_params: # see BenchParams
   box_drop_prob: 0. 
   max_results: 10 # max positive results
   n_batches : 60 # max batches
-  provide_textual_feedback: False
+  provide_textual_feedback: True
   query_template : "a {}"
 variants:
     # - name: baseline
     #   interactive: plain
-#     - name: multi_reg
-#       max_samples: 20
-#       interactive: multi_reg
-#       # start_policy:
-#       #     choose: [after_first_positive_and_negative]
-#       # start_policy: after_first_reversal
-#       start_policy: 
-#         choose: [ after_first_batch ]
-#       interactive_options:
-# #        label_loss_type: pairwise_logistic_loss
-#         label_loss_type:
-#             choose: [ ce_loss ]
-#         rank_loss_margin: .2
-#         reg_data_lambda:
-#             choose: [ 1000., 0 ]
-#         use_qvec_norm: None
-#         reg_norm_lambda:
-#             choose: [ 100. ] 
-#         reg_query_lambda: 
-#             choose: [ 10. , 0 ]
-#         verbose: False
-#         max_iter: 200
-#         pos_weight: 
-#           choose: ['balanced']
-#         lr: 1.
-#         matrix_options:
-#           knn_path: nndescent60
-#           symmetric: True
-#           self_edges: False
-#           normalized_weights: 
-#               choose: [False]
-#           knn_k: 
-#             choose: [10]
-#           edist: 
-#             choose: [.03]
-    - name: active_search
+    - name: multi_reg
       max_samples: 20
-      interactive: active_search
-      start_policy: after_first_positive
-#      start_policy: after_first_batch
-      pass_ground_truth: True # for calibration
+      interactive: multi_reg
+      # start_policy:
+      #     choose: [after_first_positive_and_negative]
+      # start_policy: after_first_reversal
+      start_policy: 
+        choose: [ after_first_batch ]
       interactive_options:
-        implementation: 
-          vectorized
-        pruning_on: False
-        gamma:
-          # choose:
-            mode: clip
-            calibration: 
-                choose: [ground_truth, raw]
-            # - mode: fixed
-            #   value:
-            #     choose: [.01, .1]
-        reward_horizon: 
-            choose: [1,2,10,60]
-        max_steps: 60 # adjust to be equal to nbatches
-        adjust_horizon: True
+#        label_loss_type: pairwise_logistic_loss
+        label_loss_type:
+            choose: [ ce_loss ]
+        rank_loss_margin: .2
+        reg_data_lambda:
+            choose: [ 1000., ]
+        use_qvec_norm: None
+        reg_norm_lambda:
+            choose: [ 100. ] 
+        reg_query_lambda: 
+            choose: [ 10.  ]
+        verbose: False
+        max_iter: 200
+        pos_weight: 
+          choose: ['balanced']
+        lr: 1.
         matrix_options:
           knn_path: nndescent60
-          symmetric: False
-          self_edges : False
-          normalized_weights : False
+          symmetric: True
+          self_edges: False
+          normalized_weights: 
+              choose: [False]
           knn_k: 
-            choose: [20]
+            choose: [10]
           edist: 
-            choose: [.05]
-            # choose: [1.6]
-            # choose: [.05]
-            # choose: [.00075,  .00625, .2, .4, 3.2]
-            # choose: [.05]
-            # choose: [0.00038, .00075, 3.2]
-            # choose: [.05]
-        normalize_scores : False
-        sigmoid_before_propagate: True  
-        calib_a: 
-          choose: [10.]
-        calib_b: 
-          choose: [-0.4]
-        prior_weight: 
-          choose: [0.] # good for unnormalized
-    # - name: active_search_l1
+            choose: [.03]
+    - name: multi_reg_neg
+      max_samples: 20
+      interactive: multi_reg_neg
+      # start_policy:
+      #     choose: [after_first_positive_and_negative]
+      # start_policy: after_first_reversal
+      start_policy: 
+        choose: [ after_first_batch ]
+      interactive_options:
+#        label_loss_type: pairwise_logistic_loss
+        discount_neg : True # if false, rescore using 0
+        label_loss_type:
+            choose: [ ce_loss ]
+        rank_loss_margin: .2
+        reg_data_lambda:
+            choose: [ 1000., ]
+        use_qvec_norm: None
+        reg_norm_lambda:
+            choose: [ 100. ] 
+        reg_query_lambda: 
+            choose: [ 10.  ]
+        verbose: False
+        max_iter: 200
+        pos_weight: 
+          choose: ['balanced']
+        lr: 1.
+        matrix_options:
+          knn_path: nndescent60
+          symmetric: True
+          self_edges: False
+          normalized_weights: 
+              choose: [False]
+          knn_k: 
+            choose: [10]
+          edist: 
+            choose: [.03]
+    - name: multi_reg_neg_ctrl
+      max_samples: 20
+      interactive: multi_reg_neg
+      # start_policy:
+      #     choose: [after_first_positive_and_negative]
+      # start_policy: after_first_reversal
+      start_policy: 
+        choose: [ after_first_batch ]
+      interactive_options:
+#        label_loss_type: pairwise_logistic_loss
+        discount_neg : False # if false, rescore using 0
+        label_loss_type:
+            choose: [ ce_loss ]
+        rank_loss_margin: .2
+        reg_data_lambda:
+            choose: [ 1000., ]
+        use_qvec_norm: None
+        reg_norm_lambda:
+            choose: [ 100. ] 
+        reg_query_lambda: 
+            choose: [ 10.  ]
+        verbose: False
+        max_iter: 200
+        pos_weight: 
+          choose: ['balanced']
+        lr: 1.
+        matrix_options:
+          knn_path: nndescent60
+          symmetric: True
+          self_edges: False
+          normalized_weights: 
+              choose: [False]
+          knn_k: 
+            choose: [10]
+          edist: 
+            choose: [.03]
+#     - name: active_search
+#       max_samples: 20
+#       interactive: active_search
+#       start_policy: after_first_positive
+# #      start_policy: after_first_batch
+#       pass_ground_truth: True # for calibration
+#       interactive_options:
+#         implementation: 
+#           vectorized
+#         pruning_on: False
+#         gamma:
+#           # choose:
+#             mode: clip
+#             calibration: 
+#                 choose: [ground_truth, raw]
+#             # - mode: fixed
+#             #   value:
+#             #     choose: [.01, .1]
+#         reward_horizon: 
+#             choose: [1,2,10,60]
+#         max_steps: 60 # adjust to be equal to nbatches
+#         adjust_horizon: True
+#         matrix_options:
+#           knn_path: nndescent60
+#           symmetric: False
+#           self_edges : False
+#           normalized_weights : False
+#           knn_k: 
+#             choose: [20]
+#           edist: 
+#             choose: [.05]
+#             # choose: [1.6]
+#             # choose: [.05]
+#             # choose: [.00075,  .00625, .2, .4, 3.2]
+#             # choose: [.05]
+#             # choose: [0.00038, .00075, 3.2]
+#             # choose: [.05]
+#         normalize_scores : False
+#         sigmoid_before_propagate: True  
+#         calib_a: 
+#           choose: [10.]
+#         calib_b: 
+#           choose: [-0.4]
+#         prior_weight: 
+#           choose: [0.] # good for unnormalized
+#     # - name: active_search_l1
     #   max_samples: 20
     #   interactive: active_search
     #   start_policy: after_first_positive

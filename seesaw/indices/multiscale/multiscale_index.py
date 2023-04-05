@@ -338,7 +338,7 @@ def get_boxes(vec_meta):
 
 from seesaw.box_utils import left_iou_join
 
-def match_labels_to_vectors(label_db: LabelDB, vec_meta: pd.DataFrame):
+def match_labels_to_vectors(label_db: LabelDB, vec_meta: pd.DataFrame, target_description=None):
     ''' given a set of box labels, and a vector index with box info, 
         for each vector in an image, find the maximum label overlap with it
         and use that as a score.
@@ -346,8 +346,14 @@ def match_labels_to_vectors(label_db: LabelDB, vec_meta: pd.DataFrame):
     '''
     idxs = label_db.get_seen()
     vec_meta = vec_meta[vec_meta.dbidx.isin(idxs)]
-    boxdf = label_db.get_box_df()
-    vec_meta_new = left_iou_join(vec_meta, boxdf)
+    boxdf = label_db.get_box_df(return_description=True)
+    print(f'{boxdf=}')
+
+    if target_description is not None:
+        target_df = boxdf[boxdf.description == target_description]
+    else:
+        target_df = boxdf[boxdf.marked_accepted > 0]
+    vec_meta_new = left_iou_join(vec_meta, target_df)
 
     vec_meta_new = vec_meta_new.assign(ys = (vec_meta_new.max_iou > 0).astype('float'))
     return vec_meta_new
@@ -384,6 +390,11 @@ def score_frame(*, frame_meta, agg_method, rescore_method, aug_larger):
 from seesaw.box_utils import box_join
 from scipy.special import softmax
 
+
+def simple_score_frame(meta_df, rescore_fun):
+    pass
+
+
 def score_frame2(meta_df, **aug_options):
     aug_larger=aug_options['aug_larger']
     aug_weight=aug_options.get('aug_weight', 'level_max')
@@ -392,7 +403,6 @@ def score_frame2(meta_df, **aug_options):
     if agg_method == 'plain_score':
         return meta_df.query('score == score.max()').head(n=1)
     
-
     meta_df = meta_df.reset_index(drop=True)
     mdf = meta_df[['x1', 'x2', 'y1', 'y2', 'zoom_level', 'score']]
     joined = box_join(mdf, mdf)
@@ -589,6 +599,7 @@ class MultiscaleIndex(AccessMethod):
         self,
         *,
         vector,
+        vector2=None,
         topk,
         shortlist_size,
         exclude=None,
@@ -617,6 +628,11 @@ class MultiscaleIndex(AccessMethod):
         fullmeta : pd.DataFrame = self.vector_meta.iloc[ilocs]
         vectors = self.vectors[ilocs]
         scores = vectors @ qvec.reshape(-1)
+
+        if vector2 is not None:
+            scores2 = vectors @ vector2.reshape(-1)
+            scores = scores - scores2
+            
         fullmeta = fullmeta.assign(score=scores, vectors=TensorArray(vectors))
         return rescore_candidates(fullmeta, topk, **kwargs)
 
@@ -688,8 +704,8 @@ class BoxFeedbackQuery(InteractiveQuery):
         super().__init__(db)
         assert self.index is not None
 
-    def getXy(self, get_positions=False):
-        matched_df = match_labels_to_vectors(self.label_db, self.index.vector_meta)
+    def getXy(self, get_positions=False, target_description=None):
+        matched_df = match_labels_to_vectors(self.label_db, self.index.vector_meta, target_description=target_description)
     
         if get_positions:
             pos = matched_df.index[matched_df.ys > 0].values

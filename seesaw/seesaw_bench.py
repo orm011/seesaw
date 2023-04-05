@@ -181,6 +181,58 @@ _clip_tx = T.Compose(
 from .indices.multiscale.multiscale_index import box_iou
 
 
+objnet_dict = {'measuring cup': 'drinking cup',
+ 'nut for a screw': 'screw',
+ 'toy': 'weight (exercise)',
+ 'tablecloth': 'blanket',
+ 'skirt': 'shorts',
+ 'can opener': 'canned food',
+ 'document folder (closed)': 'binder (closed)',
+ 'coffee grinder': 'coffee machine',
+ 'nail (fastener)': 'screw',
+ 'tape measure': 'ruler',
+ 'power bar': 'chocolate',
+ 'table knife': "butcher's knife",
+ 'spray bottle': 'glue container',
+ 'nightstand': 'drawer (open)',
+ 'laptop charger': 'cellphone charger',
+ 'pillow': 'throw pillow',
+ 'soap dispenser': 'mouthwash',
+ 'portable heater': 'fan',
+ 'tongs': 'wrench',
+ 'dishrag or hand towel': 'tablecloth',
+ 'squeegee': 'dust pan',
+ 'letter opener': 'table knife',
+ 'eraser (white board)': 'floss container',
+ 'air freshener': 'deodorant',
+ 'power cable': 'usb cable',
+ 'bread knife': "butcher's knife",
+ 'hairclip': 'comb',
+ 'scrub brush': 'hair brush',
+ 'mixing / salad bowl': 'plate',
+ 'drinking cup': 'wine glass',
+ 'multitool': 'wrench',
+ 'placemat': 'napkin',
+ 'removable blade': 'table knife',
+ 'sugar container': 'salt shaker',
+ 'travel case': 'suitcase',
+ 'tarp': 'trash bag',
+ 'cellphone': 'phone (landline)',
+ 'flour container': 'sugar container',
+ 'peeler': 'razor',
+ 'water filter': 'bucket',
+ 'blouse': 'dress shirt',
+ 'night light': 'light bulb',
+ 'trash bin': 'clothes hamper',
+ 'squeeze bottle': 'water bottle',
+ 'extension cable': 'usb cable',
+ 'bookend': 'book (closed)',
+ 'flashlight': 'air freshener',
+ 'monitor': 'tv',
+ 'coffee table': 'tablet / ipad',
+ 'bottle stopper': 'chess piece'}
+
+
 def fill_imdata(imdata: Imdata, box_data: pd.DataFrame, b: BenchParams):
     imdata = imdata.copy()
     rows = box_data[box_data.dbidx == imdata.dbidx]
@@ -191,12 +243,15 @@ def fill_imdata(imdata: Imdata, box_data: pd.DataFrame, b: BenchParams):
 
         # find the anotations that overlap with activation boxes
         if b.provide_textual_feedback:
-            negatives = rows[rows.category != b.ground_truth_category]
-            activation_df = pd.DataFrame([act.box.dict() for act in imdata.activations])
-            ious = box_iou(negatives, activation_df)
-            highlighted_area = np.sum(ious, axis=1)
-            annotated_negatives = negatives[highlighted_area > 0.1]
-            annotated_negatives = annotated_negatives.assign(marked_accepted=False)
+            confusion_class = objnet_dict[b.ground_truth_category]
+            negatives = rows[rows.category == confusion_class]
+            
+#            activation_df = pd.DataFrame([act.box.dict() for act in imdata.activations])
+            # ious = box_iou(negatives, activation_df)
+            # highlighted_area = np.sum(ious, axis=1)
+            # annotated_negatives = negatives[highlighted_area > 0.1]
+            # annotated_negatives = annotated_negatives.assign(marked_accepted=False)
+            annotated_negatives = negatives.assign(marked_accepted=False)
             feedback_df = pd.concat(
                 [positives, annotated_negatives], axis=0, ignore_index=True
             )

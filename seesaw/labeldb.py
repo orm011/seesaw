@@ -19,8 +19,8 @@ class LabelDB:
             boxes = [Box(**b) for b in df.to_dict(orient="records")]
             self.put(int(dbidx), boxes=boxes)
 
-    def get_box_df(self):
-        empty_df = pd.DataFrame([], columns=["dbidx", "x1", "x2", "y1", "y2"]).astype("float32")
+    def get_box_df(self, return_description=False):
+        empty_df = pd.DataFrame([], columns=["dbidx", 'description', 'marked_accepted', "x1", "x2", "y1", "y2"]).astype("float32")
         empty_df = empty_df.assign(dbidx=empty_df.dbidx.astype('int32'))
 
         dfs = [ empty_df ]
@@ -29,10 +29,17 @@ class LabelDB:
             if v == [] or v is None:
                 continue
             
-            df = pd.DataFrame([b.dict() for b in v])[
-                    ["x1", "x2", "y1", "y2"]].astype("float32")
+            cols = ["x1", "x2", "y1", "y2", ]
+            if return_description:
+                cols.append('description')
+                cols.append('marked_accepted')
+
+            df = pd.DataFrame([b.dict() for b in v])[cols]
+
+            df = df.assign(**df[['x1', 'x2', 'y1', 'y2']].astype('float32'))
             df = df.assign(dbidx=dbidx)
             df = df.assign(dbidx=df.dbidx.astype('int32'))
+
             dfs.append(df)
 
         c = pd.concat(dfs, ignore_index=True)
