@@ -2,7 +2,7 @@ library(tidyverse)
 library(arrow)
 
 
-target = c(3.8,3.)
+target = c(3.8,1.5)
 units = 'in'
 
 if (all(near(dev.size(units=units), target))){
@@ -43,7 +43,7 @@ theme_szs <- 9
 
 
 plot <- (ggplot(data=data)
-         + facet_grid(rows=vars(dataset) )
+         + facet_wrap(facets = vars(dataset), strip.position='right')
          + stat_ecdf(geom = "step", aes(x=AP, group=dataset))
          #+ geom_violin(aes(x=dataset, y=AP), scale='width', linewidth=.1)
          #+ geom_errorbar(aes(x=dataset, ymin=AP, ymax=AP), width=.05, linewidth=.4, alpha=.3)
@@ -56,8 +56,8 @@ plot <- (ggplot(data=data)
          #+ geom_text(aes(x=0, y=1, label=`all queries`), data=hard_counts, hjust='left', vjust='top')
          
          #+ coord_flip()
-         + labs(x='AP', 
-                y='fraction of queries (0 to 1)',
+         + labs(x='Average Precision (AP)', 
+                y='fraction of queries \n (0 to 1)',
         #        title='CDF of zero-shot CLIP accuracy',
          )
        #  + scale_y_continuous(breaks=seq(1.))
