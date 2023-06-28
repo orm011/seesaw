@@ -347,7 +347,7 @@ def match_labels_to_vectors(label_db: LabelDB, vec_meta: pd.DataFrame, target_de
     idxs = label_db.get_seen()
     vec_meta = vec_meta[vec_meta.dbidx.isin(idxs)]
     boxdf = label_db.get_box_df(return_description=True)
-    print(f'{boxdf=}')
+    #print(f'{boxdf=}')
 
     if target_description is not None:
         target_df = boxdf[boxdf.description == target_description]
@@ -632,7 +632,7 @@ class MultiscaleIndex(AccessMethod):
         if vector2 is not None:
             scores2 = vectors @ vector2.reshape(-1)
             scores = scores - scores2
-            
+
         fullmeta = fullmeta.assign(score=scores, vectors=TensorArray(vectors))
         return rescore_candidates(fullmeta, topk, **kwargs)
 
