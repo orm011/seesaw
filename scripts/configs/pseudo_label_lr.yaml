@@ -60,12 +60,12 @@ datasets:
       - monitor
       - coffee table
       - bottle stopper
-    #    - air freshener
-    #    - eyeglasses
-    #   - egg carton
-    #   - combination lock
-    #   - soap bar
-    #   - kettle
+          # - air freshener
+          # - eyeglasses
+          # - egg carton
+          # - combination lock
+          # - soap bar
+          # - kettle
 shared_session_params: # see SessionParams
   batch_size: 1 
   shortlist_size: 50
@@ -104,7 +104,7 @@ variants:
             choose: [ ce_loss ]
         rank_loss_margin: .2
         reg_data_lambda:
-            choose: [ 1000., ]
+            choose: [ 0 ]
         use_qvec_norm: None
         reg_norm_lambda:
             choose: [ 100. ] 
