@@ -1,6 +1,4 @@
 import numpy as np
-import shapely
-import shapely.geometry
 import pandas as pd
 import math
 
@@ -128,6 +126,9 @@ class Segment:
         return best_seg.clip(minx, maxx) # sometimes there are small excesses, get rid of them.
 
 def _as_polygons(df):
+    import shapely
+    import shapely.geometry
+
     df = df.assign(y1=-df.y1, y2=-df.y2) # reflect y-direction bc. svg 0,0 is bottom right
     return df[['x1', 'y1', 'x2', 'y2']].apply(lambda x : shapely.geometry.box(*tuple(x)), axis=1)
 
@@ -273,6 +274,9 @@ class BoxOverlay:
     ''' overlays box information on image.
     '''
     def __init__(self, x1, y1, x2, y2, im_width, im_height, im_url=None, max_display_size=None):
+        import shapely
+        import shapely.geometry
+
         box = shapely.geometry.box(x1, y1, x2, y2) 
         
         self.im_width = im_width

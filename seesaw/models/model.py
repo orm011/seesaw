@@ -2,7 +2,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 import transformers
-import clip
 from .embeddings import SlidingWindow
 from ..definitions import resolve_path
 
@@ -17,8 +16,8 @@ class NormalizedEmbedding(nn.Module):
         with torch.cuda.amp.autocast():
             return F.normalize(tmp, dim=1).type(tmp.dtype)
 
-
 def trace_emb_jit(output_path):
+    import clip
     device = torch.device("cuda:0")
     model, _ = clip.load("ViT-B/32", device=device, jit=False)
     ker = NormalizedEmbedding(model.visual)
@@ -36,6 +35,7 @@ def trace_emb_jit(output_path):
 
 
 def clip_loader(variant="ViT-B/32"):
+    import clip
     def fun(device, jit_path=None):
         if jit_path == None:
             model, _ = clip.load(variant, device=device, jit=False)
@@ -46,7 +46,6 @@ def clip_loader(variant="ViT-B/32"):
         return ker
 
     return fun
-
 
 class HGFaceWrapper(nn.Module):
     def __init__(self, model):

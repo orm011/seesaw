@@ -9,5 +9,5 @@ setup(
     description="implementation of the seesaw system for interactive image database search",
     packages=find_packages(where="seesaw"),
     # install_requires=[],  # installed from pyproject.toml
-    python_requires=">=3.8",
+    python_requires=">=3.10",
 )

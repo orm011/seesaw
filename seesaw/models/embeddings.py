@@ -9,7 +9,7 @@ import torchvision.transforms as T
 import pyroaring as pr
 import typing
 
-import clip
+#import clip
 import ray
 
 # from sentence_transformers import SentenceTransformer
@@ -468,6 +468,7 @@ class HGWrapper(XEmbedding):
 
 class CLIPWrapper(XEmbedding):
     def __init__(self, device, jit=False):
+        import clip
 
         tx = make_clip_transform(n_px=224, square_crop=False)
         variant = "ViT-B/32"

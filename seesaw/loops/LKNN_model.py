@@ -65,7 +65,6 @@ class LazyTopK:
 
         return np.array(idxs), np.array(vals)
 
-import numexpr
 import numpy.random
 
 
@@ -129,7 +128,7 @@ class LKNNModel(ProbabilityModel):
         numerators = self.numerators[ids]
         denominators = self.denominators[ids]
         gamma = self.gamma[ids]
-
+        import numexpr
         change_scores = numexpr.evaluate('(numerators + numerator_delta + gamma)/(denominators + denominator_delta + 1)')
         desc_order = np.argsort(-change_scores)
         desc_changed_idxs = ids[desc_order]
