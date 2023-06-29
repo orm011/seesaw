@@ -73,7 +73,7 @@ for i,yl in enumerate(yls):
         max_classes_per_dataset=math.inf,
     )
 
-    print(f"{len(cfgs)} generated from {args.configs[i]}")
+    print(f"generated {len(cfgs)=} from {args.configs[i]}")
 
     if args.dryrun: # limit size of benchmark and classes per dataset
         shared_bench_params['n_batches'] = args.dryrun_max_iter
@@ -101,11 +101,14 @@ for cfg in all_cfgs:
     hash = get_param_hash(p.json())
     hashes.append(hash)
 
+
+
 cfgdf = pd.DataFrame.from_records([{**p.dict(), **p.index_spec.dict(), **b.dict()} for (b,p) in all_cfgs])
 cfgdf = cfgdf.assign(param_hash=hashes)
 totals = cfgdf.groupby(['name', 'd_name', 'i_name', 'ground_truth_category', 'param_hash']).size()
 ## assert no duplicates with same name, other than different categories, or indices
 assert (totals == 1).all()
+
 
 
 key = "".join([random.choice(string.ascii_letters) for _ in range(10)])
@@ -119,23 +122,38 @@ class BatchRunner:
         self.br = BenchRunner(gdm.root, results_dir=results_dir, 
                         num_cpus=args.num_cpus, redirect_output=redirect_output)
         
-    def __call__(self, cfgs):
-        for cfg in cfgs:
+    def __call__(self, cfgs_df):
+        print(f'call started {cfgs_df.shape[0]=}')
+        for cfg in cfgs_df.config.values:
             self.br.run_loop(*cfg)
 
-        return cfgs
+        print(f'call ended')
+        return cfgs_df
+
+
+# ray wants schema now
+cfgs_table = pd.DataFrame.from_records(map(lambda cfg : {'config':cfg}, all_cfgs))
 
 if args.dryrun:
     br = BatchRunner(redirect_output=False)
-    br(all_cfgs)
+    br(cfgs_table)
 else:
     def closure(): # put all actor stuff within scope so maybe it gets destroyed before getting summaries?
-        random.shuffle(all_cfgs) # randomize task order to kind-of balance work
-        ds = ray.data.from_items(all_cfgs, parallelism=1000)
+        batch_size = 5
+        n_batches = math.ceil(cfgs_table.shape[0]/batch_size)
+ 
+        ds = ray.data.from_pandas(cfgs_table)
+        ds = ds.random_shuffle().repartition(num_blocks=n_batches)
         memory = args.mem_gbs * (1024**3)
         actor_options = dict(num_cpus=args.num_cpus, memory=memory)
         ## use a small batch size so that maybe failures affect as few classes as possible?
-        _ = ds.map_batches(BatchRunner, batch_size=10, compute=ActorPoolStrategy(1, min(100, len(all_cfgs))), **actor_options).take_all()
+        compute_strategy = ActorPoolStrategy(min_size=1, 
+                                             max_size=min(100, n_batches), 
+                                             max_tasks_in_flight_per_actor=1,
+                                            )
+        print(f'{compute_strategy.max_size=}')
+        _ = ds.map_batches(BatchRunner, batch_format='pandas',
+                           compute=compute_strategy, **actor_options).take_all()
 
     closure()
     print('waiting a few seconds before running summary process')

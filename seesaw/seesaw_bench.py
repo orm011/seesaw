@@ -470,9 +470,9 @@ def summarize_session(res: BenchResult):
         method_stats=res.method_stats
     )
 
-
-def parse_json2(args):
-    path, b = args
+def parse_json2(dict):
+    path = dict['path']
+    b = dict['bytes']
     try:
         obj = json.loads(b)
     except json.decoder.JSONDecodeError:
@@ -484,10 +484,10 @@ from ray.data.datasource import FastFileMetadataProvider
 def load_session_data(base_dir, parallelism=-1):
     summary_paths = glob.glob(base_dir + "/**/summary.json", recursive=True)
     r = ray.data.read_binary_files(summary_paths, include_paths=True, 
-                meta_provider=FastFileMetadataProvider(), parallelism=parallelism).lazy()
-    res = r.map_batches(as_batch_function(parse_json2), batch_size=20)
+                parallelism=parallelism).lazy()
+#                meta_provider=FastFileMetadataProvider(), parallelism=parallelism).lazy()
+    res = r.map_batches(as_batch_function(parse_json2), batch_format='pandas', batch_size=20)
     return res
-
 
 def process_dict(obj, mode="benchmark"):
     assert mode in ["benchmark", "session"]
@@ -527,15 +527,19 @@ def process_single_result(result_path): # single file version version
 from .util import as_batch_function
 
 def _summarize(res, parallel):
+    batch_process_dict = as_batch_function(process_dict)
     if parallel:
-        acc = res.map_batches(as_batch_function(process_dict), batch_size=20).take_all()
+         ds = res.map_batches(batch_process_dict, batch_size=20, batch_format='pandas')
+         res = ds.to_pandas() 
     else:
         acc = []
-        for obj in tqdm(res.iter_rows()):
-            obj2 = process_dict(obj)
+        for obj in tqdm(res.iter_batches(batch_format='pandas')):
+            obj2 = batch_process_dict(obj)
             acc.append(obj2)
 
-    return pd.DataFrame.from_records(acc)
+        res = pd.concat(acc, ignore_index=True)
+
+    return res
 
 def get_all_session_summaries(base_dir, force_recompute=False, parallel=True):
     sumpath = base_dir + "/summary.parquet"
@@ -564,10 +568,14 @@ def get_timestamp(folder):
 
 import math
 def compute_row_metrics(row):
-    if row.hit_indices is None:
-        assert row.nseen != row.nseen
+    if row.nseen != row.nseen:
         return None
+    # if row.hit_indices is None:
+    #     assert 
+    #     return None
+    assert row.hit_indices is not None
 
+    
     return compute_metrics(
             hit_indices=row.hit_indices.astype('int32'),
             nseen=int(row.nseen),

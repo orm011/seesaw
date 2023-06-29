@@ -67,12 +67,15 @@ def as_batch_function(fun):
         if isinstance(batch, pd.DataFrame):
             for b in batch.itertuples(index=False):
                 res.append(fun(b._asdict()))
+
+            return pd.DataFrame.from_records(res)
+
         elif isinstance(batch, pa.Table):
             assert False, 'not sure how to iterate here'
+        elif isinstance(batch, dict):
+            assert False, 'unsupported format'
         else: # try just iterating
-            for b in batch:
-                res.append(fun(b))
-        return res
+            assert False, 'python no longer supported by ray data.'
 
     return bfun
 
