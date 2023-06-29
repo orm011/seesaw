@@ -17,7 +17,8 @@ then
     exit 1
 fi
 
-COMMON_ARGS="--temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES --num-cpus=$((2*SLURM_CPUS_ON_NODE))"
+# note large number, like 2x cpus, can cause limit errors nowadays. keep it 1x
+COMMON_ARGS="--temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES --num-cpus=$((SLURM_CPUS_ON_NODE))"
 
 SIGFILE=$HOME/ray2.head
 
@@ -51,8 +52,9 @@ else
                 source ~/.bashrc
                 set -x
 
-
                 [ `which mamba` ] && echo 'conda was setup correctly' || echo 'problem setting up conda'
+                mamba activate seesaw
+
             fi
 
             echo `which python`
