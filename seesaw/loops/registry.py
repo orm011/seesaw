@@ -1,7 +1,7 @@
 from seesaw.loops.multi_reg_neg import MultiRegNeg
 from seesaw.loops.multi_reg import MultiReg
 from seesaw.loops.active_search import LKNNSearch
-
+from seesaw.loops.rocchio_update import RocchioUpdate
 
 def build_loop_from_params(gdm, q, params):
     from .pseudo_lr import PseudoLR
@@ -23,9 +23,9 @@ def build_loop_from_params(gdm, q, params):
         'active_search':ActiveSearch,
         'lknn':LKNNSearch,
         'multi_reg':MultiReg, # seesaw.
-
+        'rocchio_update':RocchioUpdate,
         
-        'multi_reg_neg':MultiRegNeg
+        'multi_reg_neg':MultiRegNeg,
 
         ## older, may need to implement from_params()
       #  'old_seesaw':OldSeesaw, # aka pytorch in old code

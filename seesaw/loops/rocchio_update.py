@@ -2,7 +2,7 @@ from ..logistic_regression import LogisticRegressionPT
 from .point_based import *
 from .loop_base import *
 
-class Rocchio(PointBased):
+class RocchioUpdate(PointBased):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
         super().__init__(gdm, q, params)
         self.model = None
@@ -12,7 +12,7 @@ class Rocchio(PointBased):
 
     @staticmethod
     def from_params(gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
-        return Rocchio(gdm, q, params)
+        return RocchioUpdate(gdm, q, params)
 
     def set_text_vec(self, vec):
         super().set_text_vec(vec)
