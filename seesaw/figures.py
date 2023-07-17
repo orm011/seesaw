@@ -30,7 +30,6 @@ from plotnine import (
 )
 
 
-import bokeh
 
 
 def brief_formatter(num_sd):
@@ -678,149 +677,149 @@ def plot_compare(
     else:
         assert False, "unknown mode"
 
+# import bokeh
 
-from bokeh.models import (
-    HoverTool,
-    TapTool,
-    OpenURL,
-    BoxZoomTool,
-    ResetTool,
-    PanTool,
-    WheelZoomTool,
-)
-from bokeh.palettes import d3
-from bokeh.transform import factor_cmap, jitter
-from bokeh.plotting import figure, show, ColumnDataSource, output_notebook
+# from bokeh.models import (
+#     HoverTool,
+#     TapTool,
+#     OpenURL,
+#     BoxZoomTool,
+#     ResetTool,
+#     PanTool,
+#     WheelZoomTool,
+# )
+# from bokeh.palettes import d3
+# from bokeh.transform import factor_cmap, jitter
+# from bokeh.plotting import figure, show, ColumnDataSource, output_notebook
 
-
-def make_color_map(df, column_name):
-    factors = df[column_name].unique()
-    total = max(len(factors), 3)
-    palette = d3["Category10"][total]
-    return factor_cmap(column_name, palette=palette, factors=factors)
-
-
-def interactive_compare(
-    stats,
-    variant,
-    variant_baseline,
-    metric,
-    tooltip_cols=["dataset", "category", "ntotal", "nimages"],
-    metric_cols=["rank_first", "rank_last", "nfound"],
-    mode="identity",
-    jitter_size=0.001,
-):
-    plotdata = compare_stats(stats, variant, variant_baseline)
-
-    baseline_name = f"{metric}_baseline"
-    plotdata = plotdata.assign(
-        ratio=plotdata[metric] / plotdata[baseline_name],
-        difference=plotdata[metric] - plotdata[baseline_name],
-    )
-
-    assert mode in ["identity", "ratio"]
-
-    output_notebook()
-
-    base_metric = f"{metric}_baseline"
-
-    if metric not in metric_cols:
-        metric_cols = [metric] + metric_cols
-
-    tooltips = []
-    tooltips.append(("(x,y)", "($x{.02f},$y{.02f})"))
-    tooltips.extend([(m, f"@{m}") for m in tooltip_cols])
-    tooltips.extend(
-        [(metric, f"(@{metric}_baseline, @{metric})") for metric in metric_cols]
-    )
-
-    p = figure(
-        title="comparison",
-        y_axis_type="log",
-        x_axis_type="log",
-        plot_width=500,
-        plot_height=500,
-        tools=[HoverTool(), PanTool(), WheelZoomTool(), ResetTool()],
-        tooltips=tooltips,
-        background_fill_color="#fafafa",
-    )
-
-    source = ColumnDataSource(plotdata)
-
-    if mode == "identity":
-        p.circle(
-            x=jitter(base_metric, width=jitter_size),
-            y=jitter(metric, width=jitter_size),
-            size=10,
-            fill_color=make_color_map(plotdata, "dataset"),
-            line_color="black",
-            source=source,
-        )
-
-        p.match_aspect = True
-        minval = plotdata[base_metric].min()
-        maxval = (plotdata[base_metric][(plotdata[base_metric] < np.inf)]).max()
-        p.segment(x0=minval, x1=maxval, y0=0, y1=maxval)
-    elif mode == "ratio":
-        p.circle(
-            x=jitter(base_metric, width=jitter_size),
-            y=jitter("ratio", width=jitter_size),
-            size=10,
-            fill_color=make_color_map(plotdata, "dataset"),
-            line_color="black",
-            source=source,
-        )
-
-        minval = 0.001  # plotdata[base_metric].min()
-        maxval = 1.0  # (plotdata[base_metric][(plotdata[base_metric] < np.inf)]).max()
-        p.segment(x0=minval, x1=1.0, y0=1.0, y1=1.0)
-        p.segment(x0=minval, x1=1.0, y0=1.0 / minval, y1=1.0)
-    else:
-        assert False
-
-    def url_tool(url_column1, url_column2):
-        url = f"http://localhost:9000/compare?path=@{url_column1}&other=@{url_column2}"
-        taptool = TapTool()
-        taptool.callback = OpenURL(url=url)
-        return taptool
-
-    p.add_tools(url_tool("session_path", "session_path_baseline"))
-    show(p)
+# def make_color_map(df, column_name):
+#     factors = df[column_name].unique()
+#     total = max(len(factors), 3)
+#     palette = d3["Category10"][total]
+#     return factor_cmap(column_name, palette=palette, factors=factors)
 
 
-def interactive_scatterplot(
-    pdata, tooltip_cols=["x", "y", "dataset", "category", "frequency"]
-):
-    output_notebook()
+# def interactive_compare(
+#     stats,
+#     variant,
+#     variant_baseline,
+#     metric,
+#     tooltip_cols=["dataset", "category", "ntotal", "nimages"],
+#     metric_cols=["rank_first", "rank_last", "nfound"],
+#     mode="identity",
+#     jitter_size=0.001,
+# ):
+#     plotdata = compare_stats(stats, variant, variant_baseline)
 
-    p = figure(
-        title="comparison",
-        y_axis_type="log",
-        x_axis_type="log",
-        plot_width=800,
-        plot_height=500,
-        tools=[HoverTool(), PanTool(), BoxZoomTool(), ResetTool()],
-        tooltips=", ".join(["@{}".format(col) for col in tooltip_cols]),
-        #                "@x, @y, @dataset, @category, @query_string, @frequency",
-        background_fill_color="#fafafa",
-    )
+#     baseline_name = f"{metric}_baseline"
+#     plotdata = plotdata.assign(
+#         ratio=plotdata[metric] / plotdata[baseline_name],
+#         difference=plotdata[metric] - plotdata[baseline_name],
+#     )
 
-    source = ColumnDataSource(pdata)
+#     assert mode in ["identity", "ratio"]
 
-    p.circle(
-        x=jitter("x", width=0.1),
-        y=jitter("y", width=0.1),
-        size=10,
-        fill_color=make_color_map(pdata, "dataset"),
-        line_color="black",
-        source=source,
-    )
+#     output_notebook()
 
-    def url_tool(url_column1, url_column2):
-        url = f"http://localhost:9000/compare?path=@{url_column1}&other=@{url_column2}"
-        taptool = TapTool()
-        taptool.callback = OpenURL(url=url)
-        return taptool
+#     base_metric = f"{metric}_baseline"
 
-    p.add_tools(url_tool("session_path", "base_session_path"))
-    show(p)
+#     if metric not in metric_cols:
+#         metric_cols = [metric] + metric_cols
+
+#     tooltips = []
+#     tooltips.append(("(x,y)", "($x{.02f},$y{.02f})"))
+#     tooltips.extend([(m, f"@{m}") for m in tooltip_cols])
+#     tooltips.extend(
+#         [(metric, f"(@{metric}_baseline, @{metric})") for metric in metric_cols]
+#     )
+
+#     p = figure(
+#         title="comparison",
+#         y_axis_type="log",
+#         x_axis_type="log",
+#         plot_width=500,
+#         plot_height=500,
+#         tools=[HoverTool(), PanTool(), WheelZoomTool(), ResetTool()],
+#         tooltips=tooltips,
+#         background_fill_color="#fafafa",
+#     )
+
+#     source = ColumnDataSource(plotdata)
+
+#     if mode == "identity":
+#         p.circle(
+#             x=jitter(base_metric, width=jitter_size),
+#             y=jitter(metric, width=jitter_size),
+#             size=10,
+#             fill_color=make_color_map(plotdata, "dataset"),
+#             line_color="black",
+#             source=source,
+#         )
+
+#         p.match_aspect = True
+#         minval = plotdata[base_metric].min()
+#         maxval = (plotdata[base_metric][(plotdata[base_metric] < np.inf)]).max()
+#         p.segment(x0=minval, x1=maxval, y0=0, y1=maxval)
+#     elif mode == "ratio":
+#         p.circle(
+#             x=jitter(base_metric, width=jitter_size),
+#             y=jitter("ratio", width=jitter_size),
+#             size=10,
+#             fill_color=make_color_map(plotdata, "dataset"),
+#             line_color="black",
+#             source=source,
+#         )
+
+#         minval = 0.001  # plotdata[base_metric].min()
+#         maxval = 1.0  # (plotdata[base_metric][(plotdata[base_metric] < np.inf)]).max()
+#         p.segment(x0=minval, x1=1.0, y0=1.0, y1=1.0)
+#         p.segment(x0=minval, x1=1.0, y0=1.0 / minval, y1=1.0)
+#     else:
+#         assert False
+
+#     def url_tool(url_column1, url_column2):
+#         url = f"http://localhost:9000/compare?path=@{url_column1}&other=@{url_column2}"
+#         taptool = TapTool()
+#         taptool.callback = OpenURL(url=url)
+#         return taptool
+
+#     p.add_tools(url_tool("session_path", "session_path_baseline"))
+#     show(p)
+
+
+# def interactive_scatterplot(
+#     pdata, tooltip_cols=["x", "y", "dataset", "category", "frequency"]
+# ):
+#     output_notebook()
+
+#     p = figure(
+#         title="comparison",
+#         y_axis_type="log",
+#         x_axis_type="log",
+#         plot_width=800,
+#         plot_height=500,
+#         tools=[HoverTool(), PanTool(), BoxZoomTool(), ResetTool()],
+#         tooltips=", ".join(["@{}".format(col) for col in tooltip_cols]),
+#         #                "@x, @y, @dataset, @category, @query_string, @frequency",
+#         background_fill_color="#fafafa",
+#     )
+
+#     source = ColumnDataSource(pdata)
+
+#     p.circle(
+#         x=jitter("x", width=0.1),
+#         y=jitter("y", width=0.1),
+#         size=10,
+#         fill_color=make_color_map(pdata, "dataset"),
+#         line_color="black",
+#         source=source,
+#     )
+
+#     def url_tool(url_column1, url_column2):
+#         url = f"http://localhost:9000/compare?path=@{url_column1}&other=@{url_column2}"
+#         taptool = TapTool()
+#         taptool.callback = OpenURL(url=url)
+#         return taptool
+
+#     p.add_tools(url_tool("session_path", "base_session_path"))
+#     show(p)

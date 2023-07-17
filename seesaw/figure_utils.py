@@ -79,6 +79,14 @@ def get_reg_lambda(tup):
     else:
         return {'reg_lambda': None}
     
+def get_rocchio_params(tup):
+    session_params = tup[0]
+    opts = session_params.get('interactive_options',None)
+    if opts is None:
+        opts = {}
+    
+    rets = ['rocchio_alpha', 'rocchio_beta', 'rocchio_gamma']    
+    return {k:opts.get(k, None) for k in rets}
 
 def apply_funs(*funs):
     def fun(tup):

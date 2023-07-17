@@ -1,4 +1,3 @@
-from ..logistic_regression import LogisticRegressionPT
 from .point_based import *
 from .loop_base import *
 
@@ -6,9 +5,9 @@ class RocchioUpdate(PointBased):
     def __init__(self, gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
         super().__init__(gdm, q, params)
         self.model = None
-        self.alpha = params.method_config['alpha']
-        self.beta = params.method_config['beta']
-        self.gamma = params.method_config['gamma']
+        self.alpha = params.interactive_options['rocchio_alpha']
+        self.beta = params.interactive_options['rocchio_beta']
+        self.gamma = params.interactive_options['rocchio_gamma']    
 
     @staticmethod
     def from_params(gdm: GlobalDataManager, q: InteractiveQuery, params: SessionParams):
@@ -21,13 +20,14 @@ class RocchioUpdate(PointBased):
 
     # def set_text_vec(self) # let super do this
     def refine(self, change=None):
-        Xt, yt = self.q.getXy()
+        matchdf = self.q.getXy()
+        Xt = self.q.index.vectors[matchdf.index.values]
+        yt = matchdf.ys.values
         
         """
         ## page 182 IR book (Raghavan)
           q = \alpha  q_0 + \beta mean rel - \gamma mean non rel
         """
-
         relX = Xt[yt > 0]
         sum_dr = relX.sum(axis=0)
 
