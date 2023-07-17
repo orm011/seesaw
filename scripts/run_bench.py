@@ -63,6 +63,10 @@ for i,yl in enumerate(yls):
 
     base_configs = expand_configs(variants)
     print(f"{len(base_configs)=}")
+    if args.dryrun:
+        base_configs = base_configs[:1]
+        print('limiting base configs due to dry run')
+    print(f"{len(base_configs)=}")
 
     cfgs = generate_benchmark_configs(
         gdm,

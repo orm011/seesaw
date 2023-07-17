@@ -18,14 +18,15 @@ then
 fi
 
 # note large number, like 2x cpus, can cause limit errors nowadays. keep it 1x
-COMMON_ARGS="--temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES --num-cpus=$((SLURM_CPUS_ON_NODE))"
+COMMON_ARGS="--temp-dir=$TMPNAME  --object-store-memory=$OBJ_MEM_BYTES"
+
 
 SIGFILE=$HOME/ray2.head
 
 if [[ $1 == "--head" ]]
 then
     echo 'starting head node'
-    ray start $COMMON_ARGS --head
+    ray start $COMMON_ARGS --num-cpus=$((SLURM_CPUS_ON_NODE/2)) --head
     echo $HOSTNAME > $SIGFILE # signal change after done starting
 else 
     echo 'starting worker node'
@@ -69,7 +70,7 @@ else
 
             if [[ $HEAD_NODE != '' ]]
             then
-                ray start $COMMON_ARGS --address=$HEAD_NODE:6379
+                ray start $COMMON_ARGS --num-cpus=$((SLURM_CPUS_ON_NODE - 2)) --address=$HEAD_NODE:6379
             fi
         else
             echo 'no change'

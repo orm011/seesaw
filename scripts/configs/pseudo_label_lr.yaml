@@ -1,65 +1,67 @@
 datasets:
-  # - name: bdd
+  - name: bdd
   # # #   # categories:
   # # #   #   - trailer
   # # #   #   - train
-  # # #   # - wheelchair
-  # - name: coco
-  # - name: lvis
+  # # #   #   - wheelchair
+  - name: coco
+  - name: lvis
+    # categories:
+    #   - pin (non jewelry)
   - name: objectnet
     #subset: small_sample
     #subset: class_subset2
-    categories:
-      - measuring cup
-      - nut for a screw
-      - toy
-      - tablecloth
-      - skirt
-      - can opener
-      - document folder (closed)
-      - coffee grinder
-      - nail (fastener)
-      - tape measure
-      - power bar
-      - table knife
-      - spray bottle
-      - nightstand
-      - laptop charger
-      - pillow
-      - soap dispenser
-      - portable heater
-      - tongs
-      - dishrag or hand towel
-      - squeegee
-      - letter opener
-      - eraser (white board)
-      - air freshener
-      - power cable
-      - bread knife
-      - hairclip
-      - scrub brush
-      - mixing / salad bowl
-      - drinking cup
-      - multitool
-      - placemat
-      - removable blade
-      - sugar container
-      - travel case
-      - tarp
-      - cellphone
-      - flour container
-      - peeler
-      - water filter
-      - blouse
-      - night light
-      - trash bin
-      - squeeze bottle
-      - extension cable
-      - bookend
-      - flashlight
-      - monitor
-      - coffee table
-      - bottle stopper
+    # categories:
+    #   - measuring cup
+    #   - nut for a screw
+    #   - toy
+    #   - tablecloth
+    #   - skirt
+    #   - can opener
+    #   - document folder (closed)
+    #   - coffee grinder
+    #   - nail (fastener)
+    #   - tape measure
+    #   - power bar
+    #   - table knife
+    #   - spray bottle
+    #   - nightstand
+    #   - laptop charger
+    #   - pillow
+    #   - soap dispenser
+    #   - portable heater
+    #   - tongs
+    #   - dishrag or hand towel
+    #   - squeegee
+    #   - letter opener
+    #   - eraser (white board)
+    #   - air freshener
+    #   - power cable
+    #   - bread knife
+    #   - hairclip
+    #   - scrub brush
+    #   - mixing / salad bowl
+    #   - drinking cup
+    #   - multitool
+    #   - placemat
+    #   - removable blade
+    #   - sugar container
+    #   - travel case
+    #   - tarp
+    #   - cellphone
+    #   - flour container
+    #   - peeler
+    #   - water filter
+    #   - blouse
+    #   - night light
+    #   - trash bin
+    #   - squeeze bottle
+    #   - extension cable
+    #   - bookend
+    #   - flashlight
+    #   - monitor
+    #   - coffee table
+    #   - bottle stopper
           # - air freshener
           # - eyeglasses
           # - egg carton
@@ -72,9 +74,9 @@ shared_session_params: # see SessionParams
   index_options: 
     use_vec_index: True
   index_spec : 
-      #i_name: multiscalemed
+    i_name: multiscalemed
       # c_name: small_sample
-     i_name: multiscalecoarse
+     # i_name: multiscalecoarse
       # i_name: coarse
   agg_method: plain_score
   # agg_method: avg_score
@@ -85,12 +87,13 @@ shared_bench_params: # see BenchParams
   box_drop_prob: 0. 
   max_results: 10 # max positive results
   n_batches : 60 # max batches
-  provide_textual_feedback: True
+  provide_textual_feedback: False
   query_template : "a {}"
 variants:
     # - name: baseline
     #   interactive: plain
     - name: multi_reg
+#      max_samples: 30
       max_samples: 20
       interactive: multi_reg
       # start_policy:
@@ -103,13 +106,20 @@ variants:
         label_loss_type:
             choose: [ ce_loss ]
         rank_loss_margin: .2
-        reg_data_lambda:
-            choose: [ 0 ]
+        
         use_qvec_norm: None
-        reg_norm_lambda:
-            choose: [ 100. ] 
-        reg_query_lambda: 
-            choose: [ 10.  ]
+
+        reg_data_lambda: 1000.
+        reg_norm_lambda: 
+          choose: [30, 300.]
+        reg_query_lambda: 10.
+        # reg_data_lambda:
+        #     choose: [ 300, 1000, 3000]
+        # reg_norm_lambda:
+        #     choose: [ 100.,  ] 
+        # reg_query_lambda: 
+        #     choose: [ 3., 10., 30. ]
+        
         verbose: False
         max_iter: 200
         pos_weight: 
@@ -125,6 +135,20 @@ variants:
             choose: [10]
           edist: 
             choose: [.03]
+    # - name: rocchio_update
+    #   max_samples: 20
+    #   interactive: rocchio_update
+    #   start_policy: 
+    #     choose: [ after_first_batch ]
+    #   interactive_options:
+    #     rocchio_alpha: 1.
+    #     # rocchio_beta: .75
+    #     # rocchio_gamma: .0
+    #     rocchio_beta: 
+    #       choose: [.5, .75]
+    #     rocchio_gamma: 
+    #       choose: [0, .25, .5]
+    #     verbose: False
 #     - name: multi_reg_neg
 #       max_samples: 20
 #       interactive: multi_reg_neg

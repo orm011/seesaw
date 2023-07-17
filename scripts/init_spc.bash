@@ -27,7 +27,7 @@ python -c 'import ray; ray.init("auto", namespace="seesaw"); print(ray.available
 ray status
 
 # start frame server
-uvicorn frameserver.server:app --host localhost.localdomain --port 8600  --workers=5  >> frameserver.log  2>&1 &
+# uvicorn frameserver.server:app --host localhost.localdomain --port 8600  --workers=5  >> frameserver.log  2>&1 &
 
 python $DIR/cache_server.py 
 
