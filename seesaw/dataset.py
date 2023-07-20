@@ -92,6 +92,9 @@ class BaseDataset: # common interface for datasets and their subsets
 
     def load_subset(self, subset_name):
         raise NotImplementedError
+    
+    def leave_one_out(self, dbidx):
+        return LeaveOneOutSubset(self, excluded_dbidx=dbidx)
 
     def get_url(self, dbidx, host) -> str:
         raise NotImplementedError
@@ -186,7 +189,6 @@ class SeesawDataset(BaseDataset):
         index_path = f"{self.path}/indices/{index_name}"
         return AccessMethod.load(index_path, options=options)
 
-
     def _create_subset(self, subset_path, dbidxs):
         dbidxs = pr.FrozenBitMap(dbidxs)
         assert not os.path.exists(subset_path)
@@ -205,7 +207,7 @@ class SeesawDataset(BaseDataset):
 
     def load_subset(self, subset_name) -> BaseDataset:
         return SeesawDatasetSubset.load_from_path(self, f'{self.path}/subsets/{subset_name}')
-
+    
     def get_url(self, dbidx, host='/') -> str:
         path= f'{host}/{self.image_root}/{self.paths[dbidx]}'
         ## remove any extra slashes etc
@@ -422,6 +424,40 @@ class SeesawDatasetSubset(BaseDataset):
         boxes, qgt = self.parent.load_ground_truth()
         boxes = boxes[boxes.dbidx.isin(self.dbidxs)]
         qgt = qgt[qgt.index.isin(self.dbidxs)]
+        return boxes, qgt
+
+    def load_subset(self, subset_name):
+        raise NotImplementedError('not supporting recursive subset right now')
+
+    def get_url(self, dbidx, host='localhost.localdomain:10000') -> str:
+        ## url should be same as before
+        return self.parent.get_url(dbidx, host)
+
+    def as_ray_dataset(self, limit=None, parallelism=-1) -> ray.data.Dataset:
+        raise NotImplementedError()
+    
+
+class LeaveOneOutSubset(BaseDataset):
+    def __init__(self, parent_dataset : BaseDataset, excluded_dbidx):
+        self.parent = parent_dataset
+        self.excluded_dbidx = excluded_dbidx
+        self.image_root = parent_dataset.image_root
+        self.dbidxs = pr.FrozenBitMap(self.parent.file_meta.index.values) - pr.BitMap(excluded_dbidx)
+
+    def size(self):
+        return len(self.dbidxs)
+        
+    def list_indices(self):
+        return self.parent.list_indices()        
+
+    def load_index(self, index_name, *, options):
+        options['excluded'] = self.excluded_dbidx
+        return self.parent.load_index(index_name, options=options)
+
+    def load_ground_truth(self):
+        boxes, qgt = self.parent.load_ground_truth()
+        boxes = boxes[~boxes.dbidx.isin([self.excluded_dbidx])]
+        qgt = qgt[~qgt.index.isin([self.excluded_dbidx])]
         return boxes, qgt
 
     def load_subset(self, subset_name):

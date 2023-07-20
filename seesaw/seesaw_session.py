@@ -224,7 +224,6 @@ def make_session(gdm: GlobalDataManager, p: SessionParams, b : BenchParams = Non
         ds = ds.load_subset(p.index_spec.c_name)
         print('done subsetting')
 
-
     ## NOTE: this won't work with other indices
     if p.pass_ground_truth:
         _, gt = ds.load_ground_truth()
@@ -238,6 +237,7 @@ def make_session(gdm: GlobalDataManager, p: SessionParams, b : BenchParams = Non
     
     print("about to construct session...")
     session = Session(gdm, ds, idx, p, _y=_y)
+    print(f'{ds.path=} {ds.paths.shape[0]=} {p.index_spec.i_name=} {idx.vectors.shape[0]=}')
     print("session constructed...")
     return {
         "session": session,

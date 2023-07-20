@@ -498,15 +498,17 @@ class MultiscaleIndex(AccessMethod):
         vec_index=None,
         min_zoom_level=1,
         path : str = None,
+        excluded : pr.BitMap = None
     ):
         self.embedding = embedding
         self.path = path
+        self.excluded = pr.BitMap([]) if excluded is None else excluded
 
         if min_zoom_level == 1:
             self.vectors = vectors
             self.vector_meta = vector_meta
             self.vec_index = vec_index
-            self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
+            self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values) - self.excluded
         else:  # filter out lowest zoom level
             print("WARNING: filtering out min_zoom_level")
             mask = filter_mask(vector_meta, min_level_inclusive=min_zoom_level)
@@ -514,12 +516,13 @@ class MultiscaleIndex(AccessMethod):
             self.vectors = vectors[mask]
 
             self.vec_index = None  # no index constructed here
-            self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values)
+            self.all_indices = pr.FrozenBitMap(self.vector_meta.dbidx.values) - self.excluded
+        
 
     @staticmethod
     def from_path(index_path: str, *, use_vec_index=True, **options):
         from ...services import get_parquet, get_model_actor
-
+        print(f'{__file__}:{options=}')
         index_path = resolve_path(index_path)
         options = json.load(open(f'{index_path}/info.json'))
         model_path = options['model'] #os.readlink(f"{index_path}/model")
@@ -549,7 +552,8 @@ class MultiscaleIndex(AccessMethod):
             vectors=fine_grained_embedding,
             vector_meta=fine_grained_meta,
             vec_index=vec_index,
-            path = index_path
+            path = index_path,
+            excluded=options.get('excluded', None)
         )
 
     def get_knng(self, path=None):
@@ -621,7 +625,6 @@ class MultiscaleIndex(AccessMethod):
             exclude_dbidx=exclude,
             force_exact = force_exact
         )
-
 
         candidate_id = pr.BitMap(candidate_df['dbidx'].values)
         ilocs = np.where(self.vector_meta.dbidx.isin(candidate_id))[0]
