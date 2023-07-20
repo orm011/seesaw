@@ -33,6 +33,14 @@ class ActiveSearch(LoopBase):
         self.scores = None
         dataset = Dataset.from_vectors(q.index.vectors)
 
+
+        '''
+        - gamma:
+            mode: clip
+            calibration: sigmoid | raw | grount_truth
+            a: 1.
+            b: 0.
+        '''
         self.gamma = params.interactive_options['gamma']
         if self.gamma['mode'] == 'clip':
             calibration = self.gamma['calibration']

@@ -242,8 +242,8 @@ class RankRegressionPT:
         self.losses_ = self.trainer_.fit(dl)
 
         for i,loss in enumerate(self.losses_):
-            if math.isnan(loss) or math.isinf(loss):
-                print(f'warning: loss diverged at step {i=} {loss=:.03f}')
+            if math.isnan(loss['loss']) or math.isinf(loss['loss']):
+                print(f'warning: loss diverged at step {i=} {loss["loss"]=:.03f}')
                 raise ValueError('regression training failed with a nan')
         
         niter = len(self.losses_)
@@ -396,8 +396,8 @@ class LogisticRegressionPT:
         self.losses_ = self.trainer_.fit(dl)
 
         for i,loss in enumerate(self.losses_):
-            if math.isnan(loss) or math.isinf(loss):
-                print(f'warning: loss diverged at step {i=} {loss=:.03f}')
+            if math.isnan(loss['loss']) or math.isinf(loss['loss']):
+                print(f'warning: loss diverged at step {i=} {loss["loss"]=:.03f}')
                 raise ValueError('regression training failed with a nan')
         
         niter = len(self.losses_)

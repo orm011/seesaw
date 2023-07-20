@@ -128,8 +128,8 @@ class LKNNModel(ProbabilityModel):
         numerators = self.numerators[ids]
         denominators = self.denominators[ids]
         gamma = self.gamma[ids]
-        import numexpr
-        change_scores = numexpr.evaluate('(numerators + numerator_delta + gamma)/(denominators + denominator_delta + 1)')
+#        import numexpr
+        change_scores = (numerators + numerator_delta + gamma)/(denominators + denominator_delta + 1)
         desc_order = np.argsort(-change_scores)
         desc_changed_idxs = ids[desc_order]
         desc_changed_scores = change_scores[desc_order]
