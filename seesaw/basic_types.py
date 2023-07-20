@@ -112,6 +112,7 @@ class BenchResult(BaseModel):
     run_info: dict
     total_time: float
     method_stats : Optional[dict] = None # empty dict creates problems for parquet
+    latencies: List[float] = None
 
 
 class BenchSummary(BaseModel):

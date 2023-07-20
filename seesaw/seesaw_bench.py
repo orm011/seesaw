@@ -21,6 +21,8 @@ import numpy as np
 import sys
 import torch
 
+import time
+
 def readjust_interval(x1, x2, max_x):
     left_excess = -np.clip(x1, -np.inf, 0)
     right_excess = np.clip(x2 - max_x, 0, np.inf)
@@ -303,8 +305,12 @@ def benchmark_loop(
     seen_dbidxs = pr.BitMap()
 
     session.set_text(b.qstr)
+    latencies = []
     for batch_num in tqdm(range(1, b.n_batches + 1), leave=False, disable=True):
+        start_time = time.time()
+
         print(f"iter {batch_num}")
+
         idxbatch = session.next()
 
         for idx in idxbatch:
@@ -343,8 +349,10 @@ def benchmark_loop(
 
         if b.max_feedback is None or (batch_num + 1) * p.batch_size <= b.max_feedback:
             session.refine()
+            latencies.append(time.time() - start_time)
 
-    return dict(nfound=int(total_results), nseen=int(total_seen))
+    print(f'{latencies=}')
+    return dict(nfound=int(total_results), nseen=int(total_seen), latencies=latencies)
 
 
 def run_on_actor(br, tup):
@@ -415,6 +423,9 @@ class BenchRunner(object):
                     b=b,
                     p=p,
                 )
+
+                latencies = run_info['latencies']
+                del run_info['latencies']
                 print("loop done... now saving results")
                 session = ret["session"]
                 summary.result = BenchResult(
@@ -424,8 +435,8 @@ class BenchRunner(object):
                     run_info=run_info,
                     method_stats=session.get_method_stats(),
                     total_time=time.time() - start,
+                    latencies=latencies
                 )
-
                 json.dump(summary.dict(), open(output_path, "w"), indent=3)
             except Exception as exception:
                 print(f'{exception=}', file=sys.stderr)
@@ -467,7 +478,8 @@ def summarize_session(res: BenchResult):
         nimages=res.nimages,
         ntotal=res.ntotal,
         total_time=res.total_time,
-        method_stats=res.method_stats
+        method_stats=res.method_stats,
+        latencies=res.latencies
     )
 
 def parse_json2(dict):
