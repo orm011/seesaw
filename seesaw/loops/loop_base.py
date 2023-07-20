@@ -77,32 +77,31 @@ class LoopBase:
         raise NotImplementedError('implement me in subclass')
 
     def refine_external(self, change=None):
-        matchdf = self.q.getXy()
-        X = self.q.index.vectors[matchdf.index.values]
-        y = matchdf.ys.values
-        by_image = matchdf.groupby('dbidx').ys.max()
 
-        len_pos = (by_image == 1.).sum()
-        len_neg = (by_image == 0.).sum()
+        if not self.started:
+            matchdf = self.q.getXy()
+            by_image = matchdf.groupby('dbidx').ys.max()
+            len_pos = (by_image == 1.).sum()
+            len_neg = (by_image == 0.).sum()
 
-        if self.params.start_policy == 'from_start':
-            assert self.started
-            start_condition = True
-        elif self.params.start_policy == 'after_first_batch':
-            start_condition = (len_pos + len_neg ) > 0
-        elif self.params.start_policy == 'after_first_positive':
-            start_condition = len_pos > 0
-        elif self.params.start_policy == 'after_first_negative':
-            start_condition = len_neg > 0
-        elif self.params.start_policy == 'after_first_positive_and_negative':
-            start_condition = (len_pos > 0) and (len_neg  > 0)        
-        elif self.params.start_policy == 'after_first_reversal':
-            start_condition = self.reversal
-        else:
-            assert False, 'policy not implemented'
+            if self.params.start_policy == 'from_start':
+                start_condition = True
+            elif self.params.start_policy == 'after_first_batch':
+                start_condition = (len_pos + len_neg ) > 0
+            elif self.params.start_policy == 'after_first_positive':
+                start_condition = len_pos > 0
+            elif self.params.start_policy == 'after_first_negative':
+                start_condition = len_neg > 0
+            elif self.params.start_policy == 'after_first_positive_and_negative':
+                start_condition = (len_pos > 0) and (len_neg  > 0)        
+            elif self.params.start_policy == 'after_first_reversal':
+                start_condition = self.reversal
+            else:
+                assert False, 'policy not implemented'
 
-        self.started = self.started or start_condition
-        if self.started:
+            self.started = start_condition
+
+        if self.started:    
             print('start condition met... refinining custom method...')
             self.refine(change=change)
 
