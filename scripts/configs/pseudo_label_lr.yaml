@@ -1,16 +1,16 @@
 datasets:
   - name: bdd
-    categories:
-      - trailer
+  #   categories:
+  #     - trailer
       # - train
       # - wheelchair
-  # - name: coco
-  #   categories:
-  #     - surfboard
-#  - name: lvis
+  - name: coco
+    # categories:
+    #   - surfboard
+  - name: lvis
     # categories:
     #   - pin (non jewelry)
-  # - name: objectnet
+  - name: objectnet
   #   categories:
   #     - measuring cup
 shared_session_params: # see SessionParams
@@ -20,7 +20,7 @@ shared_session_params: # see SessionParams
   index_options: 
     use_vec_index: True
   index_spec : 
-    # i_name: multiscalemed
+#    i_name: multiscalemed
     i_name: multiscalecoarse
   agg_method: plain_score
   # agg_method: avg_score
@@ -29,13 +29,13 @@ shared_session_params: # see SessionParams
 shared_bench_params: # see BenchParams
   max_feedback: null
   box_drop_prob: 0. 
-  max_results: 20 # max positive results
-  n_batches : 20 # max batches
+  max_results: 10 # max positive results
+  n_batches : 60 # max batches
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-  - name: baseline
-    interactive: plain
+  # - name: baseline
+  #   interactive: plain
   - name: multi_reg
     max_samples: 20
     interactive: multi_reg
@@ -45,10 +45,12 @@ variants:
           choose: [ ce_loss ]
       rank_loss_margin: .2
       use_qvec_norm: None
-      reg_data_lambda: 1000.
+      # reg_data_lambda: 1000.
+      reg_data_lambda: 0.
       reg_norm_lambda: 100.
         # choose: [30, 300.]
-      reg_query_lambda: 10.
+      # reg_query_lambda: 10.
+      reg_query_lambda: 0.
       # reg_data_lambda:
       #     choose: [ 300, 1000, 3000]
       # reg_norm_lambda:
@@ -70,93 +72,93 @@ variants:
           choose: [10]
         edist: 
           choose: [.03]
-  - name: rocchio_update
-    max_samples: 20
-    interactive: rocchio_update
-    interactive_options:
-      rocchio_alpha: 1.
-      # rocchio_beta: .75
-      # rocchio_gamma: .0
-      rocchio_beta: 
-        choose: [.5, .75]
-      rocchio_gamma: 
-        choose: [0, .25, .5]
-      verbose: False
-  - name: active_search
-    max_samples: 20
-    interactive: active_search
-    start_policy: after_first_positive
-    pass_ground_truth: False #True # for calibration
-    interactive_options:
-      implementation: 
-        vectorized
-      pruning_on: False
-      gamma:
-          mode: clip
-          calibration: sigmoid
-          a: 1.
-          b: 0.
-      reward_horizon: 
-          choose: [10]
-      max_steps: 60 # adjust to be equal to nbatches
-      adjust_horizon: True
-      matrix_options:
-        knn_path: nndescent60
-        symmetric: False
-        self_edges : False
-        normalized_weights : False
-        knn_k: 
-          choose: [10]
-        edist: 
-          choose: [.03]
-          # choose: [1.6]
-          # choose: [.05]
-          # choose: [.00075,  .00625, .2, .4, 3.2]
-          # choose: [.05]
-          # choose: [0.00038, .00075, 3.2]
-          # choose: [.05]
-      normalize_scores : False
-      sigmoid_before_propagate: True  
-      calib_a: 
-        choose: [10.]
-      calib_b: 
-        choose: [-0.4]
-      prior_weight: 
-        choose: [0.] # good for unnormalized
-  - name: pseudo_lr_switch # change to use new config
-    max_samples: 20
-    interactive: pseudo_lr
-    interactive_options:
-      switch_over: True
-      real_sample_weight: 
-        choose: [1.]
-      sample_size: 
-        choose : [10000]
-      log_reg_params:
-        class_weights: 
-          choose: [1.]
-        scale: centered
-        reg_lambda: 
-          # choose: [.25, .5, 1., 2.]
-          choose : [1.]
-        max_iter: 200.
-        lr: 1
-        fit_intercept: False
-      label_prop_params:
-        matrix_options:
-          knn_path: nndescent60
-          self_edges : False
-          symmetric: True
-          normalized_weights : False
-          knn_k: 
-            choose: [10]
-          edist: 
-            choose: [.05]
-        normalize_scores : False
-        sigmoid_before_propagate: True  
-        calib_a: 
-          choose: [10.]
-        calib_b: 
-          choose: [-0.4]
-        prior_weight: 
-          choose: [1.] # good for unnormalized
+  # - name: rocchio_update
+  #   max_samples: 20
+  #   interactive: rocchio_update
+  #   interactive_options:
+  #     rocchio_alpha: 1.
+  #     rocchio_beta: .50
+  #     rocchio_gamma: .25
+  #     # rocchio_beta: 
+  #     #   choose: [.5, .75]
+  #     # rocchio_gamma: 
+  #     #   choose: [0, .25, .5]
+  #     verbose: False
+  # - name: active_search
+  #   max_samples: 20
+  #   interactive: active_search
+  #   start_policy: after_first_positive
+  #   pass_ground_truth: False #True # for calibration
+  #   interactive_options:
+  #     implementation: 
+  #       vectorized
+  #     pruning_on: False
+  #     gamma:
+  #         mode: clip
+  #         calibration: sigmoid
+  #         a: 1.
+  #         b: 0.
+  #     reward_horizon: 
+  #         choose: [10]
+  #     max_steps: 60 # adjust to be equal to nbatches
+  #     adjust_horizon: True
+  #     matrix_options:
+  #       knn_path: nndescent60
+  #       symmetric: False
+  #       self_edges : False
+  #       normalized_weights : False
+  #       knn_k: 
+  #         choose: [10]
+  #       edist: 
+  #         choose: [.03]
+  #         # choose: [1.6]
+  #         # choose: [.05]
+  #         # choose: [.00075,  .00625, .2, .4, 3.2]
+  #         # choose: [.05]
+  #         # choose: [0.00038, .00075, 3.2]
+  #         # choose: [.05]
+  #     normalize_scores : False
+  #     sigmoid_before_propagate: True  
+  #     calib_a: 
+  #       choose: [10.]
+  #     calib_b: 
+  #       choose: [-0.4]
+  #     prior_weight: 
+  #       choose: [0.] # good for unnormalized
+    # - name: pseudo_lr_switch # change to use new config
+    #   max_samples: 20
+    #   interactive: pseudo_lr
+    #   interactive_options:
+    #     switch_over: True
+    #     real_sample_weight: 
+    #       choose: [1.]
+    #     sample_size: 
+    #       choose : [10000]
+    #     log_reg_params:
+    #       class_weights: 
+    #         choose: [1.]
+    #       scale: centered
+    #       reg_lambda: 
+    #         # choose: [.25, .5, 1., 2.]
+    #         choose : [1.]
+    #       max_iter: 200.
+    #       lr: 1
+    #       fit_intercept: False
+    #     label_prop_params:
+    #       matrix_options:
+    #         knn_path: nndescent60
+    #         self_edges : False
+    #         symmetric: True
+    #         normalized_weights : False
+    #         knn_k: 
+    #           choose: [10]
+    #         edist: 
+    #           choose: [.05]
+    #       normalize_scores : False
+    #       sigmoid_before_propagate: True  
+    #       calib_a: 
+    #         choose: [10.]
+    #       calib_b: 
+    #         choose: [-0.4]
+    #       prior_weight: 
+    #         choose: [1.] # good for unnormalized

@@ -9,6 +9,8 @@ class InteractiveQuery(object):
     tracks what has been shown already and supplies it
     to stateless db as part of query
     """
+    index: 'MultiscaleIndex'
+    label_db: LabelDB
 
     def __init__(self, index: AccessMethod, _y : np.ndarray = None):
         self.index = index

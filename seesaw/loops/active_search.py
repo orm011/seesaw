@@ -107,6 +107,7 @@ class ActiveSearch(LoopBase):
         top_idx = int(res.index) 
         print(f'{res.index=}, {res.value=}')
         self.pruned_fractions.append(res.pruned_fraction)
+
         vec_idx = np.array([top_idx])
         abs_idx = self.q.index.vector_meta['dbidx'].iloc[vec_idx].values
         ans = {'dbidxs': abs_idx, 'activations': None }
