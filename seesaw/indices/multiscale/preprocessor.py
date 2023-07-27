@@ -2,7 +2,7 @@ from seesaw.definitions import resolve_path
 from seesaw.models.model import ImageEmbedding
 import pandas as pd
 from ray.data.extensions import TensorArray
-from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
+from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
 import ray
 import io
 import torch
@@ -253,7 +253,7 @@ def preprocess_dataset(
         rep_actors = actors * num_reps
 
         binaries = ray.data.read_binary_files(
-            paths=read_paths, include_paths=True, parallelism=400, meta_provider=FastFileMetadataProvider())
+            paths=read_paths, include_paths=True, parallelism=400, meta_provider=DefaultFileMetadataProvider())
             
         shards = binaries.split(nsplits, locality_hints=rep_actors)
 
