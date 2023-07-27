@@ -62,9 +62,9 @@ class SessionParams(BaseModel):
     index_spec: IndexSpec
     interactive: str
     pass_ground_truth: Optional[bool] = False # used for testing only. 
-    annotation_category: str = None
+    annotation_category: Optional[str] = None
     interactive_options: Optional[dict] = None
-    batch_size: int
+    batch_size: int 
     index_options : Optional[dict] = {'use_vec_index':True}
     aug_larger: Literal['greater', 'all'] = 'all'
     agg_method: Optional[Literal["avg_score", 'avg_vector', 'plain_score']] = 'avg_score'

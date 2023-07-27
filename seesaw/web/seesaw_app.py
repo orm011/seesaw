@@ -21,7 +21,6 @@ import sys
 import time
 import traceback
 import pandas as pd
-
 import glob
 import ray
 
@@ -106,8 +105,8 @@ async def user_session(
     index : str, 
     #qkey,
     #user,
-    annotation_category : str,
     response: Response,
+    annotation_category : str | None = None,
     session_id=Cookie(default=None),
     manager=Depends(get_manager),
 ):
