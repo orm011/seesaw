@@ -64,9 +64,8 @@ def huggingface_loader(variant):
 
     return fun
 
-
 class ImageEmbedding(nn.Module):
-    def __init__(self, device, jit_path=None):
+    def __init__(self, device, jit_path=None, add_slide=True):
         super().__init__()
         self.device = device
 
@@ -76,9 +75,15 @@ class ImageEmbedding(nn.Module):
         ker = huggingface_loader(variant=path)(device)
 
         kernel_size = 224  # changes with variant
-        self.model = SlidingWindow(
-            ker, kernel_size=kernel_size, stride=kernel_size // 2, center=True
-        ).to(self.device)
+
+        if add_slide:
+            self.model = SlidingWindow(
+                ker, kernel_size=kernel_size, stride=kernel_size // 2, center=True
+            ).to(self.device)
+        else:
+            self.model = ker.to(self.device)
+            self.model.eval()
 
     def forward(self, *, preprocessed_image):
-        return self.model(preprocessed_image)
+        with torch.no_grad():
+            return self.model(preprocessed_image)

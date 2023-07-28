@@ -8,6 +8,7 @@ import glob
 import json
 
 
+
 def list_image_paths(basedir, prefixes=[""], extensions=["jpg", "jpeg", "png"]):
     acc = []
     for prefix in prefixes:
@@ -172,6 +173,8 @@ class SeesawDataset(BaseDataset):
         file_meta = pd.read_parquet(f"{self.dataset_root}/file_meta.parquet")
         self.file_meta = file_meta
         self.paths = file_meta["file_path"].values
+        self.dbidx_map = dict(zip(self.paths, self.file_meta.index.values)) # maps str
+
         self.image_root = os.path.realpath(f"{self.dataset_root}/images/")
 
     def size(self):
@@ -219,28 +222,30 @@ class SeesawDataset(BaseDataset):
         return Image(url=f'{host}/{url}')
 
 
-    def as_ray_dataset(ds, limit=None, parallelism=-1) -> ray.data.Dataset:
-        """ with schema {dbidx: int64, binary: object}
+    def as_ray_dataset(self, limit=None, parallelism=-1) -> ray.data.Dataset:
+        """ with schema {'dbidx', 'file_path, 'bytes'}
+            and note: path is in self.paths
         """
-        path_array = (ds.image_root + '/') + ds.paths
-        path_array = path_array[:limit]
-        read_paths = list(path_array)
+        from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
+
+        real_prefix = f"{os.path.realpath(self.image_root)}/"
+        read_paths = (real_prefix + self.paths).tolist()
+        read_paths = read_paths[:limit]
+        fix_map = self.dbidx_map
         
-        def fix_batch(batch):
-            inv_paths = {p:dbidx for dbidx,p in enumerate(read_paths)}
-
-            def tup_fixer(tup):
-                tup = tup[0]
-                path, binary = tup
-                dbidx = inv_paths[path]
-                return (dbidx, binary)
-
-            return batch.apply(tup_fixer, axis=1, result_type='expand').rename({0:'dbidx', 1:'binary'}, axis=1)
-    
+        def fix_path(batch_df, fix_map):
+            paths = batch_df.path
+            fixed_paths = paths.map(lambda x : x[len(real_prefix):])
+            
+            batch_df = batch_df.assign(file_path=fixed_paths)
+            dbidxs = batch_df.file_path.map(lambda p : fix_map[p])
+            batch_df = batch_df.assign(dbidx=dbidxs)
+            return batch_df[['dbidx', 'file_path', 'bytes']]
+            
         binaries = ray.data.read_binary_files(paths=read_paths, include_paths=True, 
-                    parallelism=parallelism, meta_provider=FastFileMetadataProvider())
+                    parallelism=parallelism, meta_provider=DefaultFileMetadataProvider())
     
-        return binaries.lazy().map_batches(fix_batch, batch_format='pandas')
+        return binaries.map_batches(fix_path, batch_format='pandas', fn_kwargs=dict(fix_map=fix_map))
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.dataset_name})"
