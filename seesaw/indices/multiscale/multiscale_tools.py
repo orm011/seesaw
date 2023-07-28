@@ -17,6 +17,7 @@ def pyramid(im, factor, abs_min):
     ## example values: factor .71, abs_min 224
     ## if im size is less tha the minimum, expand image to fit minimum
     ## try following: orig size and abs min size give you bounds
+    ## returns pyramid from smaller to larger image
     assert factor < 1.0
     factor = 1.0 / factor
     size = min(im.size)
@@ -41,8 +42,8 @@ def pyramid(im, factor, abs_min):
     assert len(ims) > 0
     assert min(ims[0].size) >= abs_min
     assert min(ims[-1].size) == abs_min
-    return ims, factors
-
+    df = pd.DataFrame({'image':ims, 'scale_factor':factors, 'zoom_level':np.arange(len(ims))})
+    return df.sort_values('scale_factor', ascending=True).reset_index(drop=True)
 
 def rearrange_into_tiles(img1, tile_size):
     """
@@ -92,42 +93,27 @@ def strided_tiling(img1, tile_size):
 
     return pd.concat(all_res, ignore_index=True)
 
-def generate_multiscale_versions(im, factor, min_size):
-    """meant to preprocess dict with {path, dbidx,image}"""
-    ims, sfs = pyramid(im, factor=factor, abs_min=min_size)
+def generate_multiscale_tiling(im, tile_size, factor, min_tile_size):
+    pdf = pyramid(im, factor=factor, abs_min=tile_size)
+
+    mask = (224/pdf.scale_factor >= min_tile_size) | (pdf.index == 0) # keep largest at least
+    pdf = pdf[mask]
+    assert pdf.shape[0] > 0, 'mask eliminated all images. should keep at least one'
+
     acc = []
-    for zoom_level, (im, sf) in enumerate(zip(ims, sfs), start=1):
-        acc.append(
-            {
-                "image": im,
-                "scale_factor": sf,
-                "zoom_level": zoom_level,
-            }
-        )
-
-    return acc
-
-def generate_multiscale_tiling(im, factor, tile_size):
-    scales = generate_multiscale_versions(im, factor=factor, min_size=tile_size)
-
-    tiles = []
-    acc = []
-    max_zoom_level = 1
-    for l in scales:
-        df = strided_tiling(l['image'], tile_size=tile_size)
-        tiles.append(df['tile'].values.to_numpy())
-        df['scale_factor'] = l['scale_factor']
-        df['scale_factor'] = df['scale_factor'].astype('float32')
-        df['zoom_level'] = l['zoom_level']
-        max_zoom_level = max(max_zoom_level, l['zoom_level'])
+    max_zoom_level = pdf.zoom_level.max()
+    for tup in pdf.itertuples():
+        df = strided_tiling(tup.image, tile_size=tile_size)
+        df['scale_factor'] = tup.scale_factor
+        df['scale_factor'] = df.scale_factor.astype('float32')
+        df['zoom_level'] = tup.zoom_level
         df = df.assign(scale_factor=df.scale_factor.astype('float32'), zoom_level=df.zoom_level.astype('int16'))
-        df = df.assign(**(df[['x1', 'x2', 'y1', 'y2']]*l['scale_factor']).astype('float32'))
+        df = df.assign(**(df[['x1', 'x2', 'y1', 'y2']]/tup.scale_factor).astype('float32'))
         acc.append(df)
     batch_df = pd.concat(acc, ignore_index=True)
     batch_df = batch_df.assign(patch_id=np.arange(batch_df.shape[0], dtype=np.int16), max_zoom_level=max_zoom_level)
     batch_df = batch_df.assign(max_zoom_level=batch_df.max_zoom_level.astype('int16'))
 
-    ## TODO: pick compact types to avoid size blowups
     return batch_df
 
 def display_tiles(res):
@@ -155,19 +141,19 @@ def opentif(fp, path=None) -> PIL.Image.Image:
     return asim
 
 import io
-def multiscale_preproc_tup(rowtup):
+def multiscale_preproc_tup(rowtup, min_tile_size):
     try:
         image = PIL.Image.open(io.BytesIO(rowtup.bytes))
-        tile_df = generate_multiscale_tiling(image, factor=.5, tile_size=224)
+        tile_df = generate_multiscale_tiling(image, factor=.5, tile_size=224, min_tile_size=min_tile_size)
     except PIL.UnidentifiedImageError:
         warnings.warn(f'error parsing binary {rowtup.file_path}. Ignoring...')
         tile_df = None
     return tile_df
 
-def multiscale_preproc_batch(batch_df):
+def multiscale_preproc_batch(batch_df, min_tile_size):
     dfs =[]
     for tup in batch_df.itertuples():
-        tile_df = multiscale_preproc_tup(tup)
+        tile_df = multiscale_preproc_tup(tup, min_tile_size=min_tile_size)
         if tile_df is None:
             continue # empty df messes up types
         
@@ -229,12 +215,13 @@ from seesaw.util import transactional_folder, is_valid_filename
 from seesaw.definitions import resolve_path
 import json
 
-def run_multiscale_extraction_pipeline(ds, model_path, vector_output_path):
+def run_multiscale_extraction_pipeline(ds, model_path, vector_output_path, min_tile_size):
     from ray.data import ActorPoolStrategy
 
     rds = ds.as_ray_dataset(parallelism=100)
 
-    (rds.map_batches(multiscale_preproc_batch, batch_format='pandas', batch_size=5)
+    (rds.map_batches(multiscale_preproc_batch, batch_format='pandas', batch_size=5, 
+                                fn_kwargs=dict(min_tile_size=min_tile_size))
             .repartition(num_blocks=rds.num_blocks()*10)
             .map_batches(batch_tx, batch_format='pandas', batch_size=200)
             .map_batches(InferenceActor, batch_format='pandas', batch_size=200,
@@ -244,8 +231,9 @@ def run_multiscale_extraction_pipeline(ds, model_path, vector_output_path):
             .write_parquet(vector_output_path)
     )
 
+from seesaw.vector_index import build_annoy_idx
 
-def create_multiscale_index(ds, index_name, model_path, force=False):
+def create_multiscale_index(ds, index_name, model_path, min_tile_size=224, force=False, build_vec_index=False):
     assert is_valid_filename(index_name), index_name
 
     index_output_path = f'{ds.path}/indices/{index_name}'
@@ -256,14 +244,20 @@ def create_multiscale_index(ds, index_name, model_path, force=False):
         info = {
             "constructor": "seesaw.indices.multiscale.multiscale_index.MultiscaleIndex", 
             "model": model_path, 
-            "dataset": resolve_path(ds.path)
+            "dataset": resolve_path(ds.path),
         }
 
         json.dump(info, open(f'{tmp_output_path}/info.json', 'w'), indent=2)
 
         run_multiscale_extraction_pipeline(ds, model_path=model_path, 
-                                       vector_output_path=f'{tmp_output_path}/vectors.sorted.cached')
+                                       vector_output_path=f'{tmp_output_path}/vectors.sorted.cached',
+                                       min_tile_size=min_tile_size
+                                       )
+        
 
     # now try loading it
     idx  = ds.load_index(index_name, options=dict(use_vec_index=False))
+    if build_vec_index:
+         build_annoy_idx(vecs=idx.vectors, output_path=idx.path + '/vectors.annoy', n_trees=10)
+
     return idx

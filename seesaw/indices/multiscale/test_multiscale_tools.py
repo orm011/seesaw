@@ -70,7 +70,7 @@ def test_strided():
 
 def test_full():
     img1 = make_test_image(2,2)
-    d1 = generate_multiscale_tiling(img1, factor=.5, tile_size=224)
+    d1 = generate_multiscale_tiling(img1, factor=.5, tile_size=224, min_tile_size=224)
 
     assert d1.shape[0] == 4 + 2 + 2 + 1 + 1
     _compare_patches(img1, d1)
