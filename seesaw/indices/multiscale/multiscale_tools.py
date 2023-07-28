@@ -225,22 +225,45 @@ class InferenceActor:
         batch_df = batch_df.drop(['tile'], axis=1).assign(vectors=TensorArray(ans.to('cpu').numpy()))
         return batch_df
 
+from seesaw.util import transactional_folder, is_valid_filename
+from seesaw.definitions import resolve_path
+import json
 
-def create_multiscale_index(ds, model_path, index_output_path):
+def run_multiscale_extraction_pipeline(ds, model_path, vector_output_path):
     from ray.data import ActorPoolStrategy
 
-    mpath = model_path
-    opath = f'{index_output_path}/vectors.sorted.cached'
-
-    ## missing: 
-    ### 1. other folder structures: meta json
     rds = ds.as_ray_dataset(parallelism=100)
 
     (rds.map_batches(multiscale_preproc_batch, batch_format='pandas', batch_size=5)
             .repartition(num_blocks=rds.num_blocks()*10)
             .map_batches(batch_tx, batch_format='pandas', batch_size=200)
             .map_batches(InferenceActor, batch_format='pandas', batch_size=200,
-                        compute=ActorPoolStrategy(min_size=1, max_size=2), fn_constructor_kwargs=dict(model_path=mpath), num_gpus=1)
+                        compute=ActorPoolStrategy(min_size=1, max_size=2), 
+                        fn_constructor_kwargs=dict(model_path=model_path), num_gpus=1)
             .repartition(num_blocks=30)
-            .write_parquet(opath)
+            .write_parquet(vector_output_path)
     )
+
+
+def create_multiscale_index(ds, index_name, model_path, force=False):
+    assert is_valid_filename(index_name), index_name
+
+    index_output_path = f'{ds.path}/indices/{index_name}'
+
+    with transactional_folder(index_output_path, force=force) as tmp_output_path:
+        model_path = resolve_path(model_path)
+
+        info = {
+            "constructor": "seesaw.indices.multiscale.multiscale_index.MultiscaleIndex", 
+            "model": model_path, 
+            "dataset": resolve_path(ds.path)
+        }
+
+        json.dump(info, open(f'{tmp_output_path}/info.json', 'w'), indent=2)
+
+        run_multiscale_extraction_pipeline(ds, model_path=model_path, 
+                                       vector_output_path=f'{tmp_output_path}/vectors.sorted.cached')
+
+    # now try loading it
+    idx  = ds.load_index(index_name, options=dict(use_vec_index=False))
+    return idx
