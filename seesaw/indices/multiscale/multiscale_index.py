@@ -1,276 +1,17 @@
 from ray.data.extensions import TensorArray
-
-import torchvision
-from torchvision import transforms as T
-
 import numpy as np
 import pandas as pd
 from seesaw.dataset_tools import *
-from torch.utils.data import DataLoader
-import math
 from tqdm.auto import tqdm
-import torch
 from seesaw.labeldb import LabelDB
 from seesaw.query_interface import  AccessMethod, InteractiveQuery
 
 from seesaw.models.embeddings import make_clip_transform, ImTransform, XEmbedding
 import pyroaring as pr
-from operator import itemgetter
-import PIL
 from seesaw.vector_index import VectorIndex
-import math
-import annoy
 from seesaw.definitions import resolve_path
 import os
 
-
-def _postprocess_results(acc):
-    flat_acc = {
-        "iis": [],
-        "jjs": [],
-        "dbidx": [],
-        "vecs": [],
-        "zoom_factor": [],
-        "zoom_level": [],
-    }
-    flat_vecs = []
-
-    # {'accs':accs, 'sf':sf, 'dbidx':dbidx, 'zoom_level':zoom_level}
-    for item in acc:
-        acc0, sf, dbidx, zl = itemgetter("accs", "sf", "dbidx", "zoom_level")(item)
-        acc0 = acc0.squeeze(0)
-        acc0 = acc0.transpose((1, 2, 0))
-
-        iis, jjs = np.meshgrid(
-            range(acc0.shape[0]), range(acc0.shape[1]), indexing="ij"
-        )
-        # iis = iis.reshape(-1, acc0)
-        iis = iis.reshape(-1)
-        jjs = jjs.reshape(-1)
-        acc0 = acc0.reshape(-1, acc0.shape[-1])
-        imids = np.ones_like(iis) * dbidx
-        zf = np.ones_like(iis) * (1.0 / sf)
-        zl = np.ones_like(iis) * zl
-
-        flat_acc["iis"].append(iis)
-        flat_acc["jjs"].append(jjs)
-        flat_acc["dbidx"].append(imids)
-        flat_acc["vecs"].append(acc0)
-        flat_acc["zoom_factor"].append(zf)
-        flat_acc["zoom_level"].append(zl)
-
-    flat = {}
-    for k, v in flat_acc.items():
-        flat[k] = np.concatenate(v)
-
-    vecs = flat["vecs"]
-    del flat["vecs"]
-
-    vec_meta = pd.DataFrame(flat)
-    vecs = vecs.astype("float32")
-    vecs = vecs / (np.linalg.norm(vecs, axis=-1, keepdims=True) + 1e-6)
-    vec_meta = vec_meta.assign(file_path=item["file_path"])
-
-    vec_meta = vec_meta.assign(vectors=TensorArray(vecs))
-    return vec_meta
-
-
-def preprocess_ds(localxclip, ds, debug=False):
-    txds = TxDataset(ds, tx=pyramid_tx(non_resized_transform(224)))
-    acc = []
-    if debug:
-        num_workers = 0
-    else:
-        num_workers = 4
-    for dbidx, tup in enumerate(
-        tqdm(
-            DataLoader(
-                txds,
-                num_workers=num_workers,
-                shuffle=False,
-                batch_size=1,
-                collate_fn=lambda x: x,
-            ),
-            total=len(txds),
-        )
-    ):
-        [(ims, sfs)] = tup
-        for zoom_level, (im, sf) in enumerate(zip(ims, sfs), start=1):
-            accs = localxclip.from_image(preprocessed_image=im, pooled=False)
-            acc.append((accs, sf, dbidx, zoom_level))
-
-    return _postprocess_results(acc)
-
-
-def pyramid_centered(im, i, j):
-    cy = (i + 1) * 112.0
-    cx = (j + 1) * 112.0
-    scales = [112, 224, 448]
-    crs = []
-    w, h = im.size
-    for s in scales:
-        tup = (
-            np.clip(cx - s, 0, w),
-            np.clip(cy - s, 0, h),
-            np.clip(cx + s, 0, w),
-            np.clip(cy + s, 0, h),
-        )
-        crs.append(im.crop(tup))
-    return crs
-
-
-def zoom_out(im: PIL.Image, factor=0.5, abs_min=224):
-    """
-    returns image one zoom level out, and the scale factor used
-    """
-    w, h = im.size
-    mindim = min(w, h)
-    target_size = max(math.floor(mindim * factor), abs_min)
-    if (
-        target_size * math.sqrt(factor) <= abs_min
-    ):  # if the target size is almost as large as the image,
-        # jump to that scale instead
-        target_size = abs_min
-
-    target_factor = target_size / mindim
-    target_w = max(
-        math.floor(w * target_factor), 224
-    )  # corrects any rounding effects that make the size 223
-    target_h = max(math.floor(h * target_factor), 224)
-
-    im1 = im.resize((target_w, target_h))
-    assert min(im1.size) >= abs_min
-    return im1, target_factor
-
-
-def rescale(im, scale, min_size):
-    (w, h) = im.size
-    target_w = max(math.floor(w * scale), min_size)
-    target_h = max(math.floor(h * scale), min_size)
-    return im.resize(size=(target_w, target_h), resample=PIL.Image.BILINEAR)
-
-
-def pyramid(im, factor=0.71, abs_min=224):
-    ## if im size is less tha the minimum, expand image to fit minimum
-    ## try following: orig size and abs min size give you bounds
-    assert factor < 1.0
-    factor = 1.0 / factor
-    size = min(im.size)
-    end_size = abs_min
-    start_size = max(size, abs_min)
-
-    start_scale = start_size / size
-    end_scale = end_size / size
-
-    ## adjust start scale
-    ntimes = math.ceil(math.log(start_scale / end_scale) / math.log(factor))
-    start_size = math.ceil(math.exp(ntimes * math.log(factor) + math.log(abs_min)))
-    start_scale = start_size / size
-    factors = np.geomspace(
-        start=start_scale, stop=end_scale, num=ntimes + 1, endpoint=True
-    ).tolist()
-    ims = []
-    for sf in factors:
-        imout = rescale(im, scale=sf, min_size=abs_min)
-        ims.append(imout)
-
-    assert len(ims) > 0
-    assert min(ims[0].size) >= abs_min
-    assert min(ims[-1].size) == abs_min
-    return ims, factors
-
-
-def trim_edge(target_divisor=112):
-    def fun(im1):
-        w1, h1 = im1.size
-        spare_h = h1 % target_divisor
-        spare_w = w1 % target_divisor
-        im1 = im1.crop((0, 0, w1 - spare_w, h1 - spare_h))
-        return im1
-
-    return fun
-
-
-class TrimEdge:
-    def __init__(self, target_divisor=112):
-        self.target_divisor = target_divisor
-
-    def __call__(self, im1):
-        w1, h1 = im1.size
-        spare_h = h1 % self.target_divisor
-        spare_w = w1 % self.target_divisor
-        im1 = im1.crop((0, 0, w1 - spare_w, h1 - spare_h))
-        return im1
-
-
-def torgb(image):
-    return image.convert("RGB")
-
-
-def tofloat16(x):
-    return x.type(torch.float16)
-
-
-def non_resized_transform(base_size):
-    return ImTransform(
-        visual_xforms=[torgb],
-        tensor_xforms=[
-            T.ToTensor(),
-            T.Normalize(
-                (0.48145466, 0.4578275, 0.40821073),
-                (0.26862954, 0.26130258, 0.27577711),
-            ),
-            # tofloat16
-        ],
-    )
-
-
-class PyramidTx:
-    def __init__(self, tx, factor, min_size):
-        self.tx = tx
-        self.factor = factor
-        self.min_size = min_size
-
-    def __call__(self, im):
-        #im = image.convert("RGB")
-        ims, sfs = pyramid(im, factor=self.factor, abs_min=self.min_size)
-        ppims = []
-        for im in ims:
-            ppims.append(self.tx(im))
-
-        return ppims, sfs
-
-
-def pyramid_tx(tx):
-    def fn(im):
-        ims, sfs = pyramid(im)
-        ppims = []
-        for im in ims:
-            ppims.append(tx(im))
-
-        return ppims, sfs
-
-    return fn
-
-
-def augment_score(db, tup, qvec):
-    im = db.raw[tup.dbidx]
-    ims = pyramid(im, tup.iis, tup.jjs)
-    tx = make_clip_transform(n_px=224, square_crop=True)
-    vecs = []
-    for im in ims:
-        pim = tx(im)
-        emb = db.embedding.from_image(preprocessed_image=pim.float())
-        emb = emb / np.linalg.norm(emb, axis=-1)
-        vecs.append(emb)
-
-    vecs = np.concatenate(vecs)
-    # print(np.linalg.norm(vecs,axis=-1))
-    augscore = (vecs @ qvec.reshape(-1)).mean()
-    return augscore
-
-
-import torchvision.ops
 
 from ...box_utils import box_iou
 
@@ -319,24 +60,6 @@ def augment_score2(tup, vec_meta, vecs, *, agg_method, rescore_method, aug_large
         assert False, f"unknown agg_method {agg_method}"
 
 
-
-def get_boxes(vec_meta):
-    if "x1" in vec_meta.columns:
-        return vec_meta[["x1", "x2", "y1", "y2"]]
-
-    y1 = vec_meta.iis * 112
-    y2 = y1 + 224
-    x1 = vec_meta.jjs * 112
-    x2 = x1 + 224
-    factor = vec_meta.zoom_factor
-    boxes = vec_meta.assign(
-        **{"x1": x1 * factor, "x2": x2 * factor, "y1": y1 * factor, "y2": y2 * factor}
-    )[["x1", "y1", "x2", "y2"]]
-    boxes = boxes.astype(
-        "float32"
-    )  ## multiplication makes this type double but this is too much.
-    return boxes
-
 from seesaw.box_utils import left_iou_join
 
 def match_labels_to_vectors(label_db: LabelDB, vec_meta: pd.DataFrame, target_description=None):
@@ -358,16 +81,6 @@ def match_labels_to_vectors(label_db: LabelDB, vec_meta: pd.DataFrame, target_de
 
     vec_meta_new = vec_meta_new.assign(ys = (vec_meta_new.max_iou > 0).astype('float'))
     return vec_meta_new
-
-def build_index(vecs, file_name):
-    t = annoy.AnnoyIndex(512, "dot")
-    for i in range(len(vecs)):
-        t.add_item(i, vecs[i])
-    t.build(n_trees=100)  # tested 100 on bdd, works well, could do more.
-    t.save(file_name)
-    u = annoy.AnnoyIndex(512, "dot")
-    u.load(file_name)  # verify can load.
-    return u
 
 
 def filter_mask(meta, min_level_inclusive):
@@ -484,8 +197,6 @@ def _get_top_dbidxs(*, vec_idxs, scores, vector_meta, exclude, topk):
     pos = distinct_topk_positions(new_dbidx, topk=topk)
     df = pd.DataFrame({'dbidx':new_dbidx[pos], 'max_score':new_scores[pos]})    
     return df
-
-
 
 class MultiscaleIndex(AccessMethod):
     """implements a two stage lookup"""

@@ -129,18 +129,8 @@ def reconstruct_patch(im1, meta_tup):
 
 import warnings
 import PIL
-from PIL import Image
-
-def opentif(fp, path=None) -> PIL.Image.Image:
-    import tifffile
-    tifim = tifffile.imread(fp)
-    t8 = tifim.astype('uint8') 
-    if (t8 != tifim).any():
-        warnings.warn(f'uint8 conversion does not work losslessly for {path=}')
-    asim = Image.fromarray(t8)
-    return asim
-
 import io
+
 def multiscale_preproc_tup(rowtup, min_tile_size):
     try:
         image = PIL.Image.open(io.BytesIO(rowtup.bytes))

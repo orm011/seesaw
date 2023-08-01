@@ -83,7 +83,7 @@ if __name__ == "__main__":
 
     import ray
     from seesaw.dataset import SeesawDataset
-    from seesaw.indices.multiscale.preprocessor import preprocess_dataset, load_vecs
+    from seesaw.indices.multiscale.attic.preprocessor import preprocess_dataset, load_vecs
 
     #ray.init("auto", namespace="seesaw")
 
