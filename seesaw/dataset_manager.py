@@ -26,6 +26,10 @@ class GlobalDataManager:
     def get_dataset(self, dataset_name) -> SeesawDataset:
         dataset_path = f"{self.root}/data/{dataset_name}"
         return SeesawDataset(dataset_path)
+    
+    def create_dataset_from_directory(self, image_dir, dataset_name, force=False) -> SeesawDataset:
+        dataset_path = f"{self.root}/data/{dataset_name}"
+        return SeesawDataset.create_from_directory(dataset_path, image_dir, force=force)
         
     def __repr__(self):
         return f"{self.__class__.__name__}({self.root})"

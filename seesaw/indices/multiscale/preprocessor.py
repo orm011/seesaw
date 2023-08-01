@@ -13,7 +13,6 @@ from seesaw.indices.multiscale.multiscale_index import PyramidTx, non_resized_tr
 from operator import itemgetter
 import numpy as np
 
-
 def preprocess(tup, factor):
     """meant to preprocess dict with {path, dbidx,image}"""
     ptx = PyramidTx(tx=non_resized_transform(224), factor=factor, min_size=224)

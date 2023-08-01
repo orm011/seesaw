@@ -8,18 +8,18 @@ import glob
 import json
 
 
-
-def list_image_paths(basedir, prefixes=[""], extensions=["jpg", "jpeg", "png"]):
+def list_image_paths(basedir, prefixes=[""], extensions=["jpg", "jpeg", "png", 'tif', 'tiff']):
     acc = []
+    extensions = set(extensions)
     for prefix in prefixes:
-        for ext in extensions:
-            pattern = f"{basedir}/{prefix}/**/*.{ext}"
-            imgs = glob.glob(pattern, recursive=True)
-            acc.extend(imgs)
-            print(f"found {len(imgs)} files with pattern {pattern}...")
+        pattern = f"{basedir}/{prefix}/**/*.*"
+        files = glob.glob(pattern, recursive=True)
+        imgs = [f for f in files if f.split(".")[-1].lower() in extensions]
+        acc.extend(imgs)
+        print(f"found {len(imgs)} files with pattern in {extensions}...")
 
     relative_paths = [f[len(basedir) :].lstrip("./") for f in acc]
-    return list(set(relative_paths))
+    return sorted(list(set(relative_paths)))
 
 
 def infer_qgt_from_boxes(box_data, num_files):
@@ -172,10 +172,13 @@ class SeesawDataset(BaseDataset):
         self.dataset_root = dataset_path
         file_meta = pd.read_parquet(f"{self.dataset_root}/file_meta.parquet")
         self.file_meta = file_meta
-        self.paths = file_meta["file_path"].values
+        self.paths = file_meta.file_path.values
         self.dbidx_map = dict(zip(self.paths, self.file_meta.index.values)) # maps str
-
         self.image_root = os.path.realpath(f"{self.dataset_root}/images/")
+
+    @staticmethod
+    def create_from_directory(dataset_path, image_dir, force=False) -> "SeesawDataset":
+        return create_dataset(image_dir, dataset_path, paths=[], force=force)
 
     def size(self):
         return self.file_meta.shape[0]
@@ -330,38 +333,28 @@ class SeesawDataset(BaseDataset):
 
     ## TODO: add subset method that takes care of ground truth, and URLS, and that 
     ### can be used by indices over the subset?
+from seesaw.util import transactional_folder
 
-def create_dataset(image_src, output_path, paths=[]) -> SeesawDataset:
+def create_dataset(image_src, output_path, paths=[], force=False) -> SeesawDataset:
     """
     if not given explicit paths, it assumes every jpg, jpeg and png is wanted
     """
-    assert not os.path.exists(output_path), "output already exists"
-    dirname = os.path.dirname(output_path)
-    os.makedirs(dirname, exist_ok=True)
-    basename = os.path.basename(output_path)
+    with transactional_folder(output_path, force=force) as tmp_output_path:
+        image_src = resolve_path(image_src)
+        assert os.path.isdir(image_src)
 
-    final_dspath = f"{dirname}/{basename}"
-    dspath = f"{dirname}/.tmp.{basename}"
+        image_path = f"{tmp_output_path}/images"
+        os.symlink(image_src, image_path)
+        if len(paths) == 0:
+            paths = list_image_paths(image_src)
 
-    assert not os.path.exists(final_dspath), "name already used"
-    if os.path.exists(dspath):
-        os.rmdir(dspath)
-    image_src = resolve_path(image_src)
-    assert os.path.isdir(image_src)
+        df = pd.DataFrame({'dbidx':np.arange(len(paths)), "file_path": paths})
+        df.to_parquet(f"{tmp_output_path}/file_meta.parquet")
 
-    os.mkdir(dspath)
-    image_path = f"{dspath}/images"
-    os.symlink(image_src, image_path)
-    if len(paths) == 0:
-        paths = list_image_paths(image_src)
-        paths = sorted(paths)
+        _ = SeesawDataset(tmp_output_path) # test read, abort if not well formed
 
-    df = pd.DataFrame({"file_path": paths})
-    df.to_parquet(f"{dspath}/file_meta.parquet")
-
-    os.rename(dspath, final_dspath)
-    return SeesawDataset(final_dspath)
-
+    return SeesawDataset(output_path)
+            
 ### subset. need some way for tools to get path so they can build more stuff underneath
 ### index subset (easily computed)
 ### ground truth subset (easily computed)

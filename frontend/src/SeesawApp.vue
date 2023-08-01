@@ -405,7 +405,8 @@ export default defineComponent({
         window.VueApp = this;
         let params = new URLSearchParams(window.location.search)
         let frontend = params.get('frontend')
-        this.front_end_type = frontend !== null? frontend : 'pytorch'
+        console.log('frontend', frontend)
+        this.front_end_type = frontend == null? 'pytorch' : frontend
 
         if (window.location.pathname === '/annotate'){
           fetch('/api/annotate?' + params, {method: 'POST'})

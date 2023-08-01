@@ -232,6 +232,7 @@ class PyramidTx:
         self.min_size = min_size
 
     def __call__(self, im):
+        #im = image.convert("RGB")
         ims, sfs = pyramid(im, factor=self.factor, abs_min=self.min_size)
         ppims = []
         for im in ims:
