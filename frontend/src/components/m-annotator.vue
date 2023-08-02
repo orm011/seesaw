@@ -1,10 +1,11 @@
 <template>
   <div
-    class="annotator_div row"
+    class="annotator-div"
     ref="container"
+
   >
     <img
-      :class="read_only ? 'annotator_image_small':'annotator_image'"
+      :class="read_only ? 'annotator-image-small':'annotator-image'"
       :src="imdata.url"
       ref="image" 
       @error="handle_error"
@@ -17,19 +18,7 @@
       @mouseover="hover(true)"
       @mouseleave="hover(false)"
     />
-    <!-- <div
-        class="form-check activation-check">
-        <input
-            class="form-check-input"
-            type="checkbox"
-            id="activation-checkbox"
-            v-model="this.show_activation"
-            @change="this.activation_press()"
-        >
-    </div> -->
   </div>
-<!-- question: could the @load callback for img fire before created() or mounted()? (
-    eg, the $refs and other vue component object attributes) -->
 </template>
 <script lang="ts">
 
@@ -108,6 +97,7 @@ export default defineComponent({
         this.save()
     },
     draw_activation: function(){
+        return ;
         console.log("Beginning"); 
         let img = this.$refs.image as HTMLImageElement;         
         let container = this.$refs.container as HTMLDivElement;
@@ -117,9 +107,9 @@ export default defineComponent({
         // when the image has no max size, the container div 
         // ends up with a size of 0, and centering the element
         // does not seem to work
-        container.style.setProperty('width', width + 'px')
-        container.style.setProperty('height', height + 'px')
-        img.style.setProperty('display', 'block')
+        // container.style.setProperty('width', width + 'px')
+        // container.style.setProperty('height', height + 'px')
+        // img.style.setProperty('display', 'inline-block')
 
         let paper = this.paper;
         paper.activate(); 
@@ -282,23 +272,25 @@ export default defineComponent({
         let img = this.$refs.image as HTMLImageElement;         
         let container = this.$refs.container as HTMLDivElement;
         
-        let height = img.height;
-        let width = img.width;
         // when the image has no max size, the container div 
         // ends up with a size of 0, and centering the element
         // does not seem to work
-        container.style.setProperty('width', width + 'px')
-        container.style.setProperty('height', height + 'px')
-        img.style.setProperty('display', 'block')
+
+        // container.style.setProperty('width', width + 'px')
+        // container.style.setProperty('height', height + 'px')
+        img.style.setProperty('display', 'inline-block')
 
         // call some code to draw activation array 
         // on top of canvas 
         // ctx
         // ctx = f(cnv)
+        let height = img.clientHeight; //height;
+        let width = img.clientWidth; //width;
+
         let paper = this.paper;      
         paper.activate(); 
         let cnv = this.$refs.canvas as HTMLCanvasElement;
-        console.log('drawing canvas', img.height, img.width, img)
+        console.log('drawing canvas', height, width, img)
         cnv.height = height;
         cnv.width = width;
         this.paper.setup(cnv);
@@ -562,27 +554,33 @@ export default defineComponent({
     left: 10px; 
 }
 
-.annotator_div {
+.annotator-div {
     position:relative;
     margin:0px;
     border:0px;
     padding:0px;
-    /* width:fit-content; set dynamically after image is loaded */
+    /* max-width: 100vw;
+    max-height: 100vh; */
+    /* width:fit-content; /*set dynamically after image is loaded */
+    /*height:fit-content; */
     /* height:fit-content; */
-    /* display:inline-block;*/  /* let this decision be done elsewhere, just like with an image */
+    display:inline-block; /* let this decision be done elsewhere, just like with an image */
 }
 
-.annotator_image {
-    /* max-width:100%; */
-    /* max-height:100%; */
-    display: none;
-    position:absolute;
+.annotator-image {
+    /* max-width:100%; 
+    max-height:100%; */
+    display:none;
+    /* position:absolute;
     top:0px;
     left:0px;
     margin:0px;
     border:0px;
-    padding:0px;
-    object-fit:none; /* never rescale up */ 
+    padding:0px; */
+    width: 100%;
+    height: 100%;
+    flex-grow: 1; /* Take up remaining space */
+    object-fit:contain; /* never rescale up */ 
     user-select: none; /* don't allow the broswer selection to work on the image so labeling is easier (see canvas too) */
 }
 
@@ -592,14 +590,14 @@ export default defineComponent({
   left: 10px;
 }
 
-.annotator_image_small {
+.annotator-image-small {
   width: auto !important;
   height: auto !important;
   margin:0px;
   border:0px;
   padding:0px;
-  max-height: 200px;
-  /*max-width: 400px; */
+  max-height: 300px;
+  max-width: 300px;
   object-fit: scale-down; /* never rescale up */ 
 }
 
@@ -608,14 +606,15 @@ export default defineComponent({
     /* max-width:100%;*/
     /* max-height:100%; */
     position:absolute; 
-    top:0px; 
-    left:0px;
+    top:0; 
+    left:0;
+    width:100%;
+    height:100%;
     margin:0px;
     border:0px;
     padding:0px;
-    /* display:;  */
-    /* for now not showing it to try to fix centering issue...*/
     user-select: none;
 }
+
 
 </style>

@@ -1,6 +1,4 @@
 <template>
-  <div>
-    <div class="row">
       <div class="image-gallery">
         <div
           v-for="(data,index) in initial_imdata"
@@ -15,8 +13,6 @@
           />
         </div>
       </div>
-    </div>
-  </div>
 </template>
 <script lang="ts">
 import {defineComponent} from 'vue';

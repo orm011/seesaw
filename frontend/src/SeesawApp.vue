@@ -113,19 +113,11 @@
         <div v-if="other_url !== null" class="row">
           <a :href="other_url">{{other_url}}</a>
         </div>
-
+        <div class="grid-container">
         <div
-          class="row"
           v-for="(imdata,idx) in client_data.session.gdata"
           :key="idx"
         >
-          <!-- <div
-            v-if="client_data.session.timing.length > 0"
-            class="row"
-          >
-            <span>Search refinement took {{ client_data.session.timing[idx].toFixed(2) }} seconds</span>
-          </div> -->
-          <div class="row">
             <m-image-gallery
               ref="galleries"
               v-if="imdata.length > 0"
@@ -133,20 +125,8 @@
               :imdata_keys="imdata.map((imdat) => get_vue_key(imdat.dbidx))"
               @selection="handle_selection_change({gdata_idx:idx, local_idx:$event})"
             />
-          </div>
-          <!-- <div class="row space" /> -->
         </div>
-        <!-- <div
-          class="row"
-          v-if="client_data.session.gdata.length > 0"
-        >
-          <button
-            @click="next(false)"
-            class="btn btn-dark btn-block"
-          >
-            Load More Images
-          </button>
-        </div> -->
+      </div>
       </main>
     </div> 
     <div v-if="user_test_mode">
@@ -166,142 +146,142 @@
       ref="modal"
       @modalKeyDown="handleModalKeyUp('down', $event)"
       @modalKeyUp="handleModalKeyUp('up', $event)"
-    >      
-      <div class="keyword-text">
-        <span> Looking for <b>{{this.client_data.session.query_string}}</b> </span>
-      </div> 
-      <div
-        v-if="annotator_text_pointer != null"
-      >
-        <div v-if="front_end_type !== 'plain'">
-          <div v-if="front_end_type !== 'pytorch'">
-            <button
+    >
+    <div class="parent-div">
+      <div class="sibling-div">      
+        <div class="keyword-text">
+          <span> Looking for <b>{{this.client_data.session.query_string}}</b>.  Image {{this.image_index}} of {{this.total_images()}} </span>
+        </div> 
+        <div
+          v-if="annotator_text_pointer != null"
+        >
+          <div v-if="front_end_type !== 'plain'">
+            <div v-if="front_end_type !== 'pytorch'">
+              <button
+                class="btn btn-danger"
+                v-if="annotator_text_pointer.box.data.marked_accepted"
+                @click="toggle_box_accepted()"
+                onfocus="blur()"
+              >
+                Mark Negative
+              </button>
+              <button
+                class="btn btn-danger"
+                v-else
+                @click="toggle_box_accepted()"
+                onfocus="blur()"
+              >
+                Mark Accepted
+              </button>
+            </div>
+            <Autocomplete 
+                v-if="this.front_end_type === 'textual'"
+                @input="changeInput"
+                @onSelect="inputSelect"
+                :results="autocomplete_items"
+                :placeholder="annotator_text"
+                :results-container-class="['custom-vue3-results-container']"
+                />
+          </div>
+        </div>
+        <div>
+          <button
+              v-if="user_test_mode"
               class="btn btn-danger"
-              v-if="annotator_text_pointer.box.data.marked_accepted"
-              @click="toggle_box_accepted()"
               onfocus="blur()"
             >
-              Mark Negative
+              Key Q: Show Examples
+          </button>
+          <div
+          class="button-row" 
+          v-if="front_end_type === 'pytorch' && allow_full_box">
+            <button
+              v-if="checkForFullBox()"
+              class="btn btn-danger"
+              @click="mark_image_accepted()"
+              onfocus="blur()"
+            >
+              Select Full Box (W)
             </button>
             <button
-              class="btn btn-danger"
               v-else
-              @click="toggle_box_accepted()"
+              class="btn btn-danger"
+              @click="mark_image_accepted()"
               onfocus="blur()"
             >
-              Mark Accepted
+              Create Full Box (W) 
             </button>
           </div>
-          <Autocomplete 
-              v-if="this.front_end_type === 'textual'"
-              @input="changeInput"
-              @onSelect="inputSelect"
-              :results="autocomplete_items"
-              :placeholder="annotator_text"
-              :results-container-class="['custom-vue3-results-container']"
-              />
+            <button
+              class="btn btn-warning highlight-button"
+              v-if="front_end_type !== 'plain'"
+              ref="highlight_btn"
+              @click="() => {this.$refs.highlight_btn.blur()}"
+            >
+              Key E : Toggle Highlight
+            </button>
+        </div>
+        <div> 
+          <button
+              class="btn btn-danger"
+              ref="left_button"
+              :disabled="this.image_index === 1 || this.image_index === null"
+              onfocus="blur()"
+            >
+              Key A : Previous
+          </button>
+          <div 
+          class="button-row"
+          v-if="front_end_type === 'plain'">
+            <button
+              class="btn btn-danger"
+              ref="accept_button"
+              onfocus="blur()"
+            >
+              Key S : Toggle Accept
+            </button>
+          </div>
+          <div
+          class="button-row" 
+          v-else-if="front_end_type === 'textual'">
+            <button
+              class="btn btn-danger"
+              @click="create_full_box()"
+              onfocus="blur()"
+            >
+              Full Box
+            </button>
+          </div>
+          <button
+              class="btn btn-danger"
+              v-if="front_end_type !== 'plain'"
+              :disabled="annotator_text_pointer == null"
+              onfocus="blur()"
+            >
+              Key S : Delete Box
+            </button>
+          <button
+              class="btn btn-danger"
+              ref="right_button"
+              onfocus="blur()"
+              :disabled="loading_next"
+            >
+              Key D : Next
+          </button>
         </div>
       </div>
-      <div>
-        <button
-            v-if="user_test_mode"
-            class="btn btn-danger"
-            onfocus="blur()"
-          >
-            Key Q: Show Examples
-        </button>
-        <div
-        class="button-row" 
-        v-if="front_end_type === 'pytorch' && allow_full_box">
-          <button
-            v-if="checkForFullBox()"
-            class="btn btn-danger"
-            @click="mark_image_accepted()"
-            onfocus="blur()"
-          >
-            Select Full Box (W)
-          </button>
-          <button
-            v-else
-            class="btn btn-danger"
-            @click="mark_image_accepted()"
-            onfocus="blur()"
-          >
-            Create Full Box (W) 
-          </button>
-        </div>
-          <button
-            class="btn btn-warning highlight-button"
-            v-if="front_end_type !== 'plain'"
-            ref="highlight_btn"
-            @click="() => {this.$refs.highlight_btn.blur()}"
-          >
-            Key E : Toggle Highlight
-          </button>
-      </div>
-      <div> 
-        <button
-            class="btn btn-danger"
-            ref="left_button"
-            :disabled="this.image_index === 1 || this.image_index === null"
-            onfocus="blur()"
-          >
-            Key A : Previous
-        </button>
-        <div 
-        class="button-row"
-        v-if="front_end_type === 'plain'">
-          <button
-            class="btn btn-danger"
-            ref="accept_button"
-            onfocus="blur()"
-          >
-             Key S : Toggle Accept
-          </button>
-        </div>
-        <div
-        class="button-row" 
-        v-else-if="front_end_type === 'textual'">
-          <button
-            class="btn btn-danger"
-            @click="create_full_box()"
-            onfocus="blur()"
-          >
-            Full Box
-          </button>
-        </div>
-        <button
-            class="btn btn-danger"
-            v-if="front_end_type !== 'plain'"
-            :disabled="annotator_text_pointer == null"
-            onfocus="blur()"
-          >
-            Key S : Delete Box
-          </button>
-        <button
-            class="btn btn-danger"
-            ref="right_button"
-            onfocus="blur()"
-            :disabled="loading_next"
-          >
-            Key D : Next
-        </button>
-      </div>
-      <div class="keyword-text">
-        <span> Image {{this.image_index}} of {{this.total_images()}} </span>
-      </div>
-      <div class="row">
-        <m-annotator
-          ref="annotator"
-          :initial_imdata="this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx]"
-          :read_only="false"
-          :front_end_type="this.front_end_type"
-          @selection="handleAnnotatorSelectionChange($event)"
-          :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
-          :app_handle="this"
-        />
-      </div>
-
+      <div class="sibling-div">
+      <m-annotator
+        ref="annotator"
+        :initial_imdata="this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx]"
+        :read_only="false"
+        :front_end_type="this.front_end_type"
+        @selection="handleAnnotatorSelectionChange($event)"
+        :key="get_vue_key(this.client_data.session.gdata[this.selection.gdata_idx][this.selection.local_idx].dbidx)"
+        :app_handle="this"
+      />
+    </div>
+    </div>
     </m-modal>
     <m-modal
       v-if="end_query == true && user_test_mode"
@@ -1083,10 +1063,6 @@ img {
   text-transform: uppercase;
 }
 
-/*
- * Navbar
- */
-
 .navbar-brand {
   padding-top: .75rem;
   padding-bottom: .75rem;
@@ -1098,6 +1074,11 @@ img {
 .navbar .navbar-toggler {
   top: .25rem;
   right: 1rem;
+}
+
+.grid-container {
+  display: flex;
+  flex-wrap: wrap;
 }
 
 .navbar .form-control {
@@ -1133,4 +1114,15 @@ img {
     padding: 5px;
   }
   
+.parent-div{
+  display: flex; /* Use flexbox layout */
+  flex-direction: column; /* Stack children vertically */
+  height: 100vh; /* Full viewport height */
+  width: 100vw; /* Full viewport width */
+}
+/* 
+.sibling-div{
+  display: inline-block;
+} */
+
 </style>

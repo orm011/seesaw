@@ -3,10 +3,6 @@
   <div
     :class="`my-modal ${active ? 'my-modal-active': ''}` "
   >
-    <!-- <span
-      class="close"
-      @click="close"
-    >&times;</span> -->
     <div  
       class="my-modal-content"
     >
@@ -55,9 +51,6 @@ export default defineComponent({
   padding-top: 10px; 
   left: 0;
   top: 0;
-  width: 100%; /* Full width */
-  height: 100%; /* Full height */
-  overflow: auto; /* Enable scroll if needed */
   background-color: rgb(0,0,0); /* Fallback color */
   background-color: rgba(0,0,0,1.); /* Black w/ opacity */
 }
@@ -71,17 +64,11 @@ body.modal-is-active {
 
 .my-modal-active {
   display: block;
+  width: 100vw; /* 100% of viewport width */
+  height: 100vh; /* 100% of viewport height */
+  overflow: auto;
 }
 
-
-/* Modal Content (image) */
-.my-modal-content {
-  margin: auto;
-  display: block;
-  width: fit-content;
-  height: fit-content;
-  /* max-width: 700px; */
-}
 
 /* Caption of Modal Image */
 /* #caption {
@@ -123,13 +110,14 @@ body.modal-is-active {
   font-weight: bold;
   transition: 0.3s;
 }
-
 .close:hover,
 .close:focus {
   color: #bbb;
   text-decoration: none;
   cursor: pointer;
 }
+
+
 
 .keyword-text > span {
   color: rgb(240,240,240);
@@ -141,6 +129,7 @@ body.modal-is-active {
 @media only screen and (max-width: 700px){
   .modal-content {
     width: 100%;
+    height: 100%;
   }
 }
 </style>
