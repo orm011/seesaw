@@ -127,6 +127,38 @@ def parallel_read_parquet(path, columns=None, parallelism=-1) -> pd.DataFrame:
 
     return df
 
+from functools import wraps
+def batchable(func):
+    argspec = inspect.getfullargspec(func)
+    argnames = argspec.args
+
+    @wraps(func) ## to preserve param meta + docstring in help
+    def wrapper(*args, **kwargs):
+        # if the first argument is a list (or more generally, an iterable), 
+        # we apply the function to each element
+        if isinstance(args[0], pd.DataFrame):
+            ans = []
+            for tup in args[0].itertuples():
+                d = tup._asdict()
+                args_dict = {n:d[n] for n in argnames}
+                r = func(**args_dict)
+                ans.append(r)
+                
+            if ans != []:
+                if isinstance(ans[0], pd.DataFrame):
+                    return pd.concat(ans, ignore_index=True)
+                elif isinstance(ans[0], dict):
+                    return pd.DataFrame.from_records(ans)
+                else:
+                    return pd.DataFrame({'results':ans})
+            else:
+                return pd.DataFrame({'results':ans})
+
+        else:
+            return func(*args, **kwargs)
+
+    return wrapper
+
 
 def as_batch_function(fun):
     def bfun(batch):
