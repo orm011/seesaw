@@ -166,7 +166,7 @@ class Session:
                     dbidx, format="box"
                 )  # None means no annotations yet (undef), empty means no boxes.
 
-            if activation_batch is None:
+            if activation_batch is None or activation_batch is []:
                 activations = None
             else:
                 activations = []

@@ -34,8 +34,10 @@ shared_bench_params: # see BenchParams
   provide_textual_feedback: False
   query_template : "a {}"
 variants:
-  # - name: baseline
-  #   interactive: plain
+  - name: random
+    interactive: random
+  - name: baseline
+    interactive: plain
   - name: multi_reg
     max_samples: 20
     interactive: multi_reg

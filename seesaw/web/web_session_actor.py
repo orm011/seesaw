@@ -1,10 +1,13 @@
 from typing import Optional, List, Dict, Callable
-from ..seesaw_session import Session, make_session
-from ..util import reset_num_cpus, vls_init_logger
+import seesaw.seesaw_session
+import importlib
+import seesaw
+from seesaw.seesaw_session import Session
+from seesaw.util import reset_num_cpus, vls_init_logger
 import os
 import json
-from ..dataset_manager import GlobalDataManager
-from .common import *
+from seesaw.dataset_manager import GlobalDataManager
+from seesaw.web.common import *
 
 
 class WebSession:
@@ -19,6 +22,8 @@ class WebSession:
     def __init__(
         self, root_dir, save_path, session_id, worker: Worker = None, num_cpus=None
     ):
+        import importlib
+        importlib.reload(seesaw)
         if num_cpus is not None:
             reset_num_cpus(num_cpus)
 
@@ -34,6 +39,9 @@ class WebSession:
         print("web session constructed")
 
     def _reset_dataset(self, s: SessionParams):
+        importlib.reload(seesaw.seesaw_session)
+        from seesaw.seesaw_session import Session, make_session
+
         res = make_session(self.gdm, s)
         self.session = res["session"]
 

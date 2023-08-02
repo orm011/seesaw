@@ -413,11 +413,23 @@ def add_iou_score(box_df: pd.DataFrame, roi_box_df: pd.DataFrame):
     box_df = box_df.assign(best_box_iou=best_iou, best_box_idx=best_match)
     return box_df
 
-
 class BoxFeedbackQuery(InteractiveQuery):
+    index : MultiscaleIndex
     def __init__(self, db):
         super().__init__(db)
         assert self.index is not None
+        self.all_dbidx = pr.FrozenBitMap(self.index.vector_meta.dbidx)
+
+
+    def query_random(self, batch_size):
+        remaining = self.all_dbidx - self.returned
+        idxs = np.random.permutation(np.array(remaining))[:batch_size]
+
+        return {
+            "dbidxs": idxs.astype("int"),
+            "activations": None
+        }
+
 
     def getXy(self, get_positions=False, target_description=None):
         matched_df = match_labels_to_vectors(self.label_db, self.index.vector_meta, target_description=target_description)
