@@ -577,6 +577,7 @@ export default defineComponent({
     margin:0px;
     border:0px;
     padding:0px; */
+    border: 1px dashed gray;
     width: 100%;
     height: 100%;
     flex-grow: 1; /* Take up remaining space */

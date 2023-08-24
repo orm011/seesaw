@@ -40,55 +40,25 @@
         id="sidebarMenu"
         class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse"
       >
-        <div class="position-sticky pt-3">
-          <div class="row">
-            <div class="col">
-              <!-- <div class="row">
-                <label>Current Database:</label>
-              </div> -->
-              <!-- <div class="row">
-                <select
-                  v-model="selected_index"
-                  @change="reset(selected_index)"
-                >
-                  <option
-                    v-for="(idxspec,idx) in [null, ...client_data.indices]"
-                    :key="idx"
-                    :value="idxspec"
-                  >
-                    {{ idxspec != null ? `${idxspec.d_name}:${idxspec.i_name}` : '' }}
-                  </option>
-                </select> 
-              </div> 
-            -->
-            </div>
+        <div class="position-sticky pt-3">  
+          <div class="row" v-if="client_data.session != null">
+            <span class="sidebar-spn">Current database: <br/> <b>{{selected_index.d_name}}</b></span>
           </div>
           <div class="row" v-if="client_data.session != null">
-            <span>Current database: {{selected_index.d_name}}</span>
+            <span class="sidebar-spn">Total images:  <b>{{ total_images() }} </b> </span>
           </div>
           <div class="row" v-if="client_data.session != null">
-            <span>Total images: {{ total_images() }}</span>
-          </div>
-          <div class="row" v-if="client_data.session != null">
-            <span>Total accepted: {{ total_accepted() }}</span>
+            <span class="sidebar-spn">Total accepted: <b> {{ total_accepted() }}</b> </span>
           </div>
           <div class="row" v-if="client_data.session != null">
             <button 
-              class="btn btn-dark btn-block" 
+              class="btn btn-dark btn-block sidebar-spn" 
               @click="save()"
             > 
               Save 
             </button>
           </div>
-          <!-- <div class="row" v-if="client_data.session != null">
-            <button
-              class="btn btn-dark btn-block"
-              @click="reset(client_data.session.params.index_spec)"
-            >
-              Reset
-            </button>
-          </div> -->
-          <div class="row">
+          <!-- <div class="row">
             <button
               v-if="show_config"
               class="btn btn-dark btn-block" 
@@ -101,7 +71,7 @@
               @click="toggle_config()"> 
               Show Config
             </button>
-          </div>
+          </div> -->
         </div>
       </nav>
       <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4" v-if="client_data.session != null">
@@ -974,6 +944,18 @@ body {
   font-size: .875rem;
 }
 
+.form-control{
+  font-size: 2rem;
+}
+.navbar {
+  padding: 15px 0; /* This will increase the vertical padding */
+}
+
+.navbar-brand {
+  font-size: 2rem; 
+  /* This will increase the font size of the navbar brand */
+}
+
 .xmodal{
   z-index: 1021;
 }
@@ -1030,6 +1012,16 @@ img {
     background-color: gray;
 }
 
+.sidebar {
+  top: 1rem;
+}
+
+.sidebar-spn {
+  margin-left: 5px;
+  font-size: 1.6rem;
+  text-align: default;
+}
+
 .sidebar-sticky {
   position: relative;
   top: 0;
@@ -1066,7 +1058,7 @@ img {
 .navbar-brand {
   padding-top: .75rem;
   padding-bottom: .75rem;
-  font-size: 1rem;
+  font-size: 2rem;
   background-color: rgba(0, 0, 0, .25);
   box-shadow: inset -1px 0 0 rgba(0, 0, 0, .25);
 }
